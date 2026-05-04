@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>非常智造流程测试</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #fdf7f4 0%, #fffdfb 48%, #f4f8f6 100%);
+      color: #242120;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    }
+    .phone { width: min(430px, 100%); min-height: 100vh; margin: 0 auto; padding: 24px 18px 38px; }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .brand { font-size: 25px; font-weight: 850; }
+    .mark { width: 42px; height: 42px; border-radius: 50%; background: #202020; color: #fff6ef; display: grid; place-items: center; font-weight: 850; }
+    .hero { min-height: 180px; padding: 24px; border-radius: 22px; color: #fff; background: linear-gradient(135deg, #202020 0%, #5a3e3c 54%, #f2a69c 100%); box-shadow: 0 20px 42px rgba(63,45,42,.16); }
+    .tag { display: inline-flex; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.16); font-size: 11px; font-weight: 800; }
+    .hero h1 { margin: 18px 0 8px; font-size: 28px; line-height: 1.18; }
+    .hero p { margin: 0; color: rgba(255,255,255,.74); line-height: 1.55; }
+    .case { margin: 26px 0 14px; color: #8d5a54; font-weight: 850; }
+    .category-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+    .category { padding: 14px; border-radius: 16px; background: rgba(255,255,255,.92); box-shadow: 0 10px 28px rgba(83,69,64,.07); cursor: pointer; font-weight: 850; }
+    .category span { display: block; margin-top: 5px; color: #8d8582; font-size: 12px; font-weight: 700; }
+    .list { display: grid; gap: 14px; }
+    .card, .panel {
+      background: rgba(255,255,255,.94);
+      border-radius: 20px;
+      box-shadow: 0 14px 34px rgba(83,69,64,.08);
+      border: 1px solid rgba(185,111,103,.08);
+    }
+    .product { display: grid; grid-template-columns: 96px 1fr; gap: 14px; padding: 12px; cursor: pointer; }
+    .cover { position: relative; width: 96px; height: 96px; border-radius: 16px; overflow: hidden; background: linear-gradient(135deg, #f4b7ae, #272322); }
+    .cover img, .detail-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .badge { position: absolute; left: 8px; top: 8px; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.88); font-size: 11px; font-weight: 850; }
+    .badge-new { color: #8d5a54; }
+    .badge-hot { background: #fff1ee; color: #d35f55; }
+    .badge-best { background: #202020; color: #fff6ef; }
+    .name { font-size: 17px; font-weight: 850; line-height: 1.3; }
+    .intro { margin-top: 7px; color: #8d8582; font-size: 13px; }
+    .row { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+    .price { color: #d35f55; font-size: 22px; font-weight: 850; }
+    button { height: 42px; border: 0; border-radius: 999px; padding: 0 18px; background: #202020; color: #fff; font-weight: 850; cursor: pointer; }
+    button.secondary { background: #e4f0ec; color: #24302d; }
+    .detail-cover { height: 300px; border-radius: 24px; overflow: hidden; background: linear-gradient(135deg, #f4b7ae, #272322); box-shadow: 0 20px 42px rgba(63,45,42,.16); }
+    .panel { padding: 18px; margin-top: 18px; }
+    label { display: block; margin-top: 14px; color: #5f5753; font-size: 13px; font-weight: 850; }
+    input, textarea { width: 100%; margin-top: 8px; border: 1px solid #eadcd7; border-radius: 14px; background: #fbfbfd; font: inherit; padding: 0 12px; }
+    input { height: 44px; }
+    textarea { height: 90px; padding-top: 12px; resize: vertical; }
+    .inline-control { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 8px; align-items: center; }
+    .inline-control input { margin-top: 8px; }
+    .mini-btn, .light-btn { height: 40px; border-radius: 999px; background: #e4f0ec; color: #24302d; font-size: 12px; padding: 0 12px; }
+    .address-action { margin-top: 14px; }
+    .light-btn { background: #f7efec; color: #8d5a54; }
+    .field-tip { margin-top: 8px; color: #9a918d; font-size: 12px; font-weight: 750; }
+    .field-tip.error { color: #d35f55; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+    .hidden { display: none; }
+    .toast { margin-top: 14px; color: #8d5a54; font-size: 13px; font-weight: 850; min-height: 20px; }
+    a { color: #8d5a54; font-weight: 850; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <section id="home">
+      <div class="top"><div class="brand">非常智造</div><div class="mark">VS</div></div>
+      <div class="hero"><div class="tag">CUSTOM STUDIO</div><h1>上传图片立即定制</h1><p>从一张图开始，做一件只属于她的礼物</p></div>
+      <div class="actions"><button onclick="mockUploadPhoto()">模拟上传照片定制</button><button class="secondary" onclick="openOrders()">查看订单</button></div>
+      <div class="category-grid">
+        <div class="category" onclick="openCategory('3D打印')">3D打印<span>照片建模</span></div>
+        <div class="category" onclick="openCategory('激光雕刻')">激光雕刻<span>木牌金属</span></div>
+        <div class="category" onclick="openCategory('叶雕定制')">叶雕定制<span>天然叶雕</span></div>
+        <div class="category" onclick="openCategory('名字礼物')">名字礼物<span>刻字小物</span></div>
+      </div>
+      <div class="case">真实案例展示 · 看得见的品质</div>
+      <div class="list" id="products"></div>
+      <div class="toast"><a href="/admin" target="_blank">打开后台订单页</a></div>
+    </section>
+
+    <section id="detail" class="hidden">
+      <button class="secondary" onclick="showHome()">返回首页</button>
+      <div class="detail-cover" id="detailCover"></div>
+      <div class="panel">
+        <div class="name" id="detailName"></div>
+        <div class="intro" id="detailIntro"></div>
+        <div class="row"><div class="price" id="detailPrice"></div><button onclick="showCheckout()">立即定制</button></div>
+      </div>
+      <div class="panel"><b>定制流程</b><p class="intro">提交定制要求 → 一对一确认设计 → 制作完成后发货</p></div>
+    </section>
+
+    <section id="checkout" class="hidden">
+      <button class="secondary" onclick="showDetail()">返回详情</button>
+      <div class="panel">
+        <div class="name">确认定制</div>
+        <div id="customPreview"></div>
+        <label>姓名<input id="customerName" value="测试用户"></label>
+        <label>电话
+          <div class="inline-control">
+            <input id="phone" value="13800000000" maxlength="11" inputmode="numeric">
+            <button class="mini-btn" onclick="mockGetPhone()" type="button">一键获取手机号</button>
+          </div>
+        </label>
+        <div class="field-tip" id="phoneTip">仅支持中国大陆11位手机号</div>
+        <div class="address-action"><button class="light-btn" onclick="mockChooseAddress()" type="button">一键选择收货地址</button></div>
+        <label>地址<textarea id="address">上海市测试地址 100 号</textarea></label>
+        <label>定制要求<textarea id="customRequest">叶雕刻字：生日快乐，温柔高级风。</textarea></label>
+        <button style="width:100%; margin-top:18px;" onclick="submitOrder()">提交订单并模拟支付</button>
+        <div class="toast" id="message"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let products = []
+    let selectedProduct = null
+    const badgeTextMap = { new: "新品推荐", hot: "人气热卖", best: "爆品推荐", none: "" }
+
+    function $(id) { return document.getElementById(id) }
+    function escapeHtml(value) {
+      return String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        method: options.method || "GET",
+        headers: { "Content-Type": "application/json" },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      })
+      const data = await res.json()
+      if (!res.ok || data.ok === false) throw new Error(data.message || "请求失败")
+      return data.data || data
+    }
+    function setView(name) {
+      ["home", "detail", "checkout"].forEach(id => $(id).classList.toggle("hidden", id !== name))
+    }
+    function renderProducts() {
+      $("products").innerHTML = products.map((item, index) => `
+        <div class="card product" onclick="openProduct(${index})">
+          <div class="cover">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}">` : ""}${badgeLabel(item) ? `<div class="badge badge-${escapeHtml(item.badge)}">${escapeHtml(badgeLabel(item))}</div>` : ""}</div>
+          <div>
+            <div class="name">${escapeHtml(item.name)}</div>
+            <div class="intro">${escapeHtml(item.intro)}</div>
+            <div class="row"><div class="price">¥${escapeHtml(item.price)}</div><button>定制</button></div>
+          </div>
+        </div>
+      `).join("")
+    }
+    function filterProducts(category) {
+      const matched = products.filter(product => Array.isArray(product.categories) && product.categories.includes(category))
+      if (matched.length) return matched
+      const rules = {
+        "3D打印": ["3D", "摆件", "建模", "宠物"],
+        "激光雕刻": ["激光", "雕刻", "木", "金属"],
+        "叶雕定制": ["叶雕", "真叶", "天然"],
+        "名字礼物": ["名字", "钥匙扣", "刻字"]
+      }
+      return products.filter(product => {
+        const text = `${product.name || ""} ${product.intro || ""}`
+        return (rules[category] || []).some(keyword => text.includes(keyword))
+      })
+    }
+    function openCategory(category) {
+      const original = products
+      products = filterProducts(category)
+      if (!products.length) products = original
+      renderProducts()
+      document.querySelector(".case").textContent = `${category} · 可选商品`
+    }
+    function openOrders() {
+      window.open("/admin", "_blank")
+    }
+    function mockUploadPhoto() {
+      selectedProduct = {
+        id: "CUSTOM_UPLOAD",
+        name: "上传照片定制",
+        intro: "根据已选照片一对一确认设计",
+        price: "99",
+        imageUrl: "/uploads/product-leaf.svg",
+        categories: ["名字礼物"]
+      }
+      $("customPreview").innerHTML = `<div class="product"><div class="cover"><img src="/uploads/product-leaf.svg"></div><div><div class="name">已选择照片</div><div class="intro">请补充定制要求，设计师会先确认方案</div></div></div>`
+      setView("checkout")
+    }
+    function badgeLabel(item) {
+      return badgeTextMap[item.badge] || item.badge || ""
+    }
+    function openProduct(index) {
+      selectedProduct = products[index]
+      $("detailCover").innerHTML = selectedProduct.imageUrl ? `<img src="${escapeHtml(selectedProduct.imageUrl)}">` : ""
+      $("detailName").textContent = selectedProduct.name
+      $("detailIntro").textContent = selectedProduct.intro || ""
+      $("detailPrice").textContent = `¥${selectedProduct.price}`
+      setView("detail")
+    }
+    function showHome() { setView("home") }
+    function showDetail() { setView("detail") }
+    function showCheckout() { setView("checkout") }
+    function isValidPhone(phone) {
+      return /^1[3-9]\d{9}$/.test(phone)
+    }
+    function updatePhoneTip() {
+      const phone = $("phone").value.replace(/\\D/g, "").slice(0, 11)
+      $("phone").value = phone
+      const tip = $("phoneTip")
+      if (!phone) {
+        tip.textContent = "仅支持中国大陆11位手机号"
+        tip.classList.remove("error")
+        tip.style.display = "block"
+        return false
+      }
+      if (!isValidPhone(phone)) {
+        tip.textContent = "请输入正确的11位手机号"
+        tip.classList.add("error")
+        tip.style.display = "block"
+        return false
+      }
+      tip.textContent = ""
+      tip.classList.remove("error")
+      tip.style.display = "none"
+      return true
+    }
+    function mockGetPhone() {
+      $("phone").value = "17809169368"
+      updatePhoneTip()
+      $("message").textContent = "已模拟获取手机号"
+    }
+    function mockChooseAddress() {
+      const addressName = "陈女士"
+      if (!$("customerName").value || confirm(`是否使用收货地址中的姓名：${addressName}`)) {
+        $("customerName").value = addressName
+      }
+      $("phone").value = "17719595489"
+      $("address").value = "上海市 浦东新区 XX路100号"
+      updatePhoneTip()
+      $("message").textContent = "已模拟选择收货地址"
+    }
+    async function submitOrder() {
+      if (!updatePhoneTip()) {
+        $("message").textContent = "请输入正确的11位手机号"
+        return
+      }
+      $("message").textContent = "正在提交订单..."
+      try {
+        const orderResult = await api("/api/orders", {
+          method: "POST",
+          body: {
+            productId: selectedProduct.id,
+            customerName: $("customerName").value,
+            phone: $("phone").value,
+            address: $("address").value,
+            customRequest: $("customRequest").value
+          }
+        })
+        await api("/api/pay/mock-success", { method: "POST", body: { orderId: orderResult.id } })
+        $("message").innerHTML = `模拟支付成功，订单号：${escapeHtml(orderResult.id)}。<br><a href="/admin" target="_blank">去后台订单管理查看</a>`
+      } catch (error) {
+        $("message").textContent = error.message
+      }
+    }
+    api("/api/products").then(data => {
+      products = data
+      renderProducts()
+    })
+    $("phone").addEventListener("input", updatePhoneTip)
+  </script>
+</body>
+</html>

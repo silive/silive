@@ -1,0 +1,21 @@
+{
+  "skin": "skin03",
+  "name": "Skin03 七夕浪漫风",
+  "description": "适合七夕、情侣礼物、纪念日活动的浪漫视觉。",
+  "primaryColor": "#FF6B9A",
+  "accentColor": "#9C6BFF",
+  "softColor": "#FFF0F7",
+  "pageTopColor": "#FFF7FB",
+  "pageBottomColor": "#F3EEFF",
+  "cardColor": "rgba(255,255,255,.9)",
+  "textColor": "#251F28",
+  "mutedColor": "#8C7C8A",
+  "priceColor": "#FF4F85",
+  "buttonGradient": ["#FF6B9A", "#9C6BFF"],
+  "cardRadius": "30rpx",
+  "buttonRadius": "999rpx",
+  "shadowColor": "rgba(255,107,154,.16)",
+  "banner": "",
+  "thumbnail": "",
+  "createdAt": "2026-04-29 09:37"
+}

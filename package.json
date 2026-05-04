@@ -1,0 +1,13 @@
+{
+  "name": "very-simple-custom-miniprogram",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "cms": "node cms/server.js",
+    "start": "node cms/server.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.5"
+  }
+}

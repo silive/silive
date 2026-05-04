@@ -1,0 +1,87 @@
+{
+  "description": "非常智造微信小程序首页",
+  "appid": "wx40c1f5c8ae3b9840",
+  "projectname": "very-simple-custom",
+  "miniprogramRoot": "./",
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "cms"
+      },
+      {
+        "type": "file",
+        "value": "homepage-preview.png"
+      },
+      {
+        "type": "file",
+        "value": "homepage-preview.html"
+      },
+      {
+        "type": "file",
+        "value": "DEPLOY.md"
+      },
+      {
+        "type": "file",
+        "value": ".env"
+      },
+      {
+        "type": "file",
+        "value": ".env.*"
+      },
+      {
+        "type": "file",
+        "value": "package.json"
+      },
+      {
+        "type": "file",
+        "value": "package-lock.json"
+      },
+      {
+        "type": "file",
+        "value": ".env.example"
+      },
+      {
+        "type": "folder",
+        "value": "cms/data"
+      },
+      {
+        "type": "folder",
+        "value": "cms/uploads"
+      },
+      {
+        "type": "folder",
+        "value": "themes"
+      }
+    ]
+  },
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "minifyWXML": true,
+    "ignoreUploadUnusedFiles": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {}
+}

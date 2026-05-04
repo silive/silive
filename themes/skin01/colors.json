@@ -1,0 +1,21 @@
+{
+  "skin": "skin01",
+  "name": "Skin01 青春活力商城风",
+  "description": "青春、活力、高转化、女性用户喜欢的礼物商城视觉。",
+  "primaryColor": "#FF7A00",
+  "accentColor": "#FF4D8D",
+  "softColor": "#FFF0F3",
+  "pageTopColor": "#FFF8F5",
+  "pageBottomColor": "#FFF2F5",
+  "cardColor": "rgba(255,255,255,.88)",
+  "textColor": "#222024",
+  "mutedColor": "#8D7E80",
+  "priceColor": "#FF5A3C",
+  "buttonGradient": ["#FF7A00", "#FF4D8D"],
+  "cardRadius": "30rpx",
+  "buttonRadius": "999rpx",
+  "shadowColor": "rgba(255,122,0,.16)",
+  "banner": "https://api.feichangjiandan.xyz/uploads/banner-leaf.svg",
+  "thumbnail": "https://api.feichangjiandan.xyz/uploads/banner-leaf.svg",
+  "createdAt": "2026-04-29 09:37"
+}

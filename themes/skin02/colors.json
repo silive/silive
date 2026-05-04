@@ -1,0 +1,21 @@
+{
+  "skin": "skin02",
+  "name": "Skin02 黑金高级风",
+  "description": "适合高客单价礼盒、纪念礼、商务礼的黑金高级视觉。",
+  "primaryColor": "#1F1B16",
+  "accentColor": "#D6B56D",
+  "softColor": "#F8F1E3",
+  "pageTopColor": "#FAF7F0",
+  "pageBottomColor": "#EFE6D4",
+  "cardColor": "rgba(255,255,255,.9)",
+  "textColor": "#1F1B16",
+  "mutedColor": "#7D7468",
+  "priceColor": "#C28A2C",
+  "buttonGradient": ["#1F1B16", "#D6B56D"],
+  "cardRadius": "28rpx",
+  "buttonRadius": "999rpx",
+  "shadowColor": "rgba(31,27,22,.15)",
+  "banner": "",
+  "thumbnail": "",
+  "createdAt": "2026-04-29 09:37"
+}

@@ -1,0 +1,114 @@
+<view class="orders-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="page-head">
+    <view>
+      <view class="eyebrow">ORDER CENTER</view>
+      <view class="page-title">订单</view>
+    </view>
+    <view class="order-count">{{orders.length}} 单</view>
+  </view>
+
+  <view wx:if="{{!loggedIn}}" class="login-card" style="{{cardStyle}}">
+    <view>
+      <view class="login-title">登录后查看订单</view>
+      <view class="login-desc" style="{{mutedTextStyle}}">同步订单进度、物流与售后服务</view>
+    </view>
+    <button class="login-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">微信快捷登录</button>
+  </view>
+
+  <view wx:if="{{loggedIn}}" class="status-panel">
+    <view class="status-row top-row">
+      <button class="status-entry {{activeStatus === item.key ? 'active' : ''}}" wx:for="{{statusTabsTop}}" wx:key="key" bindtap="switchStatus" data-key="{{item.key}}">
+        <view class="status-icon">{{item.icon}}</view>
+        <view class="status-name">{{item.label}}</view>
+        <view class="status-badge">{{item.count}}</view>
+      </button>
+    </view>
+    <view class="status-row bottom-row">
+      <button class="status-entry {{activeStatus === item.key ? 'active' : ''}}" wx:for="{{statusTabsBottom}}" wx:key="key" bindtap="switchStatus" data-key="{{item.key}}">
+        <view class="status-icon">{{item.icon}}</view>
+        <view class="status-name">{{item.label}}</view>
+        <view class="status-badge">{{item.count}}</view>
+      </button>
+    </view>
+  </view>
+
+  <view wx:if="{{loggedIn}}" class="section-head">
+    <view class="section-title">最近订单</view>
+    <view class="section-subtitle">优先显示最近3条</view>
+  </view>
+
+  <view wx:if="{{loggedIn && recentOrders.length}}" class="order-list">
+    <view class="order-card" style="{{cardStyle}}" wx:for="{{recentOrders}}" wx:key="id">
+      <view class="order-main" bindtap="openOrderProduct" data-index="{{index}}">
+        <view class="order-cover cover-{{item.product.cover}}">
+          <image wx:if="{{item.productImage}}" class="order-image" src="{{item.productImage}}" mode="aspectFill" />
+          <view wx:else class="order-placeholder">非常智造</view>
+        </view>
+        <view class="order-info">
+          <view class="order-head">
+            <view class="product-name">{{item.productName}}</view>
+            <view class="status" style="{{tagStyle}}">{{item.displayStatus}}</view>
+          </view>
+          <view class="muted" style="{{mutedTextStyle}}">{{item.createdAt}}</view>
+          <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.shippingCompany || item.trackingNumber}}">物流：{{item.shippingCompany}} · {{item.trackingNumber}}</view>
+          <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.refundLine}}">退款：{{item.refundLine}}</view>
+          <view class="amount" style="{{priceStyle}}">¥{{item.amount}}</view>
+        </view>
+      </view>
+      <view class="actions">
+        <button class="dark-btn" style="{{primaryButtonStyle}}" bindtap="reorder" data-index="{{index}}">再次下单</button>
+        <button wx:if="{{item.canRefund}}" class="light-btn" style="{{secondaryButtonStyle}}" bindtap="openRefund" data-index="{{index}}" data-type="仅退款">申请退款</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{loggedIn}}" class="empty-box">
+    <view class="empty-text">暂无匹配订单</view>
+    <view class="empty-subtext">可以先看看下方推荐商品</view>
+  </view>
+
+  <view class="section-head recommend-head">
+    <view>
+      <view class="section-title">猜你喜欢</view>
+      <view class="section-subtitle" style="{{mutedTextStyle}}">根据历史订单与热卖商品推荐</view>
+    </view>
+  </view>
+
+  <view class="recommend-grid">
+    <view class="recommend-card" style="{{cardStyle}}" wx:for="{{recommendations}}" wx:key="id" bindtap="openRecommendProduct" data-index="{{index}}">
+      <view class="recommend-cover cover-{{item.cover}}">
+        <image wx:if="{{item.imageUrl}}" class="recommend-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <view wx:if="{{item.badgeText}}" class="recommend-badge">{{item.badgeText}}</view>
+      </view>
+      <view class="recommend-name">{{item.name}}</view>
+      <view class="recommend-meta" style="{{mutedTextStyle}}">{{item.recommendReason}}</view>
+      <view class="recommend-price" style="{{priceStyle}}">¥{{item.price}}</view>
+    </view>
+  </view>
+
+  <view class="refund-mask" wx:if="{{refundVisible}}">
+    <view class="refund-panel">
+      <view class="refund-title">{{refundForm.refundType}}</view>
+      <view class="field">退款原因<textarea value="{{refundForm.refundReason}}" data-field="refundReason" bindinput="onRefundInput" placeholder="请填写退款原因"></textarea></view>
+      <view class="field">退款金额<input value="{{refundForm.refundAmount}}" data-field="refundAmount" bindinput="onRefundInput" type="digit" placeholder="请输入退款金额" /></view>
+      <view class="field">备注<textarea value="{{refundForm.refundRemark}}" data-field="refundRemark" bindinput="onRefundInput" placeholder="补充说明，可不填"></textarea></view>
+      <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">{{refundForm.refundImageUrl ? '已上传图片，点击更换' : '上传图片凭证（可选）'}}</button>
+      <image wx:if="{{refundForm.refundImageUrl}}" class="refund-image" src="{{refundForm.refundImageUrl}}" mode="aspectFill" />
+      <view class="modal-actions">
+        <button class="cancel-btn" style="{{secondaryButtonStyle}}" bindtap="closeRefund">取消</button>
+        <button class="submit-btn" style="{{primaryButtonStyle}}" bindtap="submitRefund" loading="{{submittingRefund}}">提交申请</button>
+      </view>
+    </view>
+  </view>
+
+  <login-sheet
+    visible="{{loginVisible}}"
+    loading="{{loginLoading}}"
+    title="微信手机号授权登录"
+    desc="授权后同步订单进度、物流与售后服务"
+    confirm-text="授权手机号并登录"
+    cancel-text="暂不登录"
+    bind:getphonenumber="onLoginPhone"
+    bind:close="closeLoginSheet"
+  />
+</view>

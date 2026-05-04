@@ -1,0 +1,75 @@
+{
+  "appid": "wx40c1f5c8ae3b9840",
+  "projectname": "gpt-5-5",
+  "setting": {
+    "urlCheck": true,
+    "coverView": false,
+    "lazyloadPlaceholderEnable": false,
+    "skylineRenderEnable": false,
+    "preloadBackgroundData": false,
+    "autoAudits": false,
+    "useApiHook": true,
+    "showShadowRootInWxmlPanel": false,
+    "useStaticServer": false,
+    "useLanDebug": false,
+    "showES6CompileOption": false,
+    "compileHotReLoad": true,
+    "checkInvalidKey": true,
+    "ignoreDevUnusedFiles": true,
+    "bigPackageSizeSupport": false
+  },
+  "packOptions": {
+    "ignore": [
+      {
+        "value": "cms",
+        "type": "folder"
+      },
+      {
+        "value": "homepage-preview.png",
+        "type": "file"
+      },
+      {
+        "value": "homepage-preview.html",
+        "type": "file"
+      },
+      {
+        "value": "DEPLOY.md",
+        "type": "file"
+      },
+      {
+        "value": ".env",
+        "type": "file"
+      },
+      {
+        "value": ".env.*",
+        "type": "file"
+      },
+      {
+        "value": "package-lock.json",
+        "type": "file"
+      },
+      {
+        "value": "package.json",
+        "type": "file"
+      },
+      {
+        "value": ".env.example",
+        "type": "file"
+      },
+      {
+        "value": "cms/data",
+        "type": "folder"
+      },
+      {
+        "value": "cms/uploads",
+        "type": "folder"
+      },
+      {
+        "value": "themes",
+        "type": "folder"
+      }
+    ],
+    "include": []
+  },
+  "libVersion": "3.15.2"
+}

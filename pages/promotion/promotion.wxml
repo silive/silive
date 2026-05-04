@@ -1,0 +1,84 @@
+<view class="page {{themeClass}}" style="{{themeStyle}}">
+  <view class="hero-card">
+    <view>
+      <view class="eyebrow">PROMOTION</view>
+      <view class="title">把喜欢的礼物店分享给朋友</view>
+      <view class="subtitle">好友也可能刚好需要</view>
+      <view class="hero-note">好友成交后可获得购物金</view>
+    </view>
+  </view>
+
+  <view class="wallet-grid">
+    <view class="wallet dark">
+      <view class="wallet-label">我的购物金</view>
+      <view class="wallet-value">¥{{profile.shoppingMoney}}</view>
+    </view>
+    <view class="wallet">
+      <view class="wallet-label">待发放奖励</view>
+      <view class="wallet-value">¥{{profile.pendingReward}}</view>
+    </view>
+    <view class="wallet">
+      <view class="wallet-label">邀请人数</view>
+      <view class="wallet-value">{{profile.inviteCount || 0}}</view>
+    </view>
+    <view class="wallet">
+      <view class="wallet-label">成交订单</view>
+      <view class="wallet-value">{{profile.inviteOrderCount || 0}}</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">邀请二维码</view>
+    <view class="qr-box">
+      <image wx:if="{{profile.inviteQrUrl}}" class="qr-image" src="{{profile.inviteQrUrl}}" mode="aspectFit" />
+      <view wx:else class="qr-inner">{{profile.inviteCode || '专属邀请码'}}</view>
+    </view>
+    <view class="qr-text">{{profile.inviteQrText}}</view>
+    <view class="invite-link">{{inviteLink}}</view>
+    <view class="action-grid">
+      <button class="primary-btn" open-type="share">邀请好友逛店</button>
+      <button class="light-btn" bindtap="createPoster">生成邀请海报</button>
+    </view>
+    <button class="primary-btn ghost" bindtap="copyInviteCode">复制邀请链接</button>
+  </view>
+
+  <view class="panel hot-panel" wx:if="{{hotProducts.length}}">
+    <view class="panel-title">最近很多人在买</view>
+    <view class="hot-grid">
+      <view class="hot-card" wx:for="{{hotProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
+        <image wx:if="{{item.imageUrl}}" class="hot-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <view wx:else class="hot-image hot-placeholder">非常智造</view>
+        <view class="hot-name">{{item.name}}</view>
+        <view class="hot-price">¥{{item.price}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">邀请记录</view>
+    <view wx:if="{{invited.length}}">
+      <view class="record" wx:for="{{invited}}" wx:key="id">
+        <view>
+          <view class="record-title">{{item.inviteeName || '微信用户'}}</view>
+          <view class="record-desc">{{item.inviteePhone}}</view>
+        </view>
+        <view class="pill">一级好友</view>
+      </view>
+    </view>
+    <view wx:else class="empty">暂无邀请记录</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">奖励记录</view>
+    <view wx:if="{{rewards.length}}">
+      <view class="record" wx:for="{{rewards}}" wx:key="id">
+        <view>
+          <view class="record-title">{{item.productName}}</view>
+          <view class="record-desc">{{item.level == 2 ? '二级奖励' : '一级奖励'}} · {{item.status}}</view>
+        </view>
+        <view class="amount">¥{{item.amount}}</view>
+      </view>
+    </view>
+    <view wx:else class="empty">暂无奖励记录</view>
+  </view>
+</view>

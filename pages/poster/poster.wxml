@@ -1,0 +1,5 @@
+<view class="page {{themeClass}}" style="{{themeStyle}}">
+  <view class="title">{{title}}</view>
+  <image wx:if="{{image}}" class="poster" src="{{image}}" mode="widthFix" />
+  <view wx:else class="empty">活动海报暂未配置</view>
+</view>

@@ -1,0 +1,21 @@
+{
+  "skin": "skin04",
+  "name": "Skin04 圣诞活动风",
+  "description": "适合圣诞、新年、节日促销活动的礼物商城视觉。",
+  "primaryColor": "#E83F3F",
+  "accentColor": "#10A86B",
+  "softColor": "#FFF1EC",
+  "pageTopColor": "#FFF9F4",
+  "pageBottomColor": "#EFF8F2",
+  "cardColor": "rgba(255,255,255,.9)",
+  "textColor": "#23211F",
+  "mutedColor": "#7E7A73",
+  "priceColor": "#E83F3F",
+  "buttonGradient": ["#E83F3F", "#FF9B3D"],
+  "cardRadius": "30rpx",
+  "buttonRadius": "999rpx",
+  "shadowColor": "rgba(232,63,63,.16)",
+  "banner": "",
+  "thumbnail": "",
+  "createdAt": "2026-04-29 09:37"
+}

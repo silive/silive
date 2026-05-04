@@ -1,0 +1,27 @@
+page {
+  min-height: 100%;
+  background: #fff8f5;
+  color: #242120;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+}
+
+button {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  line-height: 1;
+}
+
+button::after {
+  border: 0;
+}
+
+button {
+  transition: transform .16s ease, opacity .16s ease;
+}
+
+button:active {
+  opacity: .9;
+  transform: scale(.985);
+}

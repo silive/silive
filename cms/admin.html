@@ -1,0 +1,2800 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>非常智造管理后台</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    }
+    .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 26px 18px;
+      background: rgba(255,255,255,.78);
+      border-right: 1px solid rgba(0,0,0,.06);
+      backdrop-filter: blur(28px);
+    }
+    .brand { padding: 0 10px 22px; }
+    .brand h1 { margin: 0; font-size: 21px; letter-spacing: 0; }
+    .brand p { margin: 8px 0 0; color: #86868b; font-size: 13px; }
+    .nav { display: grid; gap: 6px; }
+    .nav button {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      color: #424245;
+      text-align: left;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .nav button.active { background: #1d1d1f; color: #fff; box-shadow: 0 14px 30px rgba(0,0,0,.14); }
+    .main { padding: 28px 30px 52px; }
+    .topbar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+    .title h2 { margin: 0; font-size: 30px; letter-spacing: 0; }
+    .title p { margin: 9px 0 0; color: #86868b; font-size: 14px; }
+    .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .status { color: #9b6a62; font-size: 13px; font-weight: 800; }
+    button.primary, button.secondary, button.danger {
+      height: 40px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 999px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.primary { background: #1d1d1f; color: #fff; }
+    button.secondary { background: #e8f0ed; color: #26332f; }
+    button.danger { background: #fff1ee; color: #b94b42; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .panel, .card {
+      background: rgba(255,255,255,.9);
+      border: 1px solid rgba(0,0,0,.06);
+      border-radius: 18px;
+      box-shadow: 0 18px 42px rgba(0,0,0,.06);
+    }
+    .panel { padding: 18px; margin-bottom: 16px; }
+    .card { padding: 18px; }
+    .metric { color: #86868b; font-size: 13px; font-weight: 800; }
+    .value { margin-top: 10px; font-size: 30px; font-weight: 850; letter-spacing: 0; }
+    h3 { margin: 0 0 14px; font-size: 18px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    label { display: block; color: #5f5753; font-size: 13px; font-weight: 800; }
+    input, textarea, select {
+      width: 100%;
+      margin-top: 7px;
+      border: 1px solid #e6e1de;
+      border-radius: 12px;
+      background: #fbfbfd;
+      color: #1d1d1f;
+      font: inherit;
+      outline: none;
+    }
+    input, select { height: 40px; padding: 0 12px; }
+    textarea { min-height: 72px; padding: 10px 12px; resize: vertical; }
+    .upload-row { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 8px; align-items: end; margin-top: 7px; }
+    .upload-row input { margin-top: 0; }
+    .upload-row input[type="file"] { height: 40px; padding: 8px; font-size: 12px; }
+    .upload-help { margin-top: 8px; color: #86868b; font-size: 12px; line-height: 1.55; font-weight: 650; }
+    .image-preview {
+      display: none;
+      width: 100%;
+      max-width: 220px;
+      height: 126px;
+      margin-top: 10px;
+      border-radius: 14px;
+      object-fit: cover;
+      border: 1px solid #ece7e3;
+      background: #fbfbfd;
+    }
+    .image-preview.show { display: block; }
+    .badge-options,
+    .category-options {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 9px;
+    }
+    .badge-option,
+    .category-option {
+      min-height: 38px;
+      padding: 0 10px;
+      border: 1px solid #e6e1de;
+      border-radius: 999px;
+      background: #fbfbfd;
+      color: #5f5753;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .badge-option input,
+    .category-option input { width: auto; height: auto; margin: 0; }
+    .filters { display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto; gap: 10px; margin-bottom: 14px; }
+    .list { display: grid; gap: 12px; }
+    .item {
+      padding: 14px;
+      border: 1px solid #ece7e3;
+      border-radius: 14px;
+      background: #fffaf7;
+    }
+    .item-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .item-title { color: #9b6a62; font-size: 13px; font-weight: 850; }
+    .bulk-panel { display: grid; gap: 12px; margin-bottom: 14px; padding: 14px; border-radius: 16px; background: #fffaf7; border: 1px solid #ece7e3; }
+    .bulk-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .bulk-row input, .bulk-row select { width: auto; min-width: 168px; margin-top: 0; }
+    .center-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .center-tab {
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid #e6e1de;
+      border-radius: 999px;
+      background: rgba(255,255,255,.86);
+      color: #5f5753;
+      font-size: 13px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .center-tab.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+    .subview { display: none; }
+    .subview.active { display: block; }
+    .category-manager { display: grid; gap: 12px; }
+    .category-card {
+      padding: 0;
+      border: 1px solid #ece7e3;
+      border-radius: 16px;
+      background: rgba(255,255,255,.92);
+      overflow: hidden;
+    }
+    .category-card.dragging, .secondary-row.dragging { opacity: .55; }
+    .category-card-head {
+      display: grid;
+      grid-template-columns: 28px minmax(180px, 1fr) 86px 96px auto;
+      gap: 10px;
+      align-items: center;
+      padding: 14px;
+      background: #fffaf7;
+    }
+    .drag-handle { color: #b8b2af; font-weight: 900; cursor: grab; text-align: center; user-select: none; }
+    .category-name { color: #1d1d1f; font-size: 16px; font-weight: 900; }
+    .category-meta { color: #86868b; font-size: 12px; font-weight: 800; }
+    .category-sort { color: #5f5753; font-size: 13px; font-weight: 850; }
+    .category-count { justify-self: start; }
+    .category-actions { display: flex; align-items: center; gap: 7px; justify-content: flex-end; flex-wrap: wrap; }
+    .icon-btn {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #e6e1de;
+      border-radius: 999px;
+      background: #fff;
+      color: #424245;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .icon-btn.dark { background: #1d1d1f; border-color: #1d1d1f; color: #fff; }
+    .icon-btn.danger { background: #fff1ee; border-color: #f4d3cd; color: #b94b42; }
+    .secondary-list { display: grid; gap: 0; padding: 0 14px 14px; }
+    .secondary-list.collapsed { display: none; }
+    .secondary-row {
+      display: grid;
+      grid-template-columns: 28px minmax(180px, 1fr) 76px 86px auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 42px;
+      border-top: 1px solid #f0e7e3;
+      color: #424245;
+      font-size: 13px;
+    }
+    .secondary-name { font-weight: 850; }
+    .empty-secondary { padding: 14px 0 2px; color: #86868b; font-size: 13px; }
+    .category-highlight { box-shadow: inset 0 0 0 2px rgba(29,29,31,.18); }
+    .compact-input { margin-top: 0; }
+    .drawer-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .drawer-tab {
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid #e6e1de;
+      border-radius: 999px;
+      background: #fff;
+      color: #5f5753;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .drawer-tab.active { background: #1d1d1f; border-color: #1d1d1f; color: #fff; }
+    .drawer-pane { display: none; }
+    .drawer-pane.active { display: grid; gap: 14px; }
+    .order-workbench {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .order-stage {
+      min-height: 74px;
+      padding: 12px;
+      border: 1px solid #ece7e3;
+      border-radius: 16px;
+      background: rgba(255,255,255,.9);
+      cursor: pointer;
+    }
+    .order-stage.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+    .stage-label { font-size: 12px; font-weight: 850; color: inherit; }
+    .stage-value { margin-top: 8px; font-size: 22px; font-weight: 900; }
+    .picker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 7px; }
+    .picker-grid input, .picker-grid select { margin-top: 0; }
+    .product-picker-results {
+      grid-column: 1 / -1;
+      max-height: 150px;
+      overflow: auto;
+      border: 1px solid #ece7e3;
+      border-radius: 12px;
+      background: #fff;
+    }
+    .picker-result {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      border: 0;
+      border-bottom: 1px solid #f2eeee;
+      background: #fff;
+      text-align: left;
+      font-size: 13px;
+      color: #424245;
+      cursor: pointer;
+    }
+    .picker-result:hover { background: #fffaf7; }
+    .activity-card {
+      padding: 14px;
+      border: 1px solid #ece7e3;
+      border-radius: 16px;
+      background: #fffaf7;
+      margin-bottom: 12px;
+    }
+    .activity-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .checkline { display: inline-flex; align-items: center; gap: 8px; color: #5f5753; font-size: 13px; font-weight: 850; }
+    .checkline input { width: auto; height: auto; margin: 0; }
+    .product-select { width: auto; height: auto; margin: 0; }
+    .item.selected { border-color: #202020; box-shadow: 0 16px 34px rgba(32,32,32,.08); }
+    .quick-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .quick-tab {
+      height: 34px;
+      padding: 0 14px;
+      border: 1px solid #e6e1de;
+      border-radius: 999px;
+      background: rgba(255,255,255,.86);
+      color: #5f5753;
+      font-size: 13px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .quick-tab.active { background: #1d1d1f; border-color: #1d1d1f; color: #fff; }
+    .dense-table-wrap { overflow-x: auto; border: 1px solid #ece7e3; border-radius: 16px; background: rgba(255,255,255,.9); }
+    .dense-table { min-width: 900px; }
+    .dense-table th, .dense-table td { padding: 8px 10px; font-size: 13px; vertical-align: middle; }
+    .dense-table th { background: #fbfbfd; font-weight: 850; white-space: nowrap; }
+    .dense-table tr:hover td { background: #fffaf7; }
+    .dense-table input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+    .table-image { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; background: linear-gradient(135deg, #f4b7ae, #272322); border: 1px solid #ece7e3; display: block; }
+    .table-title { color: #1d1d1f; font-weight: 850; line-height: 1.25; }
+    .table-sub { margin-top: 4px; color: #86868b; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .category-tags { display: flex; flex-wrap: wrap; gap: 5px; max-width: 260px; }
+    .mini-tag { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; background: #f5f5f7; color: #5f5753; font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .table-actions { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .table-actions button { height: 30px; padding: 0 10px; font-size: 12px; }
+    .drawer-mask { position: fixed; inset: 0; display: none; justify-content: flex-end; background: rgba(29,29,31,.22); z-index: 35; }
+    .drawer-mask.show { display: flex; }
+    .drawer {
+      width: min(520px, 100%);
+      height: 100vh;
+      padding: 22px;
+      overflow: auto;
+      background: rgba(255,255,255,.96);
+      box-shadow: -24px 0 70px rgba(0,0,0,.16);
+      backdrop-filter: blur(26px);
+    }
+    .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .drawer-title { margin: 0; font-size: 21px; letter-spacing: 0; }
+    .drawer-desc { margin: 7px 0 0; color: #86868b; font-size: 13px; }
+    .drawer-close { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #f5f5f7; color: #1d1d1f; font-size: 22px; cursor: pointer; }
+    .drawer-body { display: grid; gap: 14px; }
+    .drawer-section { padding: 14px; border: 1px solid #ece7e3; border-radius: 16px; background: #fffaf7; }
+    .drawer-section h4 { margin: 0 0 12px; font-size: 14px; }
+    .drawer-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; margin: 18px -22px -22px; padding: 16px 22px; background: rgba(255,255,255,.94); border-top: 1px solid #ece7e3; backdrop-filter: blur(18px); }
+    .media-list { display: grid; gap: 10px; }
+    .media-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px; border: 1px solid #ece7e3; border-radius: 14px; background: rgba(255,255,255,.82); }
+    .media-thumb { width: 58px; height: 58px; border-radius: 12px; object-fit: cover; background: #f5f5f7; border: 1px solid #ece7e3; }
+    .media-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .media-tools button { height: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: #f5f5f7; color: #424245; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .media-tools input[type="file"] { width: 118px; height: 28px; margin: 0; padding: 4px; font-size: 11px; }
+    .media-add { width: 100%; height: 38px; border: 1px dashed #d9d4d1; border-radius: 999px; background: rgba(255,255,255,.72); color: #5f5753; font-weight: 850; cursor: pointer; }
+    .theme-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .theme-card {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid #ece7e3;
+      border-radius: 18px;
+      background: rgba(255,255,255,.92);
+      cursor: pointer;
+    }
+    .theme-card.active { border-color: #ff7a00; box-shadow: 0 16px 34px rgba(255,122,0,.16); }
+    .theme-card.editing { outline: 2px solid rgba(29,29,31,.12); }
+    .theme-thumb {
+      position: relative;
+      height: 118px;
+      border-radius: 15px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #ff7a00, #ff4d8d);
+    }
+    .theme-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .theme-enabled {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.88);
+      color: #ff4d4f;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .theme-name { margin-top: 10px; color: #1d1d1f; font-size: 14px; font-weight: 900; }
+    .theme-desc { margin-top: 6px; color: #86868b; font-size: 12px; line-height: 1.4; min-height: 34px; }
+    .theme-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .color-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: end; }
+    .color-row input[type="color"] { width: 44px; padding: 0; }
+    .theme-preview-phone {
+      width: min(320px, 100%);
+      min-height: 480px;
+      padding: 18px;
+      border-radius: 34px;
+      background: linear-gradient(180deg, var(--preview-top, #fff8f5), var(--preview-bottom, #fff2f5));
+      box-shadow: 0 24px 60px rgba(0,0,0,.12);
+    }
+    .theme-preview-hero { height: 148px; padding: 20px; border-radius: 24px; background: linear-gradient(135deg, var(--preview-start, #ff7a00), var(--preview-end, #ff4d8d)); color: #fff; font-size: 28px; font-weight: 950; }
+    .theme-preview-card { margin-top: 14px; padding: 14px; border-radius: var(--preview-radius, 24px); background: rgba(255,255,255,.88); box-shadow: 0 16px 36px rgba(255,122,0,.14); }
+    .theme-preview-btn { width: 160px; height: 42px; margin-top: 14px; border: 0; border-radius: 999px; background: linear-gradient(135deg, var(--preview-start, #ff7a00), var(--preview-end, #ff4d8d)); color: #fff; font-weight: 900; }
+    .benefit-list { display: grid; gap: 10px; margin-top: 12px; }
+    .benefit-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 78px; gap: 10px; align-items: center; }
+    .benefit-row input { margin-top: 0; }
+    .modal-mask { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(29,29,31,.28); z-index: 30; }
+    .modal-mask.show { display: flex; }
+    .modal { width: min(560px, 100%); padding: 20px; border-radius: 20px; background: rgba(255,255,255,.96); box-shadow: 0 28px 70px rgba(0,0,0,.18); }
+    .modal h3 { margin-bottom: 6px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+    #bulkSecondCategories { height: 132px; padding: 8px 12px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    th, td { padding: 13px 10px; border-bottom: 1px solid #ececec; text-align: left; font-size: 14px; vertical-align: top; }
+    th { color: #86868b; font-size: 12px; }
+    .pill { display: inline-flex; min-height: 26px; align-items: center; padding: 0 10px; border-radius: 999px; background: #e8f0ed; color: #26332f; font-size: 12px; font-weight: 800; }
+    .muted { color: #86868b; }
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .main { padding: 22px 16px 42px; }
+      .grid, .grid.three, .form-grid, .filters, .upload-row { grid-template-columns: 1fr; }
+      .topbar { display: block; }
+      .toolbar { margin-top: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>非常智造管理后台</h1>
+        <p>内容、商品、订单一处维护</p>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="active" data-view="overview">数据总览</button>
+        <button data-view="products">商品中心</button>
+        <button data-view="orders">订单中心</button>
+        <button data-view="customers">用户中心</button>
+        <button data-view="marketing">营销中心</button>
+        <button data-view="home">页面装修</button>
+        <button data-view="theme">皮肤管理</button>
+        <button data-view="settings">系统设置</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <section class="topbar">
+        <div class="title">
+          <h2 id="pageTitle">数据总览</h2>
+          <p id="pageDesc">查看经营数据和待处理事项。</p>
+        </div>
+        <div class="toolbar">
+          <span class="status" id="status">正在读取...</span>
+          <button class="secondary" id="reloadBtn">刷新</button>
+          <button class="primary" id="saveBtn">保存当前页</button>
+        </div>
+      </section>
+
+      <section class="view active" id="view-overview">
+        <div class="grid three">
+          <div class="card"><div class="metric">首页商品</div><div class="value" id="mProducts">0</div></div>
+          <div class="card"><div class="metric">订单总数</div><div class="value" id="mOrders">0</div></div>
+          <div class="card"><div class="metric">客户数量</div><div class="value" id="mCustomers">0</div></div>
+          <div class="card"><div class="metric">订单金额</div><div class="value" id="mAmount">¥0</div></div>
+          <div class="card"><div class="metric">销售额</div><div class="value" id="mSales">¥0</div></div>
+          <div class="card"><div class="metric">商品成本</div><div class="value" id="mCost">¥0</div></div>
+          <div class="card"><div class="metric">退款金额</div><div class="value" id="mRefund">¥0</div></div>
+          <div class="card"><div class="metric">奖励支出</div><div class="value" id="mRewardPaid">¥0</div></div>
+          <div class="card"><div class="metric">预估利润</div><div class="value" id="mProfit">¥0</div></div>
+          <div class="card"><div class="metric">邀请访问人数</div><div class="value" id="mInviteVisits">0</div></div>
+          <div class="card"><div class="metric">邀请注册人数</div><div class="value" id="mInviteRegisters">0</div></div>
+          <div class="card"><div class="metric">邀请成交订单数</div><div class="value" id="mInviteOrders">0</div></div>
+          <div class="card"><div class="metric">推广成交金额</div><div class="value" id="mInviteAmount">¥0</div></div>
+          <div class="card"><div class="metric">新人福利使用人数</div><div class="value" id="mNewcomerUsed">0</div></div>
+          <div class="card"><div class="metric">新人福利转化率</div><div class="value" id="mNewcomerRate">0%</div></div>
+          <div class="card"><div class="metric">订单页推荐点击</div><div class="value" id="mOrderRecommendClicks">0</div></div>
+          <div class="card"><div class="metric">订单页推荐成交</div><div class="value" id="mOrderRecommendConversions">0</div></div>
+          <div class="card"><div class="metric">订单页推荐转化率</div><div class="value" id="mOrderRecommendRate">0%</div></div>
+          <div class="card"><div class="metric">待处理订单</div><div class="value" id="mPending">0</div></div>
+          <div class="card"><div class="metric">最近更新</div><div class="value" id="mUpdated">-</div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-home">
+        <div class="center-tabs">
+          <button class="center-tab active" data-subview="homeDecor">首页装修</button>
+          <button class="center-tab" data-subview="helpManager">帮助中心管理</button>
+        </div>
+        <div class="subview active" id="subview-homeDecor">
+          <div class="panel">
+            <h3>首页文案与客服</h3>
+            <div class="form-grid">
+              <label>公告文案（可选）<input id="promoText"></label>
+              <label>客服电话<input id="contactPhone"></label>
+              <label>客服微信号<input id="contactWechat"></label>
+              <label>企业微信客服链接<input id="workWechatUrl" placeholder="可填写企微客服链接或小程序客服路径"></label>
+            </div>
+          </div>
+          <div class="panel"><h3>Banner 图与文字</h3><div class="list" id="homeBanners"></div></div>
+          <div class="panel"><h3>首页入口管理</h3><div class="upload-help">共4个卡片位。跳转目标改为联动选择，避免手输错误。类目来自商品中心，活动来自营销中心。</div><div class="list" id="homeEntries"></div></div>
+          <div class="panel"><h3>首页推荐商品</h3><div class="list" id="homeProducts"></div></div>
+        </div>
+        <div class="subview" id="subview-helpManager">
+          <div class="panel">
+            <div class="item-head">
+              <h3>帮助中心文章</h3>
+              <button class="secondary" data-action="add-help-article">新增文章</button>
+            </div>
+            <div class="upload-help">支持标题、文字、图片、富文本图文文章；排序越小越靠前，关闭后前台不展示。</div>
+            <div class="list" id="helpArticles"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-theme">
+        <div class="panel">
+          <div class="item-head">
+            <div>
+              <h3>皮肤管理</h3>
+              <div class="upload-help">上传 colors.json、主题图片和图标资源后，一键启用即可让小程序自动读取最新皮肤，无需重新发版。theme.wxss 可上传留档，线上即时换肤通过主题变量生效。</div>
+            </div>
+            <div class="toolbar">
+              <button class="secondary" id="testThemeApiBtn">测试当前主题接口</button>
+              <button class="secondary" id="addThemeBtn">新增皮肤</button>
+            </div>
+          </div>
+          <div class="theme-grid" id="themeList"></div>
+          <pre class="upload-help" id="themeApiResult" style="display:none;white-space:pre-wrap;max-height:180px;overflow:auto"></pre>
+        </div>
+        <div class="grid">
+          <div class="panel">
+            <h3>在线编辑</h3>
+            <div class="form-grid" id="themeEditor"></div>
+            <div class="upload-help">支持上传：colors.json、theme.wxss、缩略图、Banner 图。图标资源、tabbar 图标和商品卡片样式图可先上传到图片字段保存，后续前台模块可继续扩展读取。</div>
+          </div>
+          <div class="panel">
+            <h3>效果预览</h3>
+            <div id="themePreview"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-products">
+        <div class="center-tabs">
+          <button class="center-tab active" data-subview="productList">商品列表</button>
+          <button class="center-tab" data-subview="categoryManager">类目管理</button>
+        </div>
+        <div class="subview active" id="subview-productList">
+        <div class="panel">
+          <div class="item-head">
+            <h3>商品管理</h3>
+            <button class="secondary" id="addProductBtn">新增商品</button>
+          </div>
+          <div class="bulk-panel">
+            <div class="quick-tabs" id="productQuickTabs">
+              <button class="quick-tab active" data-product-status="">全部</button>
+              <button class="quick-tab" data-product-status="on">已上架</button>
+              <button class="quick-tab" data-product-status="off">已下架</button>
+            </div>
+            <div class="bulk-row">
+              <input id="productSearch" placeholder="筛选商品名称">
+              <select id="productCategoryFilter"></select>
+              <select id="productStatusFilter">
+                <option value="">全部状态</option>
+                <option value="on">已上架</option>
+                <option value="off">已下架</option>
+              </select>
+              <select id="productHotFilter">
+                <option value="">全部推荐</option>
+                <option value="true">热门推荐</option>
+                <option value="false">非热门推荐</option>
+              </select>
+              <button class="secondary" id="filterProductsBtn">筛选</button>
+              <button class="secondary" id="resetProductsBtn">重置</button>
+            </div>
+            <div class="bulk-row">
+              <label class="checkline"><input type="checkbox" id="selectAllProducts"> 全选当前筛选结果</label>
+              <span class="muted" id="selectedProductCount">已选 0 个商品</span>
+              <button class="secondary" data-bulk="replace">批量移动类目</button>
+              <button class="secondary" data-bulk="append">批量添加类目</button>
+              <button class="secondary" data-bulk="remove">批量删除类目</button>
+              <button class="secondary" data-action="bulk-on">批量上架</button>
+              <button class="secondary" data-action="bulk-off">批量下架</button>
+              <button class="danger" data-action="bulk-delete">批量删除商品</button>
+            </div>
+          </div>
+          <div class="bulk-panel">
+            <div class="item-head">
+              <div>
+                <h3>批量导入商品</h3>
+                <div class="upload-help">先下载模板填写商品数据，再上传 Excel 与 images.zip。图片不要嵌入 Excel，填写文件名即可自动匹配。</div>
+              </div>
+              <a class="secondary" href="/api/admin/products/import-template" download="product-import-template.xlsx">下载商品导入模板</a>
+            </div>
+            <div class="bulk-row">
+              <label class="checkline">商品 Excel<input id="productImportExcel" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+              <label class="checkline">图片 ZIP 包<input id="productImportZip" type="file" accept=".zip,application/zip"></label>
+              <button class="secondary" id="previewProductImportBtn">解析并预览</button>
+              <button class="primary" id="confirmProductImportBtn" disabled>确认导入</button>
+            </div>
+            <div id="productImportSummary" class="upload-help">等待上传 Excel 和 images.zip。</div>
+            <div id="productImportPreview"></div>
+            <div id="productImportReport"></div>
+          </div>
+          <div class="list" id="productEditor"></div>
+        </div>
+        </div>
+        <div class="subview" id="subview-categoryManager">
+          <div class="panel">
+            <div class="item-head">
+              <div>
+                <h3>类目管理</h3>
+                <div class="upload-help">支持一级类目、二级类目的新增、删除、修改、排序和搜索。旧商品类目会自动兼容。</div>
+              </div>
+              <button class="secondary" id="addPrimaryCategoryBtn">新增一级类目</button>
+            </div>
+            <div class="filters" style="grid-template-columns:minmax(220px,1fr) auto auto">
+              <input id="categorySearch" placeholder="搜索一级/二级类目">
+              <button class="secondary" id="searchCategoryBtn">搜索</button>
+              <button class="secondary" id="resetCategoryBtn">重置</button>
+            </div>
+            <div class="category-manager" id="categoryManager"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-orders">
+        <div class="panel">
+          <h3>订单管理</h3>
+          <div class="order-workbench" id="orderWorkbench"></div>
+          <div class="quick-tabs" id="orderQuickTabs">
+            <button class="quick-tab" data-order-status="待支付">待付款</button>
+            <button class="quick-tab" data-order-status="待确认">待确认</button>
+            <button class="quick-tab" data-order-status="待设计">待设计</button>
+            <button class="quick-tab" data-order-status="待发货">待发货</button>
+            <button class="quick-tab" data-order-status="已发货">已发货</button>
+            <button class="quick-tab" data-order-status="退款中">售后中</button>
+            <button class="quick-tab" data-order-status="已完成">已完成</button>
+          </div>
+          <div class="filters">
+            <input id="orderKeyword" placeholder="搜索订单号、客户、电话、商品">
+            <select id="orderStatusFilter">
+              <option value="">全部状态</option>
+              <option value="待支付">待付款</option>
+              <option value="待确认">待确认</option>
+              <option value="待设计">待设计</option>
+              <option value="待发货">待发货</option>
+              <option value="制作中">制作中</option>
+              <option value="已发货">已发货</option>
+              <option value="已完成">已完成</option>
+              <option value="退款中">退款中</option>
+              <option value="已退款">已退款</option>
+            </select>
+            <button class="secondary" id="searchOrderBtn">搜索筛选</button>
+          </div>
+          <div id="ordersTable"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-customers">
+        <div class="panel"><h3>客户管理</h3><div id="customersTable"></div></div>
+      </section>
+
+      <section class="view" id="view-marketing">
+        <div class="center-tabs">
+          <button class="center-tab active" data-subview="activityManager">活动管理</button>
+          <button class="center-tab" data-subview="relationManager">推广关系</button>
+          <button class="center-tab" data-subview="rewardManager">奖励记录</button>
+        </div>
+        <div class="subview active" id="subview-activityManager">
+          <div class="panel">
+            <div class="item-head">
+              <div>
+                <h3>活动管理</h3>
+                <div class="upload-help">支持活动海报、节日活动、新人福利、启用开关、开始结束时间与跳转商品。</div>
+              </div>
+              <button class="secondary" id="addActivityBtn">新增活动</button>
+            </div>
+            <div class="list" id="activityManager"></div>
+          </div>
+        </div>
+        <div class="subview" id="subview-relationManager">
+          <div class="panel"><h3>推广关系管理</h3><div id="relationsTable"></div></div>
+        </div>
+        <div class="subview" id="subview-rewardManager">
+          <div class="panel"><h3>奖励记录</h3><div id="rewardsTable"></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="panel">
+          <h3>系统设置</h3>
+          <div class="form-grid">
+            <label>店铺名称<input id="storeName"></label>
+            <label>后台名称<input id="adminName"></label>
+            <label>客服电话<input id="servicePhone"></label>
+            <label>客服微信号<input id="serviceWechat"></label>
+            <label>企业微信号<input id="workWechatId" placeholder="企业微信号或客服名片说明"></label>
+            <label>企业微信客服链接<input id="settingsWorkWechatUrl" placeholder="可填写小程序客服路径"></label>
+            <label>显示在线客服<select id="showWorkWechat"><option value="true">显示</option><option value="false">隐藏</option></select></label>
+            <label>显示电话联系<select id="showPhone"><option value="true">显示</option><option value="false">隐藏</option></select></label>
+            <label>显示复制微信号<select id="showWechat"><option value="true">显示</option><option value="false">隐藏</option></select></label>
+            <label>发货承诺<input id="deliveryPromise"></label>
+            <label>存储模式<input id="storageMode" value="MySQL 数据库" disabled></label>
+          </div>
+          <div style="margin-top:18px">
+            <h3>新人福利</h3>
+            <div class="form-grid">
+              <label>是否开启新人福利<select id="newcomerBenefitsEnabled">
+                <option value="true">开</option>
+                <option value="false">关</option>
+              </select></label>
+            </div>
+            <div class="upload-help">支持多选和排序。前台只展示符合首单资格用户的新客福利，不做现金立减。</div>
+            <div class="benefit-list" id="newcomerBenefits"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-mask" id="bulkCategoryModal">
+    <div class="modal">
+      <h3 id="bulkModalTitle">批量移动类目</h3>
+      <p class="muted">选择一级类目后，可多选二级类目。执行前会再次确认。</p>
+      <div class="form-grid">
+        <label>一级类目<select id="bulkPrimaryCategory"></select></label>
+        <label>操作方式<select id="bulkCategoryMode">
+          <option value="replace">替换原类目</option>
+          <option value="append">追加类目</option>
+          <option value="remove">删除指定类目</option>
+        </select></label>
+      </div>
+      <label style="margin-top:12px">二级类目
+        <select id="bulkSecondCategories" multiple size="5"></select>
+      </label>
+      <div class="modal-actions">
+        <button class="secondary" id="cancelBulkCategory">取消</button>
+        <button class="primary" id="confirmBulkCategory">确认执行</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-mask" id="detailDrawer">
+    <aside class="drawer">
+      <div class="drawer-head">
+        <div>
+          <h3 class="drawer-title" id="drawerTitle">详情</h3>
+          <p class="drawer-desc" id="drawerDesc">编辑后点击保存生效。</p>
+        </div>
+        <button class="drawer-close" id="closeDrawer" type="button">×</button>
+      </div>
+      <div class="drawer-body" id="drawerBody"></div>
+      <div class="drawer-actions" id="drawerActions"></div>
+    </aside>
+  </div>
+
+  <div class="modal-mask" id="categoryModal">
+    <div class="modal">
+      <h3 id="categoryModalTitle">新增二级类目</h3>
+      <p class="muted" id="categoryModalDesc">输入名称后立即创建，可继续拖动排序。</p>
+      <label>类目名称<input id="categoryModalName" placeholder="例如：亚克力夜灯"></label>
+      <div class="modal-actions">
+        <button class="secondary" id="cancelCategoryModal">取消</button>
+        <button class="primary" id="confirmCategoryModal">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const titles = {
+      overview: ["数据总览", "查看经营数据和待处理事项。"],
+      products: ["商品中心", "维护商品、库存、媒体素材和一二级类目。"],
+      orders: ["订单中心", "查看订单详情、物流、售后和发货状态。"],
+      customers: ["用户中心", "查看客户联系方式、消费记录和会员资产。"],
+      marketing: ["营销中心", "维护活动、新人福利、推广关系和奖励记录。"],
+      home: ["页面装修", "修改 Banner、首页入口、客服和推荐商品。"],
+      theme: ["皮肤管理", "上传、编辑、预览并一键启用小程序视觉皮肤。"],
+      settings: ["系统设置", "维护店铺基础信息和客服信息。"]
+    }
+    const $ = id => document.getElementById(id)
+    let currentView = "overview"
+    let home = {}
+    let products = []
+    let allOrders = []
+    let orders = []
+    let customers = []
+    let relations = []
+    let rewards = []
+    let settings = {}
+    let themeState = { activeThemeSkin: "skin01", themes: [] }
+    let editingThemeSkin = "skin01"
+    let orderFilters = { keyword: "", status: "" }
+    let productFilters = { keyword: "", category: "", status: "", hot: "" }
+    let productImportToken = ""
+    let categorySearch = ""
+    let activityProductSearch = {}
+    let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
+    let draggedCategory = null
+    let draggedSecond = null
+    let collapsedCategories = JSON.parse(localStorage.getItem("collapsedCategories") || "{}")
+    let drawerMode = ""
+    let drawerIndex = -1
+    const selectedProducts = new Set()
+    const defaultCategoryTree = {
+      "激光定制": ["亚克力夜灯", "木牌雕刻", "叶雕纪念"],
+      "3D打印": ["零件加工", "工业打样", "手办打印"],
+      "潮玩手办": ["解压玩具", "热门手办", "创意摆件"]
+    }
+    const legacyCategories = ["3D打印", "激光雕刻", "叶雕定制", "名字礼物"]
+    let categoryCatalog = []
+    let activities = []
+    let categoryTree = { ...defaultCategoryTree }
+    let categoryOptions = [...legacyCategories, ...Object.keys(categoryTree), ...Object.entries(categoryTree).flatMap(([primary, seconds]) => seconds.map(second => `${primary}/${second}`))]
+
+    function setStatus(text) { $("status").textContent = text }
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+    }
+    function toCategoryCatalog(value) {
+      const source = Array.isArray(value) && value.length
+        ? value
+        : Object.entries(defaultCategoryTree).map(([name, seconds], index) => ({
+            id: `CAT${index + 1}`,
+            name,
+            sort: index + 1,
+            children: seconds.map((second, secondIndex) => ({ id: `CAT${index + 1}-${secondIndex + 1}`, name: second, sort: secondIndex + 1, comingSoon: "false" }))
+          }))
+      return source.map((item, index) => ({
+        id: item.id || `CAT${Date.now()}${index}`,
+        name: item.name || `一级类目${index + 1}`,
+        sort: Number(item.sort || index + 1),
+        children: (Array.isArray(item.children) ? item.children : Array.isArray(item.seconds) ? item.seconds : []).map((child, childIndex) => typeof child === "string"
+          ? { id: `CAT${index + 1}-${childIndex + 1}`, name: child, sort: childIndex + 1, comingSoon: "false" }
+          : { id: child.id || `CAT${index + 1}-${childIndex + 1}`, name: child.name || `二级类目${childIndex + 1}`, sort: Number(child.sort || childIndex + 1), comingSoon: String(child.comingSoon == null ? "false" : child.comingSoon) })
+      })).sort((a, b) => a.sort - b.sort)
+    }
+    function rebuildCategoryOptions() {
+      categoryCatalog = toCategoryCatalog(settings.categoryCatalog)
+      categoryTree = Object.fromEntries(categoryCatalog.map(item => [
+        item.name,
+        (item.children || []).sort((a, b) => a.sort - b.sort).map(child => child.name)
+      ]))
+      categoryOptions = Array.from(new Set([
+        ...legacyCategories,
+        ...categoryCatalog.map(item => item.name),
+        ...categoryCatalog.flatMap(item => (item.children || []).map(child => `${item.name}/${child.name}`))
+      ]))
+      activities = normalizeActivities(settings.activities)
+    }
+    function normalizeActivities(value) {
+      return (Array.isArray(value) ? value : []).map((item, index) => ({
+        id: item.id || `ACT${Date.now()}${index}`,
+        title: item.title || "未命名活动",
+        type: item.type || "活动海报",
+        posterUrl: item.posterUrl || "",
+        enabled: String(item.enabled == null ? "true" : item.enabled),
+        startAt: item.startAt || "",
+        endAt: item.endAt || "",
+        productId: item.productId || "",
+        sort: String(item.sort || index + 1)
+      }))
+    }
+    function productNameById(id) {
+      return (products.find(product => product.id === id) || {}).name || ""
+    }
+    function productCountForCategory(primary, second = "") {
+      const key = second ? `${primary}/${second}` : primary
+      return products.filter(product => {
+        const categories = Array.isArray(product.categories) ? product.categories : []
+        if (second) return categories.includes(key)
+        return categories.some(category => category === primary || category.startsWith(`${primary}/`))
+      }).length
+    }
+    function productNameHitsForCategory(primary) {
+      const keyword = categorySearch.toLowerCase()
+      if (!keyword) return false
+      return products.some(product => {
+        const text = `${product.name || ""} ${product.id || ""}`.toLowerCase()
+        const categories = Array.isArray(product.categories) ? product.categories : []
+        return text.includes(keyword) && categories.some(category => category === primary || category.startsWith(`${primary}/`))
+      })
+    }
+    function productNameHitsForSecond(primary, second) {
+      const keyword = categorySearch.toLowerCase()
+      if (!keyword) return false
+      const key = `${primary}/${second}`
+      return products.some(product => {
+        const text = `${product.name || ""} ${product.id || ""}`.toLowerCase()
+        const categories = Array.isArray(product.categories) ? product.categories : []
+        return text.includes(keyword) && categories.includes(key)
+      })
+    }
+    function persistCategoryCollapse() {
+      localStorage.setItem("collapsedCategories", JSON.stringify(collapsedCategories))
+    }
+    function resequenceCategories() {
+      categoryCatalog.forEach((category, index) => {
+        category.sort = index + 1
+        ;(category.children || []).forEach((child, childIndex) => { child.sort = childIndex + 1 })
+      })
+      settings.categoryCatalog = categoryCatalog
+      rebuildCategoryOptions()
+    }
+    function persistCategoryCatalog(message = "类目已保存") {
+      resequenceCategories()
+      renderCategoryManager()
+      api("/api/admin/settings", "PUT", { ...settings, categoryCatalog })
+        .then(() => setStatus(message))
+        .catch(error => setStatus(error.message))
+    }
+    function openCategoryModal(mode, primaryIndex, secondIndex = -1) {
+      categoryModal = { mode, primaryIndex, secondIndex }
+      const primary = categoryCatalog[primaryIndex]
+      const second = primary?.children?.[secondIndex]
+      $("categoryModalTitle").textContent = mode === "add-second" ? "新增二级类目" : mode === "edit-primary" ? "编辑一级类目" : "编辑二级类目"
+      if (mode === "add-primary") $("categoryModalTitle").textContent = "新增一级类目"
+      $("categoryModalDesc").textContent = mode === "add-primary" ? "创建后会自动排到最后，可拖动调整顺序。" : mode === "add-second" ? `添加到「${primary?.name || ""}」下方。` : "修改名称后立即保存。"
+      $("categoryModalName").value = mode === "edit-primary" ? primary?.name || "" : mode === "edit-second" ? second?.name || "" : ""
+      $("categoryModal").classList.add("show")
+      setTimeout(() => $("categoryModalName").focus(), 30)
+    }
+    function closeCategoryModal() {
+      $("categoryModal").classList.remove("show")
+      categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
+    }
+    function confirmCategoryModal() {
+      const name = $("categoryModalName").value.trim()
+      if (!name) return setStatus("请输入类目名称")
+      collectCategoryManager()
+      const { mode, primaryIndex, secondIndex } = categoryModal
+      if (mode === "add-primary") {
+        categoryCatalog.push({ id: `CAT${Date.now()}`, name, sort: categoryCatalog.length + 1, children: [] })
+        closeCategoryModal()
+        persistCategoryCatalog("一级类目已新增")
+        return
+      }
+      if (!categoryCatalog[primaryIndex]) return closeCategoryModal()
+      if (mode === "add-second") {
+        categoryCatalog[primaryIndex].children.push({ id: `CAT${Date.now()}S`, name, sort: categoryCatalog[primaryIndex].children.length + 1 })
+      }
+      if (mode === "edit-primary" && categoryCatalog[primaryIndex]) categoryCatalog[primaryIndex].name = name
+      if (mode === "edit-second" && categoryCatalog[primaryIndex]?.children?.[secondIndex]) categoryCatalog[primaryIndex].children[secondIndex].name = name
+      closeCategoryModal()
+      persistCategoryCatalog("类目已保存")
+    }
+    function renderProductPickerValue(value, key, context = {}) {
+      const token = `${key}-${context.id || context.index || Math.random().toString(36).slice(2)}`
+      const keyword = activityProductSearch[token] || ""
+      const matched = products.filter(product => {
+        const text = `${product.name || ""} ${product.id || ""}`.toLowerCase()
+        return !keyword || text.includes(keyword.toLowerCase())
+      }).slice(0, 8)
+      return `<div class="picker-grid" data-picker-token="${token}">
+        <input class="compact-input" data-product-search="${token}" value="${escapeHtml(keyword)}" placeholder="搜索商品名称/ID">
+        <select data-key="${key}">
+          <option value="">请选择商品</option>
+          ${products.map(product => `<option value="${escapeHtml(product.id)}" ${value === product.id ? "selected" : ""}>${escapeHtml(product.name)} · ${escapeHtml(product.id)}</option>`).join("")}
+        </select>
+        <div class="product-picker-results">${matched.map(product => `<button class="picker-result" data-action="pick-product" data-token="${token}" data-key="${key}" data-value="${escapeHtml(product.id)}">${escapeHtml(product.name)} · ${escapeHtml(product.price)}</button>`).join("")}</div>
+      </div>`
+    }
+    function renderTargetPicker(value, context = {}) {
+      const item = context.item || {}
+      const type = item.targetType || "primary"
+      const primaryValue = type === "secondary" ? String(value || "").split("/")[0] : (type === "primary" ? value : item.targetPrimary || "")
+      const secondValue = type === "secondary" ? String(value || "").split("/")[1] || "" : ""
+      const productKeywordKey = `target-${context.index}`
+      const keyword = activityProductSearch[productKeywordKey] || ""
+      const matchedProducts = products.filter(product => `${product.name || ""} ${product.id || ""}`.toLowerCase().includes(keyword.toLowerCase())).slice(0, 8)
+      if (type === "primary") {
+        return `<label>跳转值<div class="picker-grid"><select data-key="targetValue">${categoryCatalog.map(category => `<option value="${escapeHtml(category.name)}" ${value === category.name ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}</select></div></label>`
+      }
+      if (type === "secondary") {
+        const primary = categoryCatalog.find(category => category.name === primaryValue) || categoryCatalog[0] || { name: "", children: [] }
+        return `<label>跳转值<div class="picker-grid">
+          <select data-target-primary data-index="${context.index}">${categoryCatalog.map(category => `<option value="${escapeHtml(category.name)}" ${primary.name === category.name ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}</select>
+          <select data-key="targetValue">${(primary.children || []).map(child => {
+            const joined = `${primary.name}/${child.name}`
+            return `<option value="${escapeHtml(joined)}" ${value === joined || secondValue === child.name ? "selected" : ""}>${escapeHtml(child.name)}</option>`
+          }).join("")}</select>
+        </div></label>`
+      }
+      if (type === "product" || type === "productList") {
+        return `<label>跳转值<div class="picker-grid">
+          <input class="compact-input" data-product-search="${productKeywordKey}" value="${escapeHtml(keyword)}" placeholder="搜索商品名称/ID">
+          <select data-key="targetValue">
+            <option value="">请选择商品</option>
+            ${products.map(product => `<option value="${escapeHtml(product.id)}" ${value === product.id ? "selected" : ""}>${escapeHtml(product.name)} · ${escapeHtml(product.id)}</option>`).join("")}
+          </select>
+          <div class="product-picker-results">${matchedProducts.map(product => `<button class="picker-result" data-action="pick-product" data-token="${productKeywordKey}" data-key="targetValue" data-value="${escapeHtml(product.id)}">${escapeHtml(product.name)} · ${escapeHtml(product.price)}</button>`).join("")}</div>
+        </div></label>`
+      }
+      if (type === "poster") {
+        return `<label>跳转值<div class="picker-grid"><select data-key="targetValue">
+          <option value="">请选择活动</option>
+          ${activities.map(activity => `<option value="${escapeHtml(activity.id)}" ${value === activity.id ? "selected" : ""}>${escapeHtml(activity.title)}</option>`).join("")}
+        </select></div></label>`
+      }
+      if (type === "service") return `<label>跳转值<input data-key="targetValue" value="客服页" disabled></label>`
+      return `<label>跳转值<input data-key="targetValue" value="${escapeHtml(value || "")}" placeholder="自定义页面路径或链接"></label>`
+    }
+    function field(label, value, key, type = "input", context = {}) {
+      const v = escapeHtml(value || "")
+      if (key === "imageUrl" || key === "posterUrl") {
+        const isBanner = label.includes("Banner") || label.includes("海报")
+        const sizeText = isBanner ? "Banner图：1200x500 像素" : "商品图：800x800 像素"
+        return `<label>${label}
+          <div class="upload-row">
+            <input data-key="${key}" value="${v}">
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-upload-key="${key}">
+          </div>
+          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB</div>
+          <img class="image-preview ${v ? "show" : ""}" src="${v}" alt="图片预览">
+        </label>`
+      }
+      if (key === "categories") {
+        const current = normalizeCategoriesValue(value)
+        return `<label>${label}
+          <div class="category-options" data-key="${key}">
+            ${categoryOptions.map(option => `
+              <span class="category-option">
+                <input type="checkbox" value="${option}" ${current.includes(option) ? "checked" : ""}>
+                ${option}
+              </span>
+            `).join("")}
+          </div>
+        </label>`
+      }
+      if (key === "badge") {
+        const current = normalizeBadgeValue(value)
+        const groupName = `badge-${Math.random().toString(36).slice(2)}`
+        return `<label>${label}
+          <div class="badge-options" data-key="${key}">
+            ${[
+              ["none", "无标签"],
+              ["new", "新品"],
+              ["hot", "人气"],
+              ["best", "爆品"]
+            ].map(([optionValue, optionLabel]) => `
+              <span class="badge-option">
+                <input type="radio" name="${groupName}" value="${optionValue}" ${current === optionValue ? "checked" : ""}>
+                ${optionLabel}
+              </span>
+            `).join("")}
+          </div>
+        </label>`
+      }
+      if (key === "status") {
+        const current = value === "off" ? "off" : "on"
+        return `<label>${label}<select data-key="${key}">
+          <option value="on" ${current === "on" ? "selected" : ""}>已上架</option>
+          <option value="off" ${current === "off" ? "selected" : ""}>已下架</option>
+        </select></label>`
+      }
+      if (key === "type") {
+        const current = value || "活动海报"
+        return `<label>${label}<select data-key="${key}">
+          <option value="活动海报" ${current === "活动海报" ? "selected" : ""}>活动海报</option>
+          <option value="节日活动" ${current === "节日活动" ? "selected" : ""}>节日活动</option>
+          <option value="新人福利" ${current === "新人福利" ? "selected" : ""}>新人福利</option>
+        </select></label>`
+      }
+      if (key === "enabled") {
+        const current = String(value == null ? "true" : value)
+        return `<label>${label}<select data-key="${key}">
+          <option value="true" ${current !== "false" ? "selected" : ""}>启用</option>
+          <option value="false" ${current === "false" ? "selected" : ""}>停用</option>
+        </select></label>`
+      }
+      if (key === "rewardEnabled") {
+        const current = String(value == null ? "true" : value)
+        return `<label>${label}<select data-key="${key}">
+          <option value="true" ${current !== "false" ? "selected" : ""}>参与</option>
+          <option value="false" ${current === "false" ? "selected" : ""}>不参与</option>
+        </select></label>`
+      }
+      if (key === "promotionHot" || key === "isHot") {
+        const current = String(value == null ? "false" : value)
+        return `<label>${label}<select data-key="${key}">
+          <option value="true" ${current === "true" ? "selected" : ""}>加入</option>
+          <option value="false" ${current !== "true" ? "selected" : ""}>不加入</option>
+        </select></label>`
+      }
+      if (key === "aiPreviewEnabled") {
+        const current = String(value == null ? "false" : value)
+        return `<label>${label}<select data-key="${key}">
+          <option value="true" ${current === "true" ? "selected" : ""}>开启</option>
+          <option value="false" ${current !== "true" ? "selected" : ""}>关闭</option>
+        </select></label>`
+      }
+      if (key === "aiPreviewType") {
+        const current = value || "gift"
+        return `<label>${label}<select data-key="${key}">
+          <option value="leaf" ${current === "leaf" ? "selected" : ""}>叶雕</option>
+          <option value="stand" ${current === "stand" ? "selected" : ""}>摆件</option>
+          <option value="wood" ${current === "wood" ? "selected" : ""}>木牌</option>
+          <option value="dogtag" ${current === "dogtag" ? "selected" : ""}>军牌</option>
+          <option value="couple" ${current === "couple" ? "selected" : ""}>情侣礼物</option>
+          <option value="gift" ${current === "gift" ? "selected" : ""}>纪念礼物</option>
+        </select></label>`
+      }
+      if (key === "visible") {
+        const current = String(value == null ? "true" : value)
+        return `<label>${label}<select data-key="${key}">
+          <option value="true" ${current !== "false" ? "selected" : ""}>显示</option>
+          <option value="false" ${current === "false" ? "selected" : ""}>隐藏</option>
+        </select></label>`
+      }
+      if (key === "targetType") {
+        const current = value || "primary"
+        return `<label>${label}<select data-key="${key}">
+          <option value="primary" ${current === "primary" ? "selected" : ""}>一级类目页</option>
+          <option value="secondary" ${current === "secondary" ? "selected" : ""}>二级类目页</option>
+          <option value="product" ${current === "product" || current === "productList" ? "selected" : ""}>商品页</option>
+          <option value="poster" ${current === "poster" ? "selected" : ""}>活动页</option>
+          <option value="service" ${current === "service" ? "selected" : ""}>客服页</option>
+          <option value="custom" ${current === "custom" ? "selected" : ""}>自定义链接</option>
+        </select></label>`
+      }
+      if (key === "targetValue") return renderTargetPicker(value, context)
+      if (key === "productId") return `<label>${label}${renderProductPickerValue(value, key, context)}</label>`
+      return `<label>${label}${type === "textarea" ? `<textarea data-key="${key}">${v}</textarea>` : `<input data-key="${key}" value="${v}">`}</label>`
+    }
+    function normalizeBadgeValue(value) {
+      const map = {
+        新品: "new",
+        新品推荐: "new",
+        人气: "hot",
+        人气热卖: "hot",
+        人气礼物: "hot",
+        高复购: "hot",
+        爆品: "best",
+        爆品推荐: "best",
+        试运营爆款: "best",
+        入门首选: "new",
+        无标签: "none"
+      }
+      return map[value] || value || "none"
+    }
+    function normalizeCategoriesValue(value) {
+      if (Array.isArray(value)) return value.filter(item => categoryOptions.includes(item))
+      return String(value || "").split(/[,，]/).map(item => item.trim()).filter(item => categoryOptions.includes(item))
+    }
+    function normalizeMediaList(value) {
+      if (Array.isArray(value)) return value.map(item => String(item || "").trim()).filter(Boolean)
+      return String(value || "").split(/[,，\n]/).map(item => item.trim()).filter(Boolean)
+    }
+    function productStatusText(value) {
+      return value === "off" ? "已下架" : "已上架"
+    }
+    function badgeText(value) {
+      return { new: "新品", hot: "人气", best: "爆品", none: "无标签" }[value] || value || "无标签"
+    }
+    function compactCategories(value) {
+      const categories = normalizeCategoriesValue(value)
+      return categories.length ? categories : ["未设置"]
+    }
+    function formatMoney(value) {
+      return `¥${escapeHtml(value || "0")}`
+    }
+    function radiusNumber(value, fallback) {
+      const matched = String(value == null ? "" : value).match(/\d+/)
+      return matched ? Number(matched[0]) : fallback
+    }
+    function normalizeThemeClient(theme = {}, index = 0) {
+      const colors = theme.colors || {}
+      const gradient = Array.isArray(theme.buttonGradient) && theme.buttonGradient.length >= 2
+        ? theme.buttonGradient
+        : [colors.buttonGradientStart || theme.primaryColor || "#FF7A00", colors.buttonGradientEnd || theme.accentColor || "#FF4D8D"]
+      const skinId = theme.skinId || theme.skin || `skin-custom-${Date.now()}-${index}`
+      const nextColors = {
+        primaryColor: colors.primaryColor || theme.primaryColor || "#FF7A00",
+        accentColor: colors.accentColor || theme.accentColor || "#FF4D8D",
+        lightBg: colors.lightBg || theme.lightBg || theme.softColor || "#FFF0F3",
+        pageTopColor: colors.pageTopColor || theme.pageTopColor || "#FFF8F5",
+        pageBottomColor: colors.pageBottomColor || theme.pageBottomColor || "#FFF2F5",
+        cardColor: colors.cardColor || theme.cardColor || "rgba(255,255,255,.88)",
+        textColor: colors.textColor || theme.textColor || "#222024",
+        mutedTextColor: colors.mutedTextColor || theme.mutedTextColor || theme.mutedColor || "#8D7E80",
+        priceColor: colors.priceColor || theme.priceColor || "#FF5A3C",
+        buttonGradientStart: colors.buttonGradientStart || gradient[0],
+        buttonGradientEnd: colors.buttonGradientEnd || gradient[1],
+        shadowColor: colors.shadowColor || theme.shadowColor || "rgba(255,122,0,.16)"
+      }
+      const radius = theme.radius || {}
+      return {
+        ...theme,
+        skinId,
+        skin: skinId,
+        name: theme.name || `新皮肤 ${index + 1}`,
+        description: theme.description || "",
+        version: Number(theme.version || 1),
+        colors: nextColors,
+        radius: {
+          cardRadius: radiusNumber(radius.cardRadius ?? theme.cardRadius, 30),
+          buttonRadius: radiusNumber(radius.buttonRadius ?? theme.buttonRadius, 999)
+        },
+        tabbar: {
+          activeColor: theme.tabbar?.activeColor || nextColors.priceColor,
+          inactiveColor: theme.tabbar?.inactiveColor || "#999999",
+          backgroundColor: theme.tabbar?.backgroundColor || "#FFFFFF"
+        },
+        navigationBar: {
+          frontColor: theme.navigationBar?.frontColor === "#ffffff" ? "#ffffff" : "#000000",
+          backgroundColor: theme.navigationBar?.backgroundColor || nextColors.pageTopColor
+        },
+        banners: theme.banners || {},
+        icons: theme.icons || {},
+        primaryColor: nextColors.primaryColor,
+        accentColor: nextColors.accentColor,
+        softColor: nextColors.lightBg,
+        pageTopColor: nextColors.pageTopColor,
+        pageBottomColor: nextColors.pageBottomColor,
+        cardColor: nextColors.cardColor,
+        textColor: nextColors.textColor,
+        mutedColor: nextColors.mutedTextColor,
+        priceColor: nextColors.priceColor,
+        buttonGradient: [nextColors.buttonGradientStart, nextColors.buttonGradientEnd],
+        cardRadius: `${radiusNumber(radius.cardRadius ?? theme.cardRadius, 30)}rpx`,
+        buttonRadius: `${radiusNumber(radius.buttonRadius ?? theme.buttonRadius, 999)}rpx`,
+        shadowColor: nextColors.shadowColor,
+        banner: theme.banner || "",
+        thumbnail: theme.thumbnail || theme.banner || "",
+        themeWxssText: theme.themeWxssText || "",
+        createdAt: theme.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
+        updatedAt: theme.updatedAt || theme.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
+        enabled: String(theme.enabled || "false")
+      }
+    }
+    function themeId(theme) {
+      return theme?.skinId || theme?.skin || "skin01"
+    }
+    function currentEditingTheme() {
+      return themeState.themes.find(theme => themeId(theme) === editingThemeSkin) || themeState.themes[0] || normalizeThemeClient({}, 0)
+    }
+    function setThemePath(theme, key, value) {
+      const parts = key.split(".")
+      let target = theme
+      while (parts.length > 1) {
+        const part = parts.shift()
+        target[part] = target[part] || {}
+        target = target[part]
+      }
+      target[parts[0]] = key.startsWith("radius.") ? radiusNumber(value, key.includes("button") ? 999 : 30) : value
+    }
+    function getThemePath(theme, key) {
+      return key.split(".").reduce((value, part) => value && value[part], theme)
+    }
+    function collectThemeEditor() {
+      const theme = currentEditingTheme()
+      if (!theme || !$("themeEditor")) return
+      $("themeEditor").querySelectorAll("[data-theme-key]").forEach(input => {
+        setThemePath(theme, input.dataset.themeKey, input.value)
+      })
+      const normalized = normalizeThemeClient(theme, 0)
+      Object.assign(theme, normalized)
+      theme.enabled = themeId(theme) === (themeState.currentSkinId || themeState.activeThemeSkin) ? "true" : "false"
+    }
+    function renderThemes() {
+      themeState.themes = (themeState.themes || []).map(normalizeThemeClient)
+      themeState.currentSkinId = themeState.currentSkinId || themeState.activeThemeSkin || "skin01"
+      themeState.activeThemeSkin = themeState.currentSkinId
+      if (!themeState.themes.some(theme => themeId(theme) === editingThemeSkin)) editingThemeSkin = themeState.currentSkinId || themeId(themeState.themes[0]) || "skin01"
+      const active = themeState.currentSkinId
+      $("themeList").innerHTML = themeState.themes.map(theme => {
+        const id = themeId(theme)
+        const canDelete = id !== "skin01" && id !== active
+        return `
+          <div class="theme-card ${id === active ? "active" : ""} ${id === editingThemeSkin ? "editing" : ""}" data-action="edit-theme" data-skin="${escapeHtml(id)}">
+            <div class="theme-thumb" style="background:linear-gradient(135deg, ${escapeHtml(theme.colors.buttonGradientStart)}, ${escapeHtml(theme.colors.buttonGradientEnd)})">
+              ${theme.thumbnail ? `<img src="${escapeHtml(theme.thumbnail)}" alt="">` : ""}
+              ${id === active ? `<span class="theme-enabled">当前启用</span>` : ""}
+            </div>
+            <div class="theme-name">${escapeHtml(theme.name)}</div>
+            <div class="theme-desc">${escapeHtml(theme.description || "暂无说明")}</div>
+            <div class="theme-actions">
+              <button class="secondary" data-action="edit-theme" data-skin="${escapeHtml(id)}">编辑</button>
+              <button class="primary" data-action="enable-theme" data-skin="${escapeHtml(id)}">启用</button>
+              <button class="secondary" ${canDelete ? "" : "disabled"} data-action="delete-theme" data-skin="${escapeHtml(id)}">删除</button>
+            </div>
+          </div>
+        `
+      }).join("")
+      renderThemeEditor()
+    }
+    function renderThemeEditor() {
+      const theme = normalizeThemeClient(currentEditingTheme())
+      const colorField = (label, key) => `<label>${label}<div class="color-row"><input type="color" data-theme-key="${key}" value="${escapeHtml(getThemePath(theme, key))}"><input data-theme-key="${key}" value="${escapeHtml(getThemePath(theme, key))}"></div></label>`
+      $("themeEditor").innerHTML = `
+        <label>皮肤ID<input data-theme-key="skinId" value="${escapeHtml(themeId(theme))}" disabled></label>
+        <label>皮肤名称<input data-theme-key="name" value="${escapeHtml(theme.name)}"></label>
+        <label>皮肤说明<textarea data-theme-key="description">${escapeHtml(theme.description)}</textarea></label>
+        <label>版本号<input value="${escapeHtml(String(theme.version || 1))}" disabled></label>
+        <label>更新时间<input value="${escapeHtml(theme.updatedAt || "")}" disabled></label>
+        ${colorField("主色调", "colors.primaryColor")}
+        ${colorField("强调色", "colors.accentColor")}
+        ${colorField("浅色底", "colors.lightBg")}
+        ${colorField("页面顶部色", "colors.pageTopColor")}
+        ${colorField("页面底部色", "colors.pageBottomColor")}
+        ${colorField("文字颜色", "colors.textColor")}
+        ${colorField("弱文字颜色", "colors.mutedTextColor")}
+        ${colorField("价格颜色", "colors.priceColor")}
+        ${colorField("按钮渐变起始", "colors.buttonGradientStart")}
+        ${colorField("按钮渐变结束", "colors.buttonGradientEnd")}
+        ${colorField("TabBar选中色", "tabbar.activeColor")}
+        ${colorField("TabBar未选中色", "tabbar.inactiveColor")}
+        ${colorField("TabBar背景色", "tabbar.backgroundColor")}
+        ${colorField("导航栏背景色", "navigationBar.backgroundColor")}
+        <label>导航栏文字色<select data-theme-key="navigationBar.frontColor"><option value="#000000" ${theme.navigationBar.frontColor !== "#ffffff" ? "selected" : ""}>黑色</option><option value="#ffffff" ${theme.navigationBar.frontColor === "#ffffff" ? "selected" : ""}>白色</option></select></label>
+        <label>卡片圆角<input type="number" data-theme-key="radius.cardRadius" value="${escapeHtml(String(theme.radius.cardRadius))}" placeholder="28"></label>
+        <label>按钮圆角<input type="number" data-theme-key="radius.buttonRadius" value="${escapeHtml(String(theme.radius.buttonRadius))}" placeholder="999"></label>
+        <label>Banner图
+          <div class="upload-row"><input data-theme-key="banner" value="${escapeHtml(theme.banner)}"><input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-theme-upload="banner"></div>
+        </label>
+        <label>缩略图
+          <div class="upload-row"><input data-theme-key="thumbnail" value="${escapeHtml(theme.thumbnail)}"><input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-theme-upload="thumbnail"></div>
+        </label>
+        <label>上传 colors.json<input type="file" accept=".json,application/json" data-theme-file="colors"></label>
+        <label>上传 theme.wxss<input type="file" accept=".wxss,.css,text/css,text/plain" data-theme-file="wxss"></label>
+        <label style="grid-column:1/-1">theme.wxss 留档<textarea data-theme-key="themeWxssText">${escapeHtml(theme.themeWxssText || "")}</textarea></label>
+      `
+      renderThemePreview(theme)
+    }
+    function renderThemePreview(theme = currentEditingTheme()) {
+      const next = normalizeThemeClient(theme)
+      const c = next.colors
+      const cardRadius = `${next.radius.cardRadius}px`
+      const buttonRadius = `${next.radius.buttonRadius}px`
+      const buttonBg = `linear-gradient(135deg, ${c.buttonGradientStart}, ${c.buttonGradientEnd})`
+      $("themePreview").innerHTML = `<div class="theme-preview-phone" style="background:linear-gradient(180deg, ${escapeHtml(c.pageTopColor)}, ${escapeHtml(c.pageBottomColor)});color:${escapeHtml(c.textColor)}">
+        <div style="height:148px;padding:20px;border-radius:${escapeHtml(cardRadius)};background:${escapeHtml(buttonBg)};color:#fff;box-shadow:0 18px 38px ${escapeHtml(c.shadowColor)};font-size:28px;font-weight:950">给闺蜜的<br>生日礼物灵感<div style="margin-top:12px;font-size:12px;font-weight:800;opacity:.88">Banner 卡片</div></div>
+        <div style="margin-top:14px;padding:14px;border-radius:${escapeHtml(cardRadius)};background:${escapeHtml(c.cardColor)};box-shadow:0 16px 36px ${escapeHtml(c.shadowColor)}">
+          <strong style="color:${escapeHtml(c.textColor)}">热门推荐商品</strong>
+          <p style="color:${escapeHtml(c.mutedTextColor)};margin:8px 0 12px">生日、纪念日、宠物纪念都适合</p>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="color:${escapeHtml(c.priceColor)};font-size:22px;font-weight:950">¥129</span>
+            <button style="width:118px;height:42px;border:0;border-radius:${escapeHtml(buttonRadius)};background:${escapeHtml(buttonBg)};color:#fff;font-weight:900">立即定制</button>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:14px;border-radius:${escapeHtml(cardRadius)};background:${escapeHtml(c.lightBg)};box-shadow:0 16px 36px ${escapeHtml(c.shadowColor)}">
+          <strong style="color:${escapeHtml(c.textColor)}">微信快捷登录</strong>
+          <p style="color:${escapeHtml(c.mutedTextColor)};margin:8px 0 12px">同步订单、地址与会员权益</p>
+          <button style="width:170px;height:42px;border:0;border-radius:${escapeHtml(buttonRadius)};background:${escapeHtml(buttonBg)};color:#fff;font-weight:900">授权手机号并登录</button>
+        </div>
+      </div>`
+    }
+    function readLocalTextFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ""))
+        reader.onerror = () => reject(new Error("文件读取失败"))
+        reader.readAsText(file)
+      })
+    }
+    function closeDrawer() {
+      $("detailDrawer").classList.remove("show")
+      drawerMode = ""
+      drawerIndex = -1
+      $("drawerBody").innerHTML = ""
+      $("drawerActions").innerHTML = ""
+    }
+    async function api(path, method = "GET", body) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 12000)
+      const options = { method, headers: { "Content-Type": "application/json" }, cache: "no-store" }
+      options.signal = controller.signal
+      if (body) options.body = JSON.stringify(body)
+      try {
+        const res = await fetch(path, options)
+        if (res.status === 401) {
+          location.href = "/login"
+          return null
+        }
+        const data = await res.json()
+        if (!res.ok || data.ok === false) throw new Error(data.message || "请求失败")
+        return data.data || data
+      } catch (error) {
+        if (error.name === "AbortError") throw new Error("接口响应超时，请刷新重试")
+        throw error
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    async function uploadImage(file) {
+      const ext = file.name.split(".").pop().toLowerCase()
+      const allowedExts = ["jpg", "jpeg", "png", "webp"]
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
+      if (!allowedExts.includes(ext) || !allowedTypes.includes(file.type)) {
+        throw new Error("图片格式不支持，请选择jpg/png/webp")
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error("图片超过10MB，请压缩后上传")
+      }
+      const form = new FormData()
+      form.append("file", file)
+      let res
+      try {
+        res = await fetch("/api/upload", { method: "POST", body: form })
+      } catch (error) {
+        throw new Error("上传失败，请重试")
+      }
+      if (res.status === 401) {
+        location.href = "/login"
+        return ""
+      }
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.message || "上传失败，请重试")
+      return data.url
+    }
+    async function uploadMedia(file, kind = "image") {
+      const ext = file.name.split(".").pop().toLowerCase()
+      if (kind === "video") {
+        if (ext !== "mp4" || file.type !== "video/mp4") throw new Error("视频格式不支持，请选择mp4")
+        if (file.size > 50 * 1024 * 1024) throw new Error("视频超过50MB，请压缩后上传")
+      } else {
+        const allowedExts = ["jpg", "jpeg", "png", "webp"]
+        const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
+        if (!allowedExts.includes(ext) || !allowedTypes.includes(file.type)) throw new Error("图片格式不支持，请选择jpg/png/webp")
+        if (file.size > 10 * 1024 * 1024) throw new Error("图片超过10MB，请压缩后上传")
+      }
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      if (res.status === 401) {
+        location.href = "/login"
+        return ""
+      }
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.message || "上传失败，请重试")
+      return data.url
+    }
+    async function previewProductImport() {
+      const excel = $("productImportExcel").files?.[0]
+      const zip = $("productImportZip").files?.[0]
+      if (!excel) return setStatus("请先上传商品 Excel")
+      if (!/\.xlsx$/i.test(excel.name)) return setStatus("Excel 只支持 .xlsx")
+      if (excel.size > 5 * 1024 * 1024) return setStatus("Excel 文件超过5MB，请精简后上传")
+      if (zip && !/\.zip$/i.test(zip.name)) return setStatus("图片包只支持 .zip")
+      if (zip && zip.size > 50 * 1024 * 1024) return setStatus("图片ZIP超过50MB，请压缩后上传")
+      const form = new FormData()
+      form.append("excel", excel)
+      if (zip) form.append("zip", zip)
+      setStatus("正在解析导入文件...")
+      $("productImportSummary").textContent = "解析中，请稍候。"
+      $("confirmProductImportBtn").disabled = true
+      productImportToken = ""
+      try {
+        const res = await fetch("/api/admin/products/import-preview", { method: "POST", body: form })
+        if (res.status === 401) return location.href = "/login"
+        const data = await res.json()
+        if (!res.ok || data.ok === false) throw new Error(data.message || "解析失败")
+        productImportToken = data.data.token
+        renderProductImportPreview(data.data)
+        $("confirmProductImportBtn").disabled = data.data.summary.importable === 0
+        setStatus("导入预览已生成")
+      } catch (error) {
+        const message = error.message || "解析失败"
+        $("productImportSummary").innerHTML = `<span style="color:#b42318">解析失败：${escapeHtml(message)}</span>`
+        $("productImportPreview").innerHTML = ""
+        setStatus(message)
+      }
+    }
+    function renderProductImportPreview(data) {
+      const summary = data.summary || {}
+      $("productImportSummary").innerHTML = `总行数 ${summary.total || 0} · 可导入 ${summary.importable || 0} · 错误 ${summary.errors || 0} · 新增 ${summary.creates || 0} · 更新 ${summary.updates || 0}`
+      $("productImportPreview").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
+        <thead><tr><th>行号</th><th>商品名称</th><th>价格</th><th>一级类目</th><th>标签</th><th>状态</th><th>主图</th><th>轮播图</th><th>详情图</th><th>操作类型</th><th>错误原因</th></tr></thead>
+        <tbody>${(data.rows || []).map(row => `<tr class="${row.ok ? "" : "selected"}">
+          <td>${row.rowNumber}</td>
+          <td><div class="table-title">${escapeHtml(row.name)}</div></td>
+          <td>${escapeHtml(row.price)}</td>
+          <td>${escapeHtml(row.primaryCategory)}</td>
+          <td><span class="mini-tag">${escapeHtml(badgeText(row.badge))}</span></td>
+          <td><span class="pill">${productStatusText(row.status)}</span></td>
+          <td>${row.mainImage ? `<img class="table-image" src="${escapeHtml(row.mainImage)}" alt="">` : ""}</td>
+          <td>${row.galleryCount || 0} 张</td>
+          <td>${row.detailCount || 0} 张</td>
+          <td>${escapeHtml(row.action)}</td>
+          <td>${escapeHtml((row.errors || []).join("；"))}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>`
+    }
+    async function confirmProductImport() {
+      if (!productImportToken) return setStatus("请先解析并预览")
+      if (!confirm("确认导入所有可导入商品？失败项不会写入。")) return
+      setStatus("正在导入商品...")
+      try {
+        const report = await api("/api/admin/products/import-confirm", "POST", { token: productImportToken })
+        $("productImportReport").innerHTML = `<div class="upload-help">成功新增 ${report.created} 个商品，成功更新 ${report.updated} 个商品，失败 ${report.failed} 个商品。</div>${report.failures?.length ? `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>行号</th><th>商品名称</th><th>失败原因</th></tr></thead><tbody>${report.failures.map(item => `<tr><td>${item.rowNumber}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.reason)}</td></tr>`).join("")}</tbody></table></div>` : ""}`
+        productImportToken = ""
+        $("confirmProductImportBtn").disabled = true
+        await loadAll()
+        setStatus("商品批量导入完成")
+      } catch (error) {
+        const message = error.message || "导入失败"
+        $("productImportReport").innerHTML = `<div class="upload-help" style="color:#b42318">导入失败：${escapeHtml(message)}</div>`
+        setStatus(message)
+      }
+    }
+    function mediaManager(label, key, value, kind = "image") {
+      const list = normalizeMediaList(value)
+      const accept = kind === "video" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+      return `<div class="drawer-section" data-media-manager="${key}" data-media-kind="${kind}">
+        <h4>${label}</h4>
+        <div class="upload-help">${kind === "video" ? "支持 mp4，最大 50MB。" : "支持 jpg、jpeg、png、webp，最大 10MB。可新增、删除、排序。"}</div>
+        <div class="media-list">${list.map((url, index) => mediaRow(key, url, index, kind, accept)).join("")}</div>
+        <button class="media-add" data-action="add-media" data-key="${key}" data-kind="${kind}">新增${kind === "video" ? "视频" : "图片"}</button>
+      </div>`
+    }
+    function mediaRow(key, url, index, kind, accept) {
+      const preview = kind === "video"
+        ? `<video class="media-thumb" src="${escapeHtml(url)}"></video>`
+        : `<img class="media-thumb" src="${escapeHtml(url)}" alt="">`
+      return `<div class="media-row" data-media-row="${index}">
+        ${preview}
+        <div>
+          <input data-media-url="${key}" value="${escapeHtml(url)}" placeholder="${kind === "video" ? "视频地址" : "图片地址"}">
+          <div class="media-tools">
+            <input type="file" accept="${accept}" data-media-upload="${key}" data-kind="${kind}">
+            <button data-action="media-up" data-key="${key}" data-index="${index}">上移</button>
+            <button data-action="media-down" data-key="${key}" data-index="${index}">下移</button>
+            <button data-action="media-remove" data-key="${key}" data-index="${index}">删除</button>
+          </div>
+        </div>
+      </div>`
+    }
+    function switchView(name) {
+      currentView = name
+      document.querySelectorAll(".nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.view === name))
+      document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`))
+      $("pageTitle").textContent = titles[name][0]
+      $("pageDesc").textContent = titles[name][1]
+      $("saveBtn").style.display = ["overview", "customers"].includes(name) ? "none" : "inline-block"
+    }
+    function switchSubview(name) {
+      const host = document.querySelector(`#view-${currentView}`)
+      if (!host) return
+      host.querySelectorAll(".center-tab").forEach(btn => btn.classList.toggle("active", btn.dataset.subview === name))
+      host.querySelectorAll(".subview").forEach(view => view.classList.toggle("active", view.id === `subview-${name}`))
+    }
+    function renderOverview(data) {
+      $("mProducts").textContent = data.products
+      $("mOrders").textContent = data.orders
+      $("mCustomers").textContent = data.customers
+      $("mAmount").textContent = `¥${data.orderAmount}`
+      $("mSales").textContent = `¥${data.salesAmount || data.orderAmount || "0"}`
+      $("mCost").textContent = `¥${data.productCost || "0"}`
+      $("mRefund").textContent = `¥${data.refundAmount || "0"}`
+      $("mRewardPaid").textContent = `¥${data.rewardPaid || "0"}`
+      $("mProfit").textContent = `¥${data.estimatedProfit || "0"}`
+      $("mInviteVisits").textContent = data.inviteVisits || 0
+      $("mInviteRegisters").textContent = data.inviteRegisters || 0
+      $("mInviteOrders").textContent = data.inviteOrders || 0
+      $("mInviteAmount").textContent = `¥${data.inviteAmount || "0"}`
+      $("mNewcomerUsed").textContent = data.newcomerUsed || 0
+      $("mNewcomerRate").textContent = `${data.newcomerConversionRate || "0"}%`
+      $("mOrderRecommendClicks").textContent = data.orderRecommendClicks || 0
+      $("mOrderRecommendConversions").textContent = data.orderRecommendConversions || 0
+      $("mOrderRecommendRate").textContent = `${data.orderRecommendRate || "0"}%`
+      $("mPending").textContent = data.pendingOrders
+      $("mUpdated").textContent = data.updatedAt ? String(data.updatedAt).slice(5, 16).replace("T", " ") : "-"
+    }
+    function renderEditableList(id, list, fields, prefix, removable = false) {
+      $(id).innerHTML = list.map((item, index) => `
+        <div class="item" data-index="${index}">
+          <div class="item-head">
+            <div>
+              <div class="item-title">${id === "homeBanners" ? ["Banner 1（首页轮播）", "Banner 2（首页轮播）", "Banner 3（首页轮播）", "Banner 4（我的页专属 Banner）", "Banner 5（帮助中心专属 Banner）"][index] || `${prefix} ${index + 1}` : `${prefix} ${index + 1}`}</div>
+              ${id === "homeBanners" && index >= 3 ? `<div class="muted">${index === 3 ? "展示在我的页面帮助中心下方" : "展示在帮助中心文章列表下方"}</div>` : ""}
+            </div>
+            ${removable ? `<button class="danger" data-action="remove-product" data-index="${index}">删除</button>` : ""}
+          </div>
+          <div class="form-grid">${fields.map(config => field(config.label, item[config.key], config.key, config.type, { listId: id, index, item })).join("")}</div>
+        </div>
+      `).join("")
+    }
+    function renderCategoryManager() {
+      const keyword = categorySearch.toLowerCase()
+      const source = categoryCatalog.filter(category => {
+        const text = `${category.name} ${(category.children || []).map(child => child.name).join(" ")}`.toLowerCase()
+        return !keyword || text.includes(keyword) || productNameHitsForCategory(category.name)
+      })
+      $("categoryManager").innerHTML = source.map(category => {
+        const originIndex = categoryCatalog.findIndex(item => item.id === category.id)
+        const collapsed = categorySearch ? false : collapsedCategories[category.id] === true || (Object.keys(collapsedCategories).length === 0 && originIndex > 0)
+        const primaryCount = productCountForCategory(category.name)
+        const children = (category.children || []).sort((a, b) => a.sort - b.sort).filter(child => {
+          if (!keyword) return true
+          return category.name.toLowerCase().includes(keyword) || child.name.toLowerCase().includes(keyword) || productNameHitsForSecond(category.name, child.name)
+        })
+        return `<div class="category-card" data-category-index="${originIndex}" data-category-id="${escapeHtml(category.id)}" draggable="true">
+          <div class="category-card-head">
+            <div class="drag-handle" title="拖动排序">⋮⋮</div>
+            <div>
+              <div class="category-name">${escapeHtml(category.name)}</div>
+              <div class="category-meta">排序 ${originIndex + 1}</div>
+            </div>
+            <div class="category-sort">排序 ${originIndex + 1}</div>
+            <span class="pill category-count">${primaryCount} 商品</span>
+            <div class="category-actions">
+              <button class="icon-btn dark" data-action="add-second-category" data-index="${originIndex}">+ 新增二级类目</button>
+              <button class="icon-btn" data-action="toggle-category" data-id="${escapeHtml(category.id)}">${collapsed ? "展开" : "收起"}</button>
+              <button class="icon-btn" data-action="edit-primary-category" data-index="${originIndex}">编辑</button>
+              <button class="icon-btn danger" data-action="remove-primary-category" data-index="${originIndex}">删除</button>
+            </div>
+          </div>
+          <div class="secondary-list ${collapsed ? "collapsed" : ""}">${children.map(child => {
+            const childIndex = category.children.findIndex(item => item.id === child.id)
+            const count = productCountForCategory(category.name, child.name)
+            return `<div class="secondary-row" data-second-index="${childIndex}" data-parent-index="${originIndex}" draggable="true">
+              <div class="drag-handle" title="拖动排序">⋮⋮</div>
+              <div class="secondary-name">${escapeHtml(child.name)} ${String(child.comingSoon) === "true" ? `<span class="mini-tag">即将上线</span>` : ""}</div>
+              <div>排序 ${childIndex + 1}</div>
+              <span class="pill">${count} 商品</span>
+              <div class="category-actions">
+                <button class="icon-btn" data-action="toggle-coming-soon" data-index="${originIndex}" data-second="${childIndex}">${String(child.comingSoon) === "true" ? "取消上线标签" : "即将上线"}</button>
+                <button class="icon-btn" data-action="edit-second-category" data-index="${originIndex}" data-second="${childIndex}">编辑</button>
+                <button class="icon-btn" data-action="move-second-up" data-index="${originIndex}" data-second="${childIndex}">上移</button>
+                <button class="icon-btn" data-action="move-second-down" data-index="${originIndex}" data-second="${childIndex}">下移</button>
+                <button class="icon-btn danger" data-action="remove-second-category" data-index="${originIndex}" data-second="${childIndex}">删除</button>
+              </div>
+            </div>`
+          }).join("") || `<div class="empty-secondary">暂无二级类目，点击右上角新增。</div>`}</div>
+        </div>`
+      }).join("") || `<div class="empty">暂无匹配类目</div>`
+    }
+    function renderActivities() {
+      $("activityManager").innerHTML = activities.map((activity, index) => `
+        <div class="activity-card" data-activity-index="${index}">
+          <div class="activity-card-head">
+            <div class="item-title">活动 ${index + 1} · ${escapeHtml(activity.title)}</div>
+            <button class="danger" data-action="remove-activity" data-index="${index}">删除</button>
+          </div>
+          <div class="form-grid">
+            ${field("活动名称", activity.title, "title")}
+            ${field("活动类型", activity.type, "type")}
+            ${field("活动海报", activity.posterUrl, "posterUrl")}
+            ${field("启用开关", activity.enabled, "enabled")}
+            ${field("开始时间", activity.startAt, "startAt")}
+            ${field("结束时间", activity.endAt, "endAt")}
+            ${field("跳转商品", activity.productId, "productId", "input", { id: activity.id, index })}
+            ${field("排序", activity.sort, "sort")}
+          </div>
+        </div>
+      `).join("") || `<div class="empty">暂无活动，点击右上角新增。</div>`
+    }
+    function renderHome() {
+      $("promoText").value = home.promoText || ""
+      $("contactPhone").value = home.contact?.phone || ""
+      $("contactWechat").value = home.contact?.wechat || ""
+      $("workWechatUrl").value = home.contact?.workWechatUrl || ""
+      home.banners = Array.isArray(home.banners) ? home.banners : []
+      while (home.banners.length < 5) {
+        const index = home.banners.length
+        home.banners.push({
+          tag: "",
+          title: "",
+          desc: "",
+          imageUrl: "",
+          targetType: "primary",
+          targetValue: categoryCatalog[0]?.name || ""
+        })
+      }
+      renderEditableList("homeBanners", home.banners || [], [
+        { label: "Banner图地址", key: "imageUrl" },
+        { label: "角标", key: "tag" },
+        { label: "主标题", key: "title" },
+        { label: "说明文字", key: "desc", type: "textarea" },
+        { label: "跳转类型", key: "targetType" },
+        { label: "跳转目标", key: "targetValue" }
+      ], "Banner")
+      const entries = home.homeEntries || []
+      while (entries.length < 4) entries.push({ name: `入口${entries.length + 1}`, desc: "", icon: "＋", imageUrl: "", targetType: "primary", targetValue: "", visible: "true", sort: String(entries.length + 1) })
+      home.homeEntries = entries.slice(0, 4)
+      renderEditableList("homeEntries", home.homeEntries, [
+        { label: "图标/图片", key: "imageUrl" },
+        { label: "图标文字", key: "icon" },
+        { label: "名称", key: "name" },
+        { label: "副标题", key: "desc", type: "textarea" },
+        { label: "跳转目标", key: "targetType" },
+        { label: "跳转值", key: "targetValue" },
+        { label: "是否显示", key: "visible" },
+        { label: "排序", key: "sort" }
+      ], "入口")
+      renderEditableList("homeProducts", home.products || [], [
+        { label: "商品图地址", key: "imageUrl" },
+        { label: "商品名称", key: "name" },
+        { label: "商品说明", key: "intro" },
+        { label: "价格", key: "price" },
+        { label: "标签", key: "badge" },
+        { label: "所属分类", key: "categories" }
+      ], "推荐商品")
+    }
+    function normalizeHelpArticles(value) {
+      return (Array.isArray(value) ? value : []).map((item, index) => ({
+        id: item.id || `HELP${Date.now()}${index}`,
+        title: item.title || "帮助文章",
+        summary: item.summary || "",
+        content: item.content || "",
+        imageUrl: item.imageUrl || "",
+        status: item.status === "off" ? "off" : "on",
+        sort: String(item.sort || index + 1)
+      })).sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0))
+    }
+    function renderHelpArticles() {
+      const articles = normalizeHelpArticles(settings.helpArticles)
+      settings.helpArticles = articles
+      $("helpArticles").innerHTML = articles.map((item, index) => `
+        <div class="item" data-help-index="${index}">
+          <div class="item-head">
+            <div>
+              <div class="item-title">${escapeHtml(item.title || `文章 ${index + 1}`)}</div>
+              <div class="muted">排序 ${escapeHtml(item.sort)} · ${item.status === "off" ? "已下架" : "已上架"}</div>
+            </div>
+            <button class="danger" data-action="remove-help-article" data-index="${index}">删除</button>
+          </div>
+          <div class="form-grid">
+            <label>标题<input data-help-key="title" value="${escapeHtml(item.title)}"></label>
+            <label>摘要<input data-help-key="summary" value="${escapeHtml(item.summary)}"></label>
+            <label>图片
+              <div class="upload-row">
+                <input data-help-key="imageUrl" value="${escapeHtml(item.imageUrl)}">
+                <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-help-upload="imageUrl">
+              </div>
+              <img class="image-preview ${item.imageUrl ? "show" : ""}" src="${escapeHtml(item.imageUrl)}" alt="图片预览">
+            </label>
+            <label>状态<select data-help-key="status">
+              <option value="on" ${item.status !== "off" ? "selected" : ""}>上架</option>
+              <option value="off" ${item.status === "off" ? "selected" : ""}>下架</option>
+            </select></label>
+            <label>排序<input data-help-key="sort" value="${escapeHtml(item.sort)}"></label>
+            <label>富文本内容<textarea data-help-key="content" placeholder="可填写文字或简单HTML，如<p>内容</p>">${escapeHtml(item.content)}</textarea></label>
+          </div>
+        </div>
+      `).join("") || `<div class="empty">暂无帮助文章，点击右上角新增。</div>`
+    }
+    function collectHelpArticles() {
+      const next = []
+      document.querySelectorAll("[data-help-index]").forEach(row => {
+        const index = Number(row.dataset.helpIndex)
+        const item = { ...(settings.helpArticles[index] || {}) }
+        row.querySelectorAll("[data-help-key]").forEach(input => {
+          item[input.dataset.helpKey] = input.value
+        })
+        next.push(item)
+      })
+      settings.helpArticles = normalizeHelpArticles(next)
+    }
+    function renderProducts() {
+      renderProductFilters()
+      const filtered = getFilteredProducts()
+      $("productEditor").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
+        <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>操作按钮</th></tr></thead>
+        <tbody>${filtered.map(({ item, index }) => `
+          <tr class="${selectedProducts.has(index) ? "selected" : ""}">
+            <td><input class="product-select" type="checkbox" data-select-product="${index}" ${selectedProducts.has(index) ? "checked" : ""}></td>
+            <td><img class="table-image" src="${escapeHtml(item.imageUrl || "")}" alt=""></td>
+            <td><div class="table-title">${escapeHtml(item.name || "未命名商品")}</div><div class="table-sub">${escapeHtml(item.intro || item.id || "")}</div></td>
+            <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
+            <td><strong>${formatMoney(item.price)}</strong></td>
+            <td><span class="pill">${productStatusText(item.status)}</span></td>
+            <td><div class="table-actions"><button class="secondary" data-action="edit-product" data-index="${index}">编辑</button><button class="danger" data-action="remove-product" data-index="${index}">删除</button></div></td>
+          </tr>`).join("")}</tbody>
+      </table></div>`
+      updateSelectedProductCount()
+    }
+    function renderProductFilters() {
+      if (!$("productCategoryFilter")) return
+      $("productSearch").value = productFilters.keyword
+      $("productStatusFilter").value = productFilters.status
+      $("productHotFilter").value = productFilters.hot
+      $("productCategoryFilter").innerHTML = `<option value="">全部类目</option>${categoryOptions.map(category => `<option value="${category}" ${productFilters.category === category ? "selected" : ""}>${category}</option>`).join("")}`
+      $("selectAllProducts").checked = getFilteredProducts().length > 0 && getFilteredProducts().every(({ index }) => selectedProducts.has(index))
+      document.querySelectorAll("[data-product-status]").forEach(btn => btn.classList.toggle("active", btn.dataset.productStatus === productFilters.status))
+    }
+    function getFilteredProducts() {
+      const keyword = productFilters.keyword.toLowerCase()
+      return products.map((item, index) => ({ item, index })).filter(({ item }) => {
+        const categories = Array.isArray(item.categories) ? item.categories : []
+        const keywordOk = !keyword || [item.name, item.intro, item.id].some(value => String(value || "").toLowerCase().includes(keyword))
+        const categoryOk = !productFilters.category || categories.includes(productFilters.category)
+        const statusOk = !productFilters.status || (item.status || "on") === productFilters.status
+        const hotOk = !productFilters.hot || String(item.isHot || "false") === productFilters.hot
+        return keywordOk && categoryOk && statusOk && hotOk
+      })
+    }
+    function getFilteredOrders(source = allOrders) {
+      const keyword = String(orderFilters.keyword || "").toLowerCase()
+      return (source || []).filter(order => {
+        const keywordOk = !keyword || [order.id, order.customerName, order.phone, order.productName].some(value => String(value || "").toLowerCase().includes(keyword))
+        const statusOk = !orderFilters.status || order.status === orderFilters.status
+        return keywordOk && statusOk
+      })
+    }
+    function updateSelectedProductCount() {
+      if ($("selectedProductCount")) $("selectedProductCount").textContent = `已选 ${selectedProducts.size} 个商品`
+    }
+    function selectedProductIndexes() {
+      return Array.from(selectedProducts).filter(index => products[index])
+    }
+    function saveProductsAndRefresh(message) {
+      setStatus("保存中...")
+      return api("/api/admin/products", "PUT", products).then(() => loadAll()).then(() => setStatus(message || "已保存发布"))
+    }
+    function openBulkCategory(mode) {
+      const count = selectedProductIndexes().length
+      if (!count) {
+        setStatus("请先勾选商品")
+        return
+      }
+      $("bulkCategoryMode").value = mode
+      $("bulkModalTitle").textContent = mode === "replace" ? "批量移动类目" : mode === "append" ? "批量添加类目" : "批量删除类目"
+      $("bulkPrimaryCategory").innerHTML = Object.keys(categoryTree).map(primary => `<option value="${primary}">${primary}</option>`).join("")
+      renderBulkSecondCategories()
+      $("bulkCategoryModal").classList.add("show")
+    }
+    function renderBulkSecondCategories() {
+      const primary = $("bulkPrimaryCategory").value
+      $("bulkSecondCategories").innerHTML = (categoryTree[primary] || []).map(second => `<option value="${primary}/${second}">${second}</option>`).join("")
+    }
+    function applyBulkCategories() {
+      const indexes = selectedProductIndexes()
+      const mode = $("bulkCategoryMode").value
+      const primary = $("bulkPrimaryCategory").value
+      const seconds = Array.from($("bulkSecondCategories").selectedOptions).map(option => option.value)
+      const selectedCategories = [primary, ...seconds]
+      if (!selectedCategories.length || !confirm(`确认对 ${indexes.length} 个商品执行类目操作？`)) return
+      indexes.forEach(index => {
+        const current = Array.isArray(products[index].categories) ? products[index].categories : []
+        if (mode === "replace") products[index].categories = selectedCategories
+        if (mode === "append") products[index].categories = Array.from(new Set([...current, ...selectedCategories]))
+        if (mode === "remove") products[index].categories = current.filter(category => !selectedCategories.includes(category))
+      })
+      $("bulkCategoryModal").classList.remove("show")
+      saveProductsAndRefresh("批量类目已生效").catch(error => setStatus(error.message))
+    }
+    function applyBulkStatus(status) {
+      const indexes = selectedProductIndexes()
+      if (!indexes.length) return setStatus("请先勾选商品")
+      if (!confirm(`确认批量${status === "off" ? "下架" : "上架"} ${indexes.length} 个商品？`)) return
+      indexes.forEach(index => { products[index].status = status })
+      saveProductsAndRefresh(status === "off" ? "已批量下架" : "已批量上架").catch(error => setStatus(error.message))
+    }
+    function applyBulkDelete() {
+      const indexes = selectedProductIndexes().sort((a, b) => b - a)
+      if (!indexes.length) return setStatus("请先勾选商品")
+      if (!confirm(`确认删除 ${indexes.length} 个商品？此操作不可恢复。`)) return
+      indexes.forEach(index => products.splice(index, 1))
+      selectedProducts.clear()
+      saveProductsAndRefresh("已批量删除商品").catch(error => setStatus(error.message))
+    }
+    function openProductDrawer(index) {
+      const item = products[index]
+      if (!item) return
+      drawerMode = "product"
+      drawerIndex = index
+      $("drawerTitle").textContent = "商品详情编辑"
+      $("drawerDesc").textContent = item.name || "维护图片、描述、标签、分类、库存和上下架。"
+      $("drawerBody").innerHTML = `
+        <div class="drawer-tabs">
+          <button class="drawer-tab active" data-drawer-tab="base">基础信息</button>
+          <button class="drawer-tab" data-drawer-tab="media">图片视频</button>
+          <button class="drawer-tab" data-drawer-tab="detail">详情装修</button>
+          <button class="drawer-tab" data-drawer-tab="price">价格库存</button>
+          <button class="drawer-tab" data-drawer-tab="reward">推广佣金</button>
+        </div>
+        <div class="drawer-pane active" data-drawer-pane="base">
+          <div class="drawer-section"><h4>基础信息</h4><div class="form-grid">
+            ${field("商品名称", item.name, "name")}
+            ${field("商品说明", item.intro, "intro", "textarea")}
+            ${field("上架状态", item.status, "status")}
+            ${field("标签", item.badge, "badge")}
+            ${field("所属分类", item.categories, "categories")}
+          </div></div>
+        </div>
+        <div class="drawer-pane" data-drawer-pane="media">
+          <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
+          ${mediaManager("商品轮播图", "galleryImages", item.galleryImages, "image")}
+          ${mediaManager("商品视频（可选）", "videoUrl", item.videoUrl ? [item.videoUrl] : [], "video")}
+        </div>
+        <div class="drawer-pane" data-drawer-pane="detail">
+          <div class="drawer-section"><h4>详情文字</h4><div class="form-grid">${field("详情文字说明", item.detailText, "detailText", "textarea")}</div></div>
+          ${mediaManager("商品详情图", "detailImages", item.detailImages, "image")}
+        </div>
+        <div class="drawer-pane" data-drawer-pane="price">
+          <div class="drawer-section"><h4>价格库存</h4><div class="form-grid">
+            ${field("价格", item.price, "price")}
+            ${field("成本价", item.costPrice, "costPrice")}
+            ${field("库存", item.stock, "stock")}
+          </div></div>
+        </div>
+        <div class="drawer-pane" data-drawer-pane="reward">
+          <div class="drawer-section"><h4>推广佣金</h4><div class="form-grid">
+            ${field("是否开启AI预览", item.aiPreviewEnabled, "aiPreviewEnabled", "select")}
+            ${field("预览模板类型", item.aiPreviewType, "aiPreviewType", "select")}
+            ${field("是否加入首页热门推荐", item.isHot, "isHot", "select")}
+            ${field("是否加入推广页热门推荐", item.promotionHot, "promotionHot", "select")}
+            ${field("是否参与推广奖励", item.rewardEnabled, "rewardEnabled", "select")}
+            ${field("一级奖励金额", item.firstReward, "firstReward")}
+            ${field("二级奖励金额", item.secondReward, "secondReward")}
+          </div></div>
+        </div>
+      `
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-product-drawer">保存商品</button>`
+      $("detailDrawer").classList.add("show")
+    }
+    function collectProductDrawer() {
+      if (drawerMode !== "product" || !products[drawerIndex]) return
+      const target = products[drawerIndex]
+      $("drawerBody").querySelectorAll("[data-key]").forEach(input => {
+        target[input.dataset.key] = input.value
+      })
+      $("drawerBody").querySelectorAll(".badge-options").forEach(group => {
+        const checked = group.querySelector("input:checked")
+        target[group.dataset.key] = checked ? checked.value : "none"
+      })
+      $("drawerBody").querySelectorAll(".category-options").forEach(group => {
+        target[group.dataset.key] = Array.from(group.querySelectorAll("input:checked")).map(input => input.value)
+      })
+      $("drawerBody").querySelectorAll("[data-media-manager]").forEach(manager => {
+        const key = manager.dataset.mediaManager
+        const values = Array.from(manager.querySelectorAll("[data-media-url]")).map(input => input.value.trim()).filter(Boolean)
+        if (key === "videoUrl") target[key] = values[0] || ""
+        else target[key] = values
+      })
+    }
+    function saveProductDrawer() {
+      collectProductDrawer()
+      saveProductsAndRefresh("商品已保存")
+        .then(closeDrawer)
+        .catch(error => setStatus(error.message))
+    }
+    function openOrderDrawer(index) {
+      const order = orders[index]
+      if (!order) return
+      const originalImages = normalizeMediaList(order.originalImageUrls || order.originalImageUrl)
+      drawerMode = "order"
+      drawerIndex = index
+      $("drawerTitle").textContent = "订单详情"
+      $("drawerDesc").textContent = `${order.id || ""} · ${order.customerName || ""}`
+      $("drawerBody").innerHTML = `
+        <div class="drawer-section"><h4>订单信息</h4><div class="form-grid">
+          <label>订单号<input value="${escapeHtml(order.id)}" disabled></label>
+          <label>商品名称<input data-order-key="productName" value="${escapeHtml(order.productName)}"></label>
+          <label>金额<input data-order-key="amount" value="${escapeHtml(order.amount)}"></label>
+          <label>支付状态<input data-order-key="paymentStatus" value="${escapeHtml(order.paymentStatus || "待支付")}"></label>
+          <label>发货状态<select data-order-key="status">
+            ${["待支付", "待发货", "制作中", "已发货", "已完成", "退款中", "已退款"].map(status => `<option ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select></label>
+          <label>下单时间<input data-order-key="createdAt" value="${escapeHtml(order.createdAt)}"></label>
+        </div></div>
+        <div class="drawer-section"><h4>客户与地址</h4><div class="form-grid">
+          <label>客户<input data-order-key="customerName" value="${escapeHtml(order.customerName)}"></label>
+          <label>电话<input data-order-key="phone" value="${escapeHtml(order.phone)}"></label>
+          <label>收货地址<textarea data-order-key="address">${escapeHtml(order.address)}</textarea></label>
+          <label>定制要求<textarea data-order-key="customRequest">${escapeHtml(order.customRequest || order.remark || "")}</textarea></label>
+        </div></div>
+        <div class="drawer-section"><h4>定制预览稿</h4>
+          <div class="form-grid">
+            <label>所属类目<input data-order-key="category" value="${escapeHtml(order.category || "")}"></label>
+            <label>自由定制单<select data-order-key="isCustomOrder">
+              <option value="false" ${String(order.isCustomOrder) === "true" ? "" : "selected"}>否</option>
+              <option value="true" ${String(order.isCustomOrder) === "true" ? "selected" : ""}>是</option>
+            </select></label>
+            <label>客户原图<input data-order-key="originalImageUrl" value="${escapeHtml(order.originalImageUrl || "")}"></label>
+            <label>AI预览图<input data-order-key="aiPreviewUrl" value="${escapeHtml(order.aiPreviewUrl || "")}"></label>
+            <label>最终确认稿<input data-order-key="finalDesignUrl" value="${escapeHtml(order.finalDesignUrl || "")}"></label>
+          </div>
+          <div class="media-list" style="margin-top:12px">
+            ${originalImages.map((url, imageIndex) => `<div class="media-row"><img class="media-thumb" src="${escapeHtml(url)}" alt=""><div><strong>客户原图 ${imageIndex + 1}</strong><div class="muted">${escapeHtml(url)}</div></div></div>`).join("")}
+            ${order.aiPreviewUrl ? `<div class="media-row"><img class="media-thumb" src="${escapeHtml(order.aiPreviewUrl)}" alt=""><div><strong>AI预览图</strong><div class="muted">${escapeHtml(order.aiPreviewUrl)}</div></div></div>` : ""}
+            ${order.finalDesignUrl ? `<div class="media-row"><img class="media-thumb" src="${escapeHtml(order.finalDesignUrl)}" alt=""><div><strong>最终确认稿</strong><div class="muted">${escapeHtml(order.finalDesignUrl)}</div></div></div>` : ""}
+          </div>
+          <div class="toolbar" style="margin-top:12px">
+            <button class="secondary" data-action="regen-order-preview" data-index="${index}">重新生成</button>
+            <label class="secondary" style="height:40px;padding:0 16px;border-radius:999px;display:flex;align-items:center;cursor:pointer">人工修图替换<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-order-final-upload="${index}" style="display:none"></label>
+            <button class="secondary" data-action="send-design-confirm" data-index="${index}">发送客户确认</button>
+          </div>
+        </div>
+        <div class="drawer-section"><h4>物流信息</h4><div class="form-grid">
+          <label>快递公司<input data-order-key="shippingCompany" value="${escapeHtml(order.shippingCompany)}" placeholder="例如：顺丰速运"></label>
+          <label>快递单号<input data-order-key="trackingNumber" value="${escapeHtml(order.trackingNumber)}" placeholder="填写后可一键标记发货"></label>
+        </div><div class="toolbar" style="margin-top:12px"><button class="secondary" data-action="ship-order" data-index="${index}">一键标记已发货</button></div></div>
+        <div class="drawer-section"><h4>退款审核</h4><div class="form-grid">
+          <label>售后状态<input data-order-key="refundStatus" value="${escapeHtml(order.refundStatus || "无退款")}"></label>
+          <label>退款金额<input data-order-key="refundAmount" value="${escapeHtml(order.refundAmount || "")}"></label>
+          <label>退款原因<textarea data-order-key="refundReason">${escapeHtml(order.refundReason || "")}</textarea></label>
+          <label>备注<textarea data-order-key="remark">${escapeHtml(order.remark || "")}</textarea></label>
+        </div>
+        ${order.refundImageUrl ? `<p><a href="${escapeHtml(order.refundImageUrl)}" target="_blank">查看退款凭证</a></p>` : ""}
+        <div class="toolbar" style="margin-top:12px">
+          <button class="secondary" data-action="refund-approve" data-index="${index}">通过</button>
+          <button class="secondary" data-action="refund-partial" data-index="${index}">部分退款</button>
+          <button class="danger" data-action="refund-reject" data-index="${index}">拒绝</button>
+        </div></div>
+        <div class="drawer-section"><h4>奖励记录</h4>
+          <p class="muted">邀请码：${escapeHtml(order.inviterCode || "-")}</p>
+          <p class="muted">退款成功后系统会扣回一级奖励、二级奖励和购物金。</p>
+        </div>
+      `
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button><button class="primary" data-action="save-order-drawer">保存订单</button>`
+      $("detailDrawer").classList.add("show")
+    }
+    function collectOrderDrawer() {
+      if (drawerMode !== "order" || !orders[drawerIndex]) return
+      const target = orders[drawerIndex]
+      $("drawerBody").querySelectorAll("[data-order-key]").forEach(input => {
+        target[input.dataset.orderKey] = input.value
+      })
+      $("drawerBody").querySelectorAll("[data-key]").forEach(input => {
+        target[input.dataset.key] = input.value
+      })
+    }
+    function saveOrderDrawer() {
+      collectOrderDrawer()
+      setStatus("保存中...")
+      api("/api/admin/orders", "PUT", allOrders)
+        .then(() => loadAll())
+        .then(() => {
+          setStatus("订单已保存")
+          closeDrawer()
+        })
+        .catch(error => setStatus(error.message))
+    }
+    function orderStageCount(status) {
+      if (status === "售后中") return allOrders.filter(order => order.status === "退款中" || order.refundStatus === "待审核").length
+      return allOrders.filter(order => order.status === status || order.paymentStatus === status).length
+    }
+    function renderOrderWorkbench() {
+      const stages = [
+        ["待支付", "待付款"],
+        ["待确认", "待确认"],
+        ["待设计", "待设计"],
+        ["待发货", "待发货"],
+        ["售后中", "售后中"],
+        ["已完成", "已完成"]
+      ]
+      $("orderWorkbench").innerHTML = stages.map(([status, label]) => `
+        <div class="order-stage ${orderFilters.status === status || (status === "售后中" && orderFilters.status === "退款中") ? "active" : ""}" data-order-stage="${status}">
+          <div class="stage-label">${label}</div>
+          <div class="stage-value">${orderStageCount(status)}</div>
+        </div>
+      `).join("")
+    }
+    function renderOrders() {
+      document.querySelectorAll("[data-order-status]").forEach(btn => btn.classList.toggle("active", btn.dataset.orderStatus === orderFilters.status))
+      $("orderKeyword").value = orderFilters.keyword || ""
+      $("orderStatusFilter").value = orderFilters.status || ""
+      renderOrderWorkbench()
+      $("ordersTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox"></th><th>订单号</th><th>客户</th><th>金额</th><th>支付状态</th><th>发货状态</th><th>售后状态</th><th>时间</th><th>操作按钮</th></tr></thead><tbody>${orders.map((order, index) => `
+        <tr>
+          <td><input type="checkbox"></td>
+          <td><div class="table-title">${escapeHtml(order.id)}</div><div class="table-sub">${escapeHtml(order.productName)}</div></td>
+          <td>${escapeHtml(order.customerName)}<div class="muted">${escapeHtml(order.phone)}</div></td>
+          <td><strong>${formatMoney(order.amount)}</strong></td>
+          <td><span class="pill">${escapeHtml(order.paymentStatus || "待支付")}</span></td>
+          <td><span class="pill">${escapeHtml(order.status || "待发货")}</span></td>
+          <td><span class="pill">${escapeHtml(order.refundStatus || "无售后")}</span></td>
+          <td>${escapeHtml(order.createdAt || "")}</td>
+          <td><div class="table-actions"><button class="secondary" data-action="view-order" data-index="${index}">查看详情</button></div></td>
+        </tr>`).join("")}</tbody></table></div>`
+    }
+    function renderCustomers() {
+      $("customersTable").innerHTML = `<table><thead><tr><th>客户</th><th>电话</th><th>邀请码</th><th>微信</th><th>订单数</th><th>累计消费</th><th>购物金</th></tr></thead><tbody>${customers.map(customer => `
+        <tr><td>${escapeHtml(customer.name)}</td><td>${escapeHtml(customer.phone)}</td><td><span class="pill">${escapeHtml(customer.inviteCode)}</span></td><td>${escapeHtml(customer.wechat)}</td><td>${customer.orders}</td><td>¥${escapeHtml(customer.totalAmount)}</td><td>¥${escapeHtml(customer.shoppingMoney || "0")}</td></tr>`).join("")}</tbody></table>`
+    }
+    function renderRelations() {
+      $("relationsTable").innerHTML = `<table><thead><tr><th>邀请人</th><th>被邀请人</th><th>邀请码</th><th>层级</th><th>建立时间</th></tr></thead><tbody>${relations.map((relation, index) => `
+        <tr>
+          <td><input data-relation="${index}" data-key="inviterName" value="${escapeHtml(relation.inviterName)}"><div class="muted">${escapeHtml(relation.inviterPhone)}</div></td>
+          <td><input data-relation="${index}" data-key="inviteeName" value="${escapeHtml(relation.inviteeName)}"><div class="muted">${escapeHtml(relation.inviteePhone)}</div></td>
+          <td><span class="pill">${escapeHtml(relation.inviterCode)}</span></td>
+          <td>${Number(relation.level || 1)}级</td>
+          <td>${escapeHtml(relation.createdAt)}</td>
+        </tr>`).join("")}</tbody></table>`
+    }
+    function renderRewards() {
+      $("rewardsTable").innerHTML = `<table><thead><tr><th>订单号</th><th>商品</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>发放时间</th></tr></thead><tbody>${rewards.map(record => `
+        <tr>
+          <td>${escapeHtml(record.orderId)}</td>
+          <td>${escapeHtml(record.productName)}</td>
+          <td>${escapeHtml(record.promoterName)}<div class="muted">${escapeHtml(record.promoterPhone)}</div></td>
+          <td>${escapeHtml(record.buyerPhone)}</td>
+          <td>${record.level === 2 ? "二级" : "一级"}</td>
+          <td>¥${escapeHtml(record.amount)}</td>
+          <td><span class="pill">${escapeHtml(record.status)}</span></td>
+          <td>${escapeHtml(record.releaseAt || "订单完成7天后")}</td>
+        </tr>`).join("")}</tbody></table>`
+    }
+    function renderSettings() {
+      $("storeName").value = settings.storeName || ""
+      $("adminName").value = settings.adminName || "非常智造管理后台"
+      $("servicePhone").value = settings.servicePhone || ""
+      $("serviceWechat").value = settings.serviceWechat || ""
+      $("workWechatId").value = settings.workWechatId || ""
+      $("settingsWorkWechatUrl").value = settings.workWechatUrl || ""
+      $("showWorkWechat").value = String(settings.showWorkWechat == null ? "true" : settings.showWorkWechat)
+      $("showPhone").value = String(settings.showPhone == null ? "true" : settings.showPhone)
+      $("showWechat").value = String(settings.showWechat == null ? "true" : settings.showWechat)
+      $("deliveryPromise").value = settings.deliveryPromise || ""
+      $("newcomerBenefitsEnabled").value = String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled)
+      const benefits = normalizeSettingsBenefits(settings.newcomerBenefits)
+      $("newcomerBenefits").innerHTML = benefits.map((item, index) => `
+        <div class="benefit-row" data-benefit-index="${index}">
+          <label class="checkline"><input type="checkbox" data-benefit-enabled ${String(item.enabled) !== "false" ? "checked" : ""}> 启用</label>
+          <input data-benefit-text value="${escapeHtml(item.text)}" placeholder="福利文案">
+          <input data-benefit-sort value="${escapeHtml(item.sort)}" placeholder="排序">
+        </div>
+      `).join("")
+    }
+    function normalizeSettingsBenefits(value) {
+      const defaults = [
+        { text: "赠精美礼盒包装", enabled: true, sort: 1 },
+        { text: "免费刻字", enabled: true, sort: 2 },
+        { text: "免运费", enabled: false, sort: 3 },
+        { text: "赠设计稿修改1次", enabled: true, sort: 4 },
+        { text: "送小礼品", enabled: false, sort: 5 },
+        { text: "自定义文案", enabled: false, sort: 6 }
+      ]
+      return (Array.isArray(value) && value.length ? value : defaults).map((item, index) => ({
+        text: item.text || "",
+        enabled: String(item.enabled == null ? "true" : item.enabled) !== "false",
+        sort: item.sort || index + 1
+      }))
+    }
+    function collectSettingsBenefits() {
+      return Array.from(document.querySelectorAll("#newcomerBenefits .benefit-row")).map((row, index) => ({
+        text: row.querySelector("[data-benefit-text]").value.trim(),
+        enabled: row.querySelector("[data-benefit-enabled]").checked,
+        sort: Number(row.querySelector("[data-benefit-sort]").value || index + 1)
+      })).filter(item => item.text)
+    }
+    function collectCategoryManager() {
+      document.querySelectorAll("#categoryManager [data-category-index]").forEach(card => {
+        const index = Number(card.dataset.categoryIndex)
+        if (!categoryCatalog[index]) return
+        card.querySelectorAll("[data-category-field]").forEach(input => {
+          categoryCatalog[index][input.dataset.categoryField] = input.dataset.categoryField === "sort" ? Number(input.value || 0) : input.value.trim()
+        })
+        card.querySelectorAll("[data-second-index]").forEach(row => {
+          const secondIndex = Number(row.dataset.secondIndex)
+          if (!categoryCatalog[index].children[secondIndex]) return
+          row.querySelectorAll("[data-second-field]").forEach(input => {
+            categoryCatalog[index].children[secondIndex][input.dataset.secondField] = input.dataset.secondField === "sort" ? Number(input.value || 0) : input.value.trim()
+          })
+        })
+      })
+      categoryCatalog = categoryCatalog
+        .filter(category => category.name)
+        .map((category, index) => ({
+          ...category,
+          sort: Number(category.sort || index + 1),
+          children: (category.children || []).filter(child => child.name).map((child, childIndex) => ({ ...child, sort: Number(child.sort || childIndex + 1), comingSoon: String(child.comingSoon == null ? "false" : child.comingSoon) }))
+        }))
+      settings.categoryCatalog = categoryCatalog
+      rebuildCategoryOptions()
+    }
+    function collectActivities() {
+      document.querySelectorAll("#activityManager [data-activity-index]").forEach(card => {
+        const index = Number(card.dataset.activityIndex)
+        if (!activities[index]) return
+        card.querySelectorAll("[data-key]").forEach(input => {
+          activities[index][input.dataset.key] = input.value
+        })
+      })
+      activities = normalizeActivities(activities)
+      settings.activities = activities
+    }
+    function collectList(id, target) {
+      document.querySelectorAll(`#${id} .item`).forEach(item => {
+        const index = Number(item.dataset.index)
+        item.querySelectorAll("[data-key]").forEach(input => {
+          target[index][input.dataset.key] = input.value
+        })
+        item.querySelectorAll(".badge-options").forEach(group => {
+          const checked = group.querySelector("input:checked")
+          target[index][group.dataset.key] = checked ? checked.value : "none"
+        })
+        item.querySelectorAll(".category-options").forEach(group => {
+          target[index][group.dataset.key] = Array.from(group.querySelectorAll("input:checked")).map(input => input.value)
+        })
+      })
+    }
+    async function loadAll() {
+      setStatus("正在读取...")
+      const [overview, homeData, productData, orderData, customerData, settingData, themeData] = await Promise.all([
+        api("/api/admin/overview"),
+        api("/api/home"),
+        api("/api/admin/products"),
+        api("/api/admin/orders"),
+        api("/api/admin/customers"),
+        api("/api/admin/settings"),
+        api("/api/admin/themes")
+      ])
+      const [relationData, rewardData] = await Promise.all([
+        api("/api/admin/promotion-relations"),
+        api("/api/admin/reward-records")
+      ])
+      home = homeData
+      products = productData
+      allOrders = orderData
+      orders = getFilteredOrders(orderData)
+      customers = customerData
+      relations = relationData
+      rewards = rewardData
+      settings = settingData
+      themeState = themeData || { activeThemeSkin: settings.activeThemeSkin || "skin01", themes: settings.themes || [] }
+      if (!editingThemeSkin) editingThemeSkin = themeState.activeThemeSkin
+      rebuildCategoryOptions()
+      renderOverview(overview)
+      renderHome()
+      renderHelpArticles()
+      renderProducts()
+      renderCategoryManager()
+      renderOrders()
+      renderCustomers()
+      renderRelations()
+      renderRewards()
+      renderActivities()
+      renderThemes()
+      renderSettings()
+      setStatus("已同步")
+    }
+    async function saveCurrent() {
+      setStatus("保存中...")
+      if (currentView === "home") {
+        home.promoText = $("promoText").value
+        home.contact = { phone: $("contactPhone").value, wechat: $("contactWechat").value, workWechatUrl: $("workWechatUrl").value }
+        collectList("homeBanners", home.banners)
+        collectList("homeEntries", home.homeEntries)
+        collectList("homeProducts", home.products)
+        await api("/api/home", "PUT", home)
+        collectHelpArticles()
+        await api("/api/admin/settings", "PUT", { ...settings, helpArticles: settings.helpArticles })
+      }
+      if (currentView === "products") {
+        collectCategoryManager()
+        await api("/api/admin/settings", "PUT", { ...settings, categoryCatalog })
+        collectProductDrawer()
+        await api("/api/admin/products", "PUT", products)
+        selectedProducts.clear()
+      }
+      if (currentView === "orders") {
+        collectOrderDrawer()
+        document.querySelectorAll("select[data-order-status]").forEach(select => {
+          orders[Number(select.dataset.orderStatus)].status = select.value
+        })
+        document.querySelectorAll("[data-order-field]").forEach(input => {
+          orders[Number(input.dataset.orderField)][input.dataset.key] = input.value
+        })
+        await api("/api/admin/orders", "PUT", allOrders)
+      }
+      if (currentView === "relations") {
+        document.querySelectorAll("[data-relation]").forEach(input => {
+          relations[Number(input.dataset.relation)][input.dataset.key] = input.value
+        })
+        await api("/api/admin/promotion-relations", "PUT", relations)
+      }
+      if (currentView === "marketing") {
+        collectActivities()
+        document.querySelectorAll("[data-relation]").forEach(input => {
+          relations[Number(input.dataset.relation)][input.dataset.key] = input.value
+        })
+        await api("/api/admin/settings", "PUT", { ...settings, activities })
+        await api("/api/admin/promotion-relations", "PUT", relations)
+      }
+      if (currentView === "theme") {
+        collectThemeEditor()
+        const theme = currentEditingTheme()
+        themeState = await api(`/api/admin/themes/${encodeURIComponent(themeId(theme))}`, "PUT", theme)
+        renderThemes()
+        setStatus("皮肤已保存，启用后小程序将读取最新皮肤。")
+        return
+      }
+      if (currentView === "settings") {
+        settings = {
+          ...settings,
+          storeName: $("storeName").value,
+          adminName: $("adminName").value,
+          servicePhone: $("servicePhone").value,
+          serviceWechat: $("serviceWechat").value,
+          workWechatId: $("workWechatId").value,
+          workWechatUrl: $("settingsWorkWechatUrl").value,
+          showWorkWechat: $("showWorkWechat").value,
+          showPhone: $("showPhone").value,
+          showWechat: $("showWechat").value,
+          deliveryPromise: $("deliveryPromise").value,
+          newcomerBenefitsEnabled: $("newcomerBenefitsEnabled").value,
+          newcomerBenefits: collectSettingsBenefits(),
+          helpArticles: settings.helpArticles,
+          categoryCatalog,
+          activities
+        }
+        await api("/api/admin/settings", "PUT", settings)
+      }
+      await loadAll()
+      setStatus("已保存发布")
+    }
+
+    $("nav").addEventListener("click", event => {
+      if (event.target.dataset.view) switchView(event.target.dataset.view)
+    })
+    document.body.addEventListener("click", event => {
+      if (event.target.dataset.subview) switchSubview(event.target.dataset.subview)
+    })
+    $("reloadBtn").addEventListener("click", () => loadAll().catch(error => setStatus(error.message)))
+    $("saveBtn").addEventListener("click", () => saveCurrent().catch(error => setStatus(error.message)))
+    $("closeDrawer").addEventListener("click", closeDrawer)
+    $("detailDrawer").addEventListener("click", event => {
+      if (event.target.id === "detailDrawer") closeDrawer()
+    })
+    $("addProductBtn").addEventListener("click", () => {
+      products.unshift({ id: `P${Date.now()}`, name: "新商品", intro: "", price: "0", costPrice: "0", badge: "new", cover: "keyring", imageUrl: "", galleryImages: [], videoUrl: "", detailImages: [], detailText: "", categories: ["潮玩手办/名字礼物"], status: "on", stock: "0", isHot: "false", promotionHot: "false", aiPreviewEnabled: "false", aiPreviewType: "gift", rewardEnabled: "true", firstReward: "0", secondReward: "0" })
+      renderProducts()
+      openProductDrawer(0)
+    })
+    $("addPrimaryCategoryBtn").addEventListener("click", () => {
+      openCategoryModal("add-primary", -1)
+    })
+    $("searchCategoryBtn").addEventListener("click", () => {
+      collectCategoryManager()
+      categorySearch = $("categorySearch").value.trim()
+      renderCategoryManager()
+    })
+    $("resetCategoryBtn").addEventListener("click", () => {
+      categorySearch = ""
+      $("categorySearch").value = ""
+      renderCategoryManager()
+    })
+    $("addActivityBtn").addEventListener("click", () => {
+      collectActivities()
+      activities.unshift({ id: `ACT${Date.now()}`, title: "新活动", type: "活动海报", posterUrl: "", enabled: "true", startAt: "", endAt: "", productId: "", sort: "1" })
+      settings.activities = activities
+      renderActivities()
+      setStatus("已新增活动，记得保存营销中心")
+    })
+    $("addThemeBtn").addEventListener("click", () => {
+      collectThemeEditor()
+      const skin = `skin-custom-${Date.now()}`
+      themeState.themes.push(normalizeThemeClient({
+        skinId: skin,
+        skin,
+        name: "新皮肤",
+        description: "可编辑主色、按钮渐变、Banner和圆角。",
+        createdAt: new Date().toISOString().slice(0, 16).replace("T", " ")
+      }, themeState.themes.length))
+      editingThemeSkin = skin
+      renderThemes()
+      setStatus("已新增皮肤，编辑后点击保存当前页")
+    })
+    $("testThemeApiBtn").addEventListener("click", () => {
+      api(`/api/theme/current?t=${Date.now()}`).then(theme => {
+        $("themeApiResult").style.display = "block"
+        $("themeApiResult").textContent = JSON.stringify(theme, null, 2)
+        setStatus(`当前主题接口返回：${theme.skinId || theme.skin} v${theme.version || 1}`)
+      }).catch(error => setStatus(error.message))
+    })
+    $("filterProductsBtn").addEventListener("click", () => {
+      productFilters = { keyword: $("productSearch").value.trim(), category: $("productCategoryFilter").value, status: $("productStatusFilter").value, hot: $("productHotFilter").value }
+      renderProducts()
+    })
+    $("previewProductImportBtn").addEventListener("click", previewProductImport)
+    $("confirmProductImportBtn").addEventListener("click", confirmProductImport)
+    $("resetProductsBtn").addEventListener("click", () => {
+      productFilters = { keyword: "", category: "", status: "", hot: "" }
+      selectedProducts.clear()
+      renderProducts()
+    })
+    $("selectAllProducts").addEventListener("change", event => {
+      getFilteredProducts().forEach(({ index }) => {
+        if (event.target.checked) selectedProducts.add(index)
+        else selectedProducts.delete(index)
+      })
+      renderProducts()
+    })
+    $("bulkPrimaryCategory").addEventListener("change", renderBulkSecondCategories)
+    $("cancelBulkCategory").addEventListener("click", () => $("bulkCategoryModal").classList.remove("show"))
+    $("confirmBulkCategory").addEventListener("click", applyBulkCategories)
+    $("cancelCategoryModal").addEventListener("click", closeCategoryModal)
+    $("confirmCategoryModal").addEventListener("click", confirmCategoryModal)
+    $("categoryModalName").addEventListener("keydown", event => {
+      if (event.key === "Enter") confirmCategoryModal()
+    })
+    $("searchOrderBtn").addEventListener("click", () => {
+      orderFilters = { keyword: $("orderKeyword").value.trim(), status: $("orderStatusFilter").value }
+      loadAll().catch(error => setStatus(error.message))
+    })
+    document.body.addEventListener("click", event => {
+      if (event.target.dataset.productStatus != null) {
+        productFilters.status = event.target.dataset.productStatus
+        renderProducts()
+      }
+      if (event.target.dataset.orderStatus != null && event.target.tagName === "BUTTON") {
+        orderFilters.status = event.target.dataset.orderStatus
+        loadAll().catch(error => setStatus(error.message))
+      }
+      if (event.target.closest("[data-order-stage]")) {
+        const status = event.target.closest("[data-order-stage]").dataset.orderStage
+        orderFilters.status = status === "售后中" ? "退款中" : status
+        loadAll().catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "edit-product") openProductDrawer(Number(event.target.dataset.index))
+      if (event.target.dataset.action === "view-order") openOrderDrawer(Number(event.target.dataset.index))
+      if (event.target.dataset.action === "close-drawer") closeDrawer()
+      if (event.target.dataset.drawerTab) {
+        const tabName = event.target.dataset.drawerTab
+        $("drawerBody").querySelectorAll(".drawer-tab").forEach(btn => btn.classList.toggle("active", btn.dataset.drawerTab === tabName))
+        $("drawerBody").querySelectorAll(".drawer-pane").forEach(pane => pane.classList.toggle("active", pane.dataset.drawerPane === tabName))
+      }
+      if (event.target.dataset.action === "add-second-category") {
+        openCategoryModal("add-second", Number(event.target.dataset.index))
+      }
+      if (event.target.dataset.action === "toggle-category") {
+        collapsedCategories[event.target.dataset.id] = !collapsedCategories[event.target.dataset.id]
+        persistCategoryCollapse()
+        renderCategoryManager()
+      }
+      if (event.target.dataset.action === "edit-primary-category") {
+        openCategoryModal("edit-primary", Number(event.target.dataset.index))
+      }
+      if (event.target.dataset.action === "edit-second-category") {
+        openCategoryModal("edit-second", Number(event.target.dataset.index), Number(event.target.dataset.second))
+      }
+      if (event.target.dataset.action === "remove-primary-category") {
+        const index = Number(event.target.dataset.index)
+        if (!confirm("确认删除该一级类目？商品中的旧类目不会被删除，可后续重新归类。")) return
+        collectCategoryManager()
+        categoryCatalog.splice(index, 1)
+        settings.categoryCatalog = categoryCatalog
+        rebuildCategoryOptions()
+        persistCategoryCatalog("一级类目已删除")
+      }
+      if (event.target.dataset.action === "remove-second-category") {
+        const index = Number(event.target.dataset.index)
+        const second = Number(event.target.dataset.second)
+        if (!confirm("确认删除该二级类目？")) return
+        collectCategoryManager()
+        categoryCatalog[index].children.splice(second, 1)
+        settings.categoryCatalog = categoryCatalog
+        rebuildCategoryOptions()
+        persistCategoryCatalog("二级类目已删除")
+      }
+      if (event.target.dataset.action === "move-second-up" || event.target.dataset.action === "move-second-down") {
+        collectCategoryManager()
+        const index = Number(event.target.dataset.index)
+        const second = Number(event.target.dataset.second)
+        const list = categoryCatalog[index]?.children || []
+        const next = event.target.dataset.action === "move-second-up" ? second - 1 : second + 1
+        if (next < 0 || next >= list.length) return
+        ;[list[second], list[next]] = [list[next], list[second]]
+        persistCategoryCatalog("排序已保存")
+      }
+      if (event.target.dataset.action === "toggle-coming-soon") {
+        collectCategoryManager()
+        const index = Number(event.target.dataset.index)
+        const second = Number(event.target.dataset.second)
+        const child = categoryCatalog[index]?.children?.[second]
+        if (!child) return
+        child.comingSoon = String(child.comingSoon) === "true" ? "false" : "true"
+        persistCategoryCatalog(String(child.comingSoon) === "true" ? "已标记即将上线" : "已取消即将上线")
+      }
+      if (event.target.dataset.action === "remove-activity") {
+        if (!confirm("确认删除该活动？")) return
+        collectActivities()
+        activities.splice(Number(event.target.dataset.index), 1)
+        settings.activities = activities
+        renderActivities()
+      }
+      if (event.target.dataset.action === "add-help-article") {
+        collectHelpArticles()
+        settings.helpArticles.push({
+          id: `HELP${Date.now()}`,
+          title: "新帮助文章",
+          summary: "",
+          content: "<p>请填写顾客可见的帮助内容。</p>",
+          imageUrl: "",
+          status: "on",
+          sort: String(settings.helpArticles.length + 1)
+        })
+        renderHelpArticles()
+        setStatus("已新增帮助文章，保存后发布")
+      }
+      if (event.target.dataset.action === "remove-help-article") {
+        if (!confirm("确认删除该帮助文章？")) return
+        collectHelpArticles()
+        settings.helpArticles.splice(Number(event.target.dataset.index), 1)
+        renderHelpArticles()
+        setStatus("已删除帮助文章，保存后发布")
+      }
+      if (event.target.dataset.action === "pick-product") {
+        const root = event.target.closest(".picker-grid")
+        if (root) {
+          const select = root.querySelector(`select[data-key="${event.target.dataset.key}"]`)
+          if (select) select.value = event.target.dataset.value
+        }
+      }
+      if (event.target.dataset.action === "save-product-drawer") saveProductDrawer()
+      if (event.target.dataset.action === "save-order-drawer") saveOrderDrawer()
+      if (event.target.dataset.action === "add-media") {
+        const key = event.target.dataset.key
+        const kind = event.target.dataset.kind
+        const manager = event.target.closest("[data-media-manager]")
+        const accept = kind === "video" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+        const count = manager.querySelectorAll("[data-media-row]").length
+        manager.querySelector(".media-list").insertAdjacentHTML("beforeend", mediaRow(key, "", count, kind, accept))
+      }
+      if (["media-up", "media-down", "media-remove"].includes(event.target.dataset.action)) {
+        const manager = event.target.closest("[data-media-manager]")
+        const row = event.target.closest("[data-media-row]")
+        const list = manager.querySelector(".media-list")
+        if (event.target.dataset.action === "media-remove") row.remove()
+        if (event.target.dataset.action === "media-up" && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling)
+        if (event.target.dataset.action === "media-down" && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row)
+      }
+      if (event.target.dataset.action === "remove-product") {
+        products.splice(Number(event.target.dataset.index), 1)
+        selectedProducts.clear()
+        renderProducts()
+      }
+      if (event.target.dataset.bulk) openBulkCategory(event.target.dataset.bulk)
+      if (event.target.dataset.action === "bulk-on") applyBulkStatus("on")
+      if (event.target.dataset.action === "bulk-off") applyBulkStatus("off")
+      if (event.target.dataset.action === "bulk-delete") applyBulkDelete()
+      if (event.target.dataset.action === "ship-order") {
+        const index = Number(event.target.dataset.index)
+        collectOrderDrawer()
+        const shippingCompany = orders[index]?.shippingCompany || ""
+        const trackingNumber = orders[index]?.trackingNumber || ""
+        if (!shippingCompany || !trackingNumber) {
+          setStatus("请先填写快递公司和快递单号")
+          return
+        }
+        api("/api/admin/orders/ship", "POST", { orderId: orders[index].id, shippingCompany, trackingNumber })
+          .then(() => loadAll())
+          .then(() => setStatus("已标记发货"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "refund-approve") {
+        const order = orders[Number(event.target.dataset.index)]
+        api("/api/admin/orders/refund-review", "POST", { orderId: order.id, action: "approve" })
+          .then(() => loadAll())
+          .then(() => setStatus("退款已通过，奖励已扣回"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "refund-partial") {
+        const order = orders[Number(event.target.dataset.index)]
+        const amount = prompt("请输入部分退款金额", order.refundAmount || order.amount)
+        if (!amount) return
+        api("/api/admin/orders/refund-review", "POST", { orderId: order.id, action: "partial", refundAmount: amount })
+          .then(() => loadAll())
+          .then(() => setStatus("部分退款已处理，奖励已扣回"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "refund-reject") {
+        const order = orders[Number(event.target.dataset.index)]
+        const rejectReason = prompt("请输入拒绝原因", "退款申请未通过")
+        if (!rejectReason) return
+        api("/api/admin/orders/refund-review", "POST", { orderId: order.id, action: "reject", rejectReason })
+          .then(() => loadAll())
+          .then(() => setStatus("已拒绝退款申请"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "regen-order-preview") {
+        const index = Number(event.target.dataset.index)
+        collectOrderDrawer()
+        const order = orders[index]
+        const sourceImageUrl = normalizeMediaList(order?.originalImageUrls || order?.originalImageUrl)[0]
+        if (!sourceImageUrl) return setStatus("订单缺少客户原图")
+        setStatus("AI预览生成中...")
+        api("/api/ai/preview", "POST", {
+          productId: order.productId,
+          productName: order.productName,
+          sourceImageUrl
+        }).then(result => {
+          order.aiPreviewUrl = result.imageUrl
+          order.finalDesignUrl = result.imageUrl
+          return api("/api/admin/orders", "PUT", allOrders)
+        }).then(() => loadAll()).then(() => setStatus("AI预览已重新生成"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "send-design-confirm") {
+        setStatus("已生成确认提醒，请复制预览图发送客户确认")
+      }
+      if (event.target.dataset.action === "edit-theme") {
+        collectThemeEditor()
+        editingThemeSkin = event.target.dataset.skin
+        renderThemes()
+      }
+      if (event.target.dataset.action === "enable-theme") {
+        collectThemeEditor()
+        api(`/api/admin/themes/${encodeURIComponent(event.target.dataset.skin)}/activate`, "POST", {})
+          .then(data => {
+            themeState = data
+            editingThemeSkin = data.currentSkinId || data.activeThemeSkin
+            renderThemes()
+            setStatus("皮肤已启用，小程序重新进入页面或切换 tab 后自动生效。")
+          })
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "delete-theme") {
+        const skin = event.target.dataset.skin
+        if (!confirm("确定删除该皮肤吗？删除后不可恢复。")) return
+        api(`/api/admin/themes/${encodeURIComponent(skin)}`, "DELETE")
+          .then(data => {
+            themeState = data
+            editingThemeSkin = data.currentSkinId || data.activeThemeSkin || "skin01"
+            renderThemes()
+            setStatus("皮肤已删除")
+          })
+          .catch(error => setStatus(error.message))
+      }
+    })
+    document.body.addEventListener("change", event => {
+      if (event.target.dataset.key === "targetType" && (event.target.closest("#homeEntries") || event.target.closest("#homeBanners"))) {
+        const listId = event.target.closest("#homeBanners") ? "homeBanners" : "homeEntries"
+        const target = listId === "homeBanners" ? home.banners : home.homeEntries
+        collectList(listId, target)
+        const index = Number(event.target.closest(".item").dataset.index)
+        if (target[index]) {
+          target[index].targetType = event.target.value
+          if (event.target.value === "primary") target[index].targetValue = categoryCatalog[0]?.name || ""
+          if (event.target.value === "secondary") target[index].targetValue = `${categoryCatalog[0]?.name || ""}/${categoryCatalog[0]?.children?.[0]?.name || ""}`
+          if (event.target.value === "product") target[index].targetValue = products[0]?.id || ""
+          if (event.target.value === "poster") target[index].targetValue = activities[0]?.id || ""
+          if (event.target.value === "service") target[index].targetValue = "service"
+          if (event.target.value === "custom") target[index].targetValue = ""
+        }
+        renderHome()
+        return
+      }
+      if (event.target.dataset.targetPrimary != null) {
+        const list = event.target.closest("#homeBanners") ? home.banners : home.homeEntries
+        const item = list[Number(event.target.dataset.index)]
+        if (item) {
+          item.targetValue = `${event.target.value}/${(categoryTree[event.target.value] || [])[0] || ""}`
+          renderHome()
+        }
+        return
+      }
+      if (event.target.id === "selectAllProductsTable") {
+        getFilteredProducts().forEach(({ index }) => {
+          if (event.target.checked) selectedProducts.add(index)
+          else selectedProducts.delete(index)
+        })
+        renderProducts()
+        return
+      }
+      if (event.target.dataset.selectProduct) {
+        const index = Number(event.target.dataset.selectProduct)
+        if (event.target.checked) selectedProducts.add(index)
+        else selectedProducts.delete(index)
+        renderProducts()
+        return
+      }
+      if (event.target.dataset.helpUpload) {
+        const row = event.target.closest("[data-help-index]")
+        const input = row?.querySelector(`[data-help-key="${event.target.dataset.helpUpload}"]`)
+        const preview = row?.querySelector(".image-preview")
+        const file = event.target.files?.[0]
+        if (!file || !input) return
+        uploadImage(file).then(url => {
+          input.value = url
+          if (preview) {
+            preview.src = url
+            preview.classList.add("show")
+          }
+          setStatus("图片上传成功")
+        }).catch(error => setStatus(error.message))
+        return
+      }
+    })
+    document.body.addEventListener("dragstart", event => {
+      const category = event.target.closest("[data-category-index]")
+      const second = event.target.closest("[data-second-index]")
+      if (second) {
+        draggedSecond = {
+          parent: Number(second.dataset.parentIndex),
+          index: Number(second.dataset.secondIndex)
+        }
+        second.classList.add("dragging")
+        event.stopPropagation()
+        return
+      }
+      if (category) {
+        draggedCategory = Number(category.dataset.categoryIndex)
+        category.classList.add("dragging")
+      }
+    })
+    document.body.addEventListener("dragend", event => {
+      event.target.closest(".category-card")?.classList.remove("dragging")
+      event.target.closest(".secondary-row")?.classList.remove("dragging")
+      draggedCategory = null
+      draggedSecond = null
+    })
+    document.body.addEventListener("dragover", event => {
+      if (event.target.closest("[data-category-index]") || event.target.closest("[data-second-index]")) event.preventDefault()
+    })
+    document.body.addEventListener("drop", event => {
+      const targetSecond = event.target.closest("[data-second-index]")
+      if (draggedSecond && targetSecond) {
+        event.preventDefault()
+        collectCategoryManager()
+        const parent = Number(targetSecond.dataset.parentIndex)
+        const targetIndex = Number(targetSecond.dataset.secondIndex)
+        if (parent !== draggedSecond.parent) return
+        const list = categoryCatalog[parent].children
+        const [moved] = list.splice(draggedSecond.index, 1)
+        list.splice(targetIndex, 0, moved)
+        persistCategoryCatalog("二级类目排序已保存")
+        return
+      }
+      const targetCategory = event.target.closest("[data-category-index]")
+      if (draggedCategory != null && targetCategory && !event.target.closest("[data-second-index]")) {
+        event.preventDefault()
+        collectCategoryManager()
+        const targetIndex = Number(targetCategory.dataset.categoryIndex)
+        const [moved] = categoryCatalog.splice(draggedCategory, 1)
+        categoryCatalog.splice(targetIndex, 0, moved)
+        persistCategoryCatalog("一级类目排序已保存")
+      }
+    })
+    document.body.addEventListener("input", event => {
+      if (event.target.dataset.themeKey) {
+        const key = event.target.dataset.themeKey
+        if (event.target.closest(".color-row")) {
+          event.target.closest(".color-row").querySelectorAll(`[data-theme-key="${key}"]`).forEach(input => {
+            if (input !== event.target) input.value = event.target.value
+          })
+        }
+        collectThemeEditor()
+        renderThemePreview(currentEditingTheme())
+        return
+      }
+      if (event.target.dataset.productSearch) {
+        activityProductSearch[event.target.dataset.productSearch] = event.target.value
+        if (currentView === "marketing") {
+          collectActivities()
+          renderActivities()
+        } else {
+          collectList("homeEntries", home.homeEntries)
+          renderHome()
+        }
+      }
+    })
+    document.body.addEventListener("change", event => {
+      if (event.target.dataset.themeKey) {
+        collectThemeEditor()
+        renderThemePreview(currentEditingTheme())
+        return
+      }
+      if (event.target.dataset.themeFile && event.target.files?.[0]) {
+        const file = event.target.files[0]
+        readLocalTextFile(file).then(text => {
+          const theme = currentEditingTheme()
+          if (event.target.dataset.themeFile === "colors") {
+            const parsed = JSON.parse(text)
+            Object.assign(theme, normalizeThemeClient({ ...theme, ...parsed }, 0), { skinId: themeId(theme), skin: themeId(theme) })
+          } else {
+            theme.themeWxssText = text
+          }
+          renderThemes()
+          setStatus("皮肤文件已读取，保存后生效")
+        }).catch(error => setStatus(error.message))
+        return
+      }
+      if (event.target.dataset.themeUpload && event.target.files?.[0]) {
+        const key = event.target.dataset.themeUpload
+        uploadImage(event.target.files[0]).then(url => {
+          const theme = currentEditingTheme()
+          theme[key] = url
+          if (key === "banner" && !theme.thumbnail) theme.thumbnail = url
+          renderThemes()
+          setStatus("皮肤图片已上传，保存后生效")
+        }).catch(error => setStatus(error.message))
+        return
+      }
+      if (!event.target.dataset.uploadKey || !event.target.files?.[0]) return
+      const inputEl = event.target.closest("label").querySelector(`[data-key='${event.target.dataset.uploadKey}']`)
+      const previewEl = event.target.closest("label").querySelector(".image-preview")
+      setStatus("图片上传中...")
+      uploadImage(event.target.files[0]).then(url => {
+        inputEl.value = url
+        previewEl.src = url
+        previewEl.classList.add("show")
+        setStatus("图片已上传，记得保存当前页")
+      }).catch(error => setStatus(error.message))
+    })
+    document.body.addEventListener("change", event => {
+      if (!event.target.dataset.mediaUpload || !event.target.files?.[0]) return
+      const kind = event.target.dataset.kind || "image"
+      const row = event.target.closest("[data-media-row]")
+      const inputEl = row.querySelector("[data-media-url]")
+      const previewEl = row.querySelector(".media-thumb")
+      setStatus(kind === "video" ? "视频上传中..." : "图片上传中...")
+      uploadMedia(event.target.files[0], kind).then(url => {
+        inputEl.value = url
+        previewEl.src = url
+        setStatus("上传成功，记得保存商品")
+      }).catch(error => setStatus(error.message))
+    })
+    document.body.addEventListener("change", event => {
+      if (!event.target.dataset.orderFinalUpload || !event.target.files?.[0]) return
+      const index = Number(event.target.dataset.orderFinalUpload)
+      collectOrderDrawer()
+      setStatus("最终确认稿上传中...")
+      uploadImage(event.target.files[0]).then(url => {
+        if (orders[index]) orders[index].finalDesignUrl = url
+        return api("/api/admin/orders", "PUT", allOrders)
+      }).then(() => loadAll()).then(() => setStatus("最终确认稿已替换"))
+        .catch(error => setStatus(error.message))
+    })
+    switchView("overview")
+    loadAll().catch(error => setStatus(error.message))
+  </script>
+</body>
+</html>

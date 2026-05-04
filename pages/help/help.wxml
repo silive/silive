@@ -1,0 +1,38 @@
+<view class="help-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="hero">
+    <view class="eyebrow">AFTER-SALES SERVICE</view>
+    <view class="title">售后保障</view>
+    <view class="subtitle">下单流程、定制说明、发货时效与售后政策</view>
+  </view>
+
+  <view wx:if="{{articles.length}}" class="article-list">
+    <view class="article-card" wx:for="{{articles}}" wx:key="id">
+      <view class="article-head" bindtap="toggleArticle" data-index="{{index}}">
+        <view>
+          <view class="article-title">{{item.title}}</view>
+          <view wx:if="{{item.summary}}" class="article-summary">{{item.summary}}</view>
+        </view>
+        <view class="article-arrow">{{item.expanded ? '−' : '+'}}</view>
+      </view>
+      <view class="article-body">
+        <image wx:if="{{item.imageUrl}}" class="article-image" src="{{item.imageUrl}}" mode="widthFix" />
+        <rich-text wx:if="{{item.content}}" class="article-content" nodes="{{item.content}}"></rich-text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="empty-card">
+    <view class="empty-title">售后保障内容正在整理中</view>
+    <view class="empty-desc">如需确认定制细节，可先联系客服</view>
+    <button class="contact-btn" bindtap="contact">联系客服</button>
+  </view>
+
+  <view wx:if="{{banner}}" class="help-banner" bindtap="openBanner">
+    <image wx:if="{{banner.imageUrl}}" class="banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
+    <view class="banner-copy">
+      <view wx:if="{{banner.tag}}" class="banner-tag">{{banner.tag}}</view>
+      <view class="banner-title">{{banner.title}}</view>
+      <view class="banner-desc">{{banner.desc}}</view>
+    </view>
+  </view>
+</view>

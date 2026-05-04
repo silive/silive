@@ -1,0 +1,63 @@
+<view class="page {{themeClass}}" style="{{themeStyle}}" wx:if="{{product}}">
+  <swiper class="detail-swiper cover-{{product.cover}}" circular indicator-dots indicator-color="rgba(255,255,255,.55)" indicator-active-color="#ffffff">
+    <swiper-item wx:if="{{product.videoUrl}}">
+      <video class="detail-video" src="{{product.videoUrl}}" controls object-fit="cover" poster="{{product.mediaImages[0] || product.imageUrl}}"></video>
+    </swiper-item>
+    <swiper-item wx:for="{{product.mediaImages}}" wx:key="*this">
+      <view class="detail-cover">
+        <image class="detail-image" src="{{item}}" mode="aspectFill" />
+      </view>
+    </swiper-item>
+  </swiper>
+  <view wx:if="{{product.badgeText}}" class="detail-badge badge-{{product.badge}}">{{product.badgeText}}</view>
+
+  <view class="detail-main" style="{{cardStyle}}">
+    <view>
+      <view class="eyebrow">CUSTOM PRODUCT</view>
+      <view class="product-title">{{product.name}}</view>
+      <view class="product-intro" style="{{mutedTextStyle}}">{{product.intro}}</view>
+      <view wx:if="{{product.categoryText}}" class="category-line" style="{{tagStyle}}">{{product.categoryText}}</view>
+    </view>
+    <view class="price-box">
+      <view class="price" style="{{priceStyle}}">¥{{product.price}}</view>
+      <view class="recommend-tip" style="{{mutedTextStyle}}">{{product.recommendTip}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{newcomerBenefits.length}}" class="benefit-strip" style="{{cardStyle}}">
+    <view class="benefit-item" wx:for="{{newcomerBenefits}}" wx:key="text">新人首单{{item.text}}</view>
+  </view>
+
+  <view class="top-actions">
+    <button class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
+    <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
+  </view>
+
+  <view class="panel" style="{{cardStyle}}">
+    <view class="panel-title">商品详情</view>
+    <view wx:if="{{product.detailText}}" class="detail-text" style="{{mutedTextStyle}}">{{product.detailText}}</view>
+    <view class="detail-images" wx:if="{{product.detailImages.length}}">
+      <image class="detail-long-image" wx:for="{{product.detailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" />
+    </view>
+  </view>
+
+  <view class="panel note-panel" style="{{cardStyle}}">
+    <view class="panel-title">注意事项</view>
+    <view class="detail-text" style="{{mutedTextStyle}}">定制商品会在制作前确认方案；图片越清晰，成品效果越稳定。如需加急或特殊尺寸，可先联系客服确认。</view>
+  </view>
+
+  <button class="primary-btn" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
+
+  <login-sheet
+    visible="{{loginVisible}}"
+    loading="{{loginLoading}}"
+    title="微信手机号授权登录"
+    desc="授权后自动进入确认定制页，手机号会为你预填，可随时修改。"
+    confirm-text="授权手机号并继续"
+    cancel-text="暂不登录"
+    bind:getphonenumber="onCheckoutPhone"
+    bind:close="closeLoginPrompt"
+  />
+</view>
+
+<view class="loading" wx:else>加载中...</view>

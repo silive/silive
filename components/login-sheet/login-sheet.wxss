@@ -1,0 +1,164 @@
+.login-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 28rpx;
+  box-sizing: border-box;
+  background: rgba(20, 20, 20, .34);
+  animation: maskFadeIn .18s ease both;
+}
+
+.login-mask.leaving {
+  animation: maskFadeOut .18s ease both;
+}
+
+.login-panel {
+  width: 100%;
+  padding: 34rpx 30rpx 24rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 -18rpx 60rpx rgba(0, 0, 0, .16);
+  animation: sheetUp .22s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.login-panel.leaving {
+  animation: sheetDown .18s ease both;
+}
+
+.login-title {
+  color: #1f1f1f;
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.login-desc {
+  margin-top: 10rpx;
+  color: #8b8582;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
+.login-phone-btn,
+.login-cancel-btn {
+  height: 88rpx;
+  margin-top: 24rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+}
+
+.login-phone-btn {
+  background: #202020;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.login-cancel-btn {
+  margin-top: 14rpx;
+  background: #f5f2f0;
+  color: #68615e;
+}
+
+@keyframes maskFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes maskFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheetUp {
+  from {
+    opacity: .65;
+    transform: translateY(80rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheetDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: .65;
+    transform: translateY(80rpx);
+  }
+}
+
+/* Youth brand visual refresh */
+.login-mask {
+  background: rgba(38, 30, 36, .38);
+}
+
+.login-panel {
+  border: 1rpx solid rgba(255, 169, 158, .22);
+  border-radius: 34rpx 34rpx 28rpx 28rpx;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(255, 175, 115, .16), transparent 32%),
+    rgba(255, 255, 255, .96);
+  box-shadow: 0 -22rpx 66rpx rgba(255, 132, 128, .16);
+}
+
+.login-title {
+  color: #222024;
+  font-weight: 950;
+}
+
+.login-desc {
+  color: #8d7e80;
+}
+
+.login-phone-btn {
+  background: linear-gradient(135deg, #ff7aa2, #ff8d60);
+  box-shadow: 0 16rpx 34rpx rgba(255, 127, 116, .24);
+  font-weight: 950;
+}
+
+.login-cancel-btn {
+  background: #fff0f3;
+  color: #ff6d7c;
+}
+
+/* Runtime theme variables */
+.login-panel {
+  border-radius: var(--card-radius, 34rpx) var(--card-radius, 34rpx) 28rpx 28rpx;
+  background: var(--card-color, rgba(255,255,255,.96));
+  box-shadow: 0 -22rpx 66rpx var(--theme-shadow, rgba(255,132,128,.16));
+}
+
+.login-title {
+  color: var(--text-color, #222024);
+}
+
+.login-desc {
+  color: var(--muted-color, #8d7e80);
+}
+
+.login-phone-btn {
+  border-radius: var(--button-radius, 999rpx);
+  background: linear-gradient(135deg, var(--button-start, #ff7aa2), var(--button-end, #ff8d60));
+}
+
+.login-cancel-btn {
+  background: var(--soft-color, #fff0f3);
+  color: var(--accent-color, #ff6d7c);
+}

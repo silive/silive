@@ -1,0 +1,83 @@
+<view class="page {{themeClass}}" style="{{themeStyle}}" wx:if="{{product}}">
+  <view class="summary" style="{{cardStyle}}">
+    <view class="summary-cover cover-{{product.cover}}">
+      <image wx:if="{{product.imageUrl}}" class="summary-image" src="{{product.imageUrl}}" mode="aspectFill" />
+    </view>
+    <view class="summary-info">
+      <view class="product-name">{{product.name}}</view>
+      <view class="product-intro" style="{{mutedTextStyle}}">{{product.intro}}</view>
+      <view class="price" style="{{priceStyle}}">{{product.priceText || ('¥' + product.price)}}</view>
+    </view>
+  </view>
+
+  <view class="form-panel" style="{{cardStyle}}">
+    <view class="panel-title">定制信息</view>
+    <view wx:if="{{customImage}}" class="upload-preview">
+      <image class="upload-preview-image" src="{{customImage}}" mode="aspectFill" />
+      <view>
+        <view class="upload-preview-title">已选择照片</view>
+        <view class="upload-preview-subtitle" style="{{mutedTextStyle}}">请补充定制要求，设计师会先确认方案</view>
+      </view>
+    </view>
+    <view wx:if="{{customImage}}" class="ai-preview-card {{aiPreview.status}}" style="{{cardStyle}}">
+      <view wx:if="{{aiPreview.status === 'loading'}}" class="ai-loading">
+        <view class="ai-shimmer"></view>
+        <view>
+          <view class="ai-title">正在生成专属定制效果图...</view>
+          <view class="ai-subtitle" style="{{mutedTextStyle}}">通常需要 3-8 秒，请稍候</view>
+        </view>
+      </view>
+      <view wx:elif="{{aiPreview.status === 'done'}}">
+        <view class="ai-title">你的专属定制预览</view>
+        <image class="ai-preview-image" src="{{aiPreview.imageUrl}}" mode="aspectFill" />
+        <view class="ai-subtitle" style="{{mutedTextStyle}}">下单前可继续微调，成品以最终确认稿为准</view>
+        <view class="ai-actions">
+          <button class="ai-btn" style="{{secondaryButtonStyle}}" bindtap="generatePreview">重新生成</button>
+          <button class="ai-btn" style="{{secondaryButtonStyle}}" bindtap="contactAdjust">联系客服微调</button>
+          <button class="ai-btn dark" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">立即定制</button>
+        </view>
+      </view>
+      <view wx:elif="{{aiPreview.status === 'error'}}">
+        <view class="ai-title">{{aiPreview.message}}</view>
+        <view class="ai-actions">
+          <button class="ai-btn" style="{{secondaryButtonStyle}}" bindtap="generatePreview">换一种风格</button>
+          <button class="ai-btn dark" style="{{primaryButtonStyle}}" bindtap="contactAdjust">联系客服调整</button>
+        </view>
+      </view>
+    </view>
+    <view class="field">姓名<input value="{{form.customerName}}" data-field="customerName" bindinput="onInput" placeholder="请输入收货人姓名" /></view>
+    <view class="field">电话
+      <view class="inline-control">
+        <input value="{{form.phone}}" data-field="phone" bindinput="onInput" placeholder="请输入联系电话" type="number" maxlength="11" />
+      </view>
+    </view>
+    <view wx:if="{{phoneTip}}" class="field-tip {{phoneTipType}}">{{phoneTip}}</view>
+    <view class="address-action">
+      <button class="light-btn" style="{{secondaryButtonStyle}}" bindtap="chooseAddress">一键选择收货地址</button>
+    </view>
+    <view class="field">地址<textarea value="{{form.address}}" data-field="address" bindinput="onInput" placeholder="请输入收货地址"></textarea></view>
+    <view class="field upload-field">
+      <view class="upload-head">
+        <view>
+          <view class="upload-label">上传参考图片</view>
+          <view class="upload-hint">最多9张，支持 jpg/png/heic</view>
+        </view>
+        <button class="upload-add" style="{{primaryButtonStyle}}" bindtap="chooseImages">+ 上传图片</button>
+      </view>
+      <view class="upload-grid" wx:if="{{uploadedImages.length}}">
+        <view class="upload-tile" wx:for="{{uploadedImages}}" wx:key="url">
+          <image class="upload-tile-image" src="{{item.url}}" mode="aspectFill" bindtap="previewUpload" data-url="{{item.url}}" />
+          <button class="upload-remove" bindtap="removeUpload" data-index="{{index}}">×</button>
+        </view>
+        <view wx:if="{{uploadedImages.length < 9}}" class="upload-tile upload-more" bindtap="chooseImages">+</view>
+      </view>
+      <view wx:else class="upload-drop" bindtap="chooseImages">
+        <view class="upload-plus">+</view>
+        <view>点击上传参考图片</view>
+      </view>
+    </view>
+    <view class="field">定制要求<textarea value="{{form.customRequest}}" data-field="customRequest" bindinput="onInput" placeholder="例如刻字内容、纪念日期、想要的风格"></textarea></view>
+  </view>
+
+  <button class="pay-btn" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">提交订单并支付</button>
+</view>

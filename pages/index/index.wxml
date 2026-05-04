@@ -1,0 +1,151 @@
+<view class="page {{themeClass}}" style="{{themeStyle}}">
+  <view class="header">
+    <view>
+      <view class="eyebrow">CUSTOM STUDIO</view>
+      <view class="brand">非常智造</view>
+    </view>
+    <view class="header-mark">智</view>
+  </view>
+
+  <swiper class="hero-swiper" autoplay circular interval="3600" duration="650" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
+    <swiper-item wx:for="{{banners}}" wx:key="title">
+      <view class="hero hero-{{item.theme}}" style="{{bannerStyle}}" bindtap="openBanner" data-index="{{index}}">
+        <image wx:if="{{item.imageUrl}}" class="hero-image" style="{{bannerImageStyle}}" src="{{item.imageUrl}}" mode="aspectFill" />
+        <view wx:if="{{item.imageUrl}}" class="hero-mask" style="{{bannerOverlayStyle}}"></view>
+        <view class="hero-copy">
+          <view class="hero-tag">{{item.tag}}</view>
+          <view class="hero-title">{{item.title}}</view>
+          <view class="hero-desc" style="{{mutedTextStyle}}">{{item.desc}}</view>
+        </view>
+      </view>
+    </swiper-item>
+  </swiper>
+
+  <view class="search-panel">
+    <view class="search-box">
+      <text class="search-icon">⌕</text>
+      <input class="search-input" value="{{searchKeyword}}" placeholder="搜索商品、类目、标签" placeholder-class="search-placeholder" bindinput="onSearchInput" confirm-type="search" />
+      <button wx:if="{{searchKeyword}}" class="search-clear" style="{{primaryButtonStyle}}" bindtap="clearSearch">×</button>
+    </view>
+  </view>
+
+  <view wx:if="{{showSearchResults}}" class="search-results">
+    <view class="search-head">
+      <view class="search-title">搜索结果</view>
+      <view class="search-count">{{searchProducts.length}} 件商品</view>
+    </view>
+    <view wx:if="{{searchProducts.length}}" class="product-list search-product-list">
+      <view class="product-card" style="{{cardStyle}}" wx:for="{{searchProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
+        <view class="product-cover cover-{{item.cover}}">
+          <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+          <view wx:if="{{item.badgeText}}" class="product-badge badge-{{item.badge}}">{{item.badgeText}}</view>
+        </view>
+        <view class="product-info">
+          <view class="product-name">{{item.name}}</view>
+          <view class="product-intro" style="{{mutedTextStyle}}">{{item.intro}}</view>
+          <view class="product-proof" style="{{mutedTextStyle}}">下单前确认设计稿</view>
+          <view class="product-bottom">
+            <view class="price" style="{{priceStyle}}">¥{{item.price}}</view>
+            <button class="buy-btn" style="{{primaryButtonStyle}}" catchtap="openProduct" data-id="{{item.id}}">查看</button>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="search-empty">
+      <view>暂无相关商品，联系客服定制</view>
+      <button class="search-service" style="{{primaryButtonStyle}}" bindtap="showContact">联系客服</button>
+    </view>
+  </view>
+
+  <view class="entry-grid">
+    <button class="entry-card" style="{{cardStyle}}" wx:for="{{homeEntries}}" wx:key="name" bindtap="openHomeEntry" data-index="{{index}}">
+      <view class="entry-icon" style="{{iconBadgeStyle}}">
+        <image wx:if="{{item.imageUrl}}" class="entry-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <text wx:else>{{item.icon}}</text>
+      </view>
+      <view class="entry-name">{{item.name}}</view>
+      <view class="entry-desc" style="{{mutedTextStyle}}">{{item.desc}}</view>
+    </button>
+  </view>
+
+  <view class="trust-strip">
+    <view class="trust-item" wx:for="{{trustTags}}" wx:key="text">
+      <view class="trust-icon" style="{{iconBadgeStyle}}">{{item.icon}}</view>
+      <view class="trust-text">{{item.text}}</view>
+    </view>
+  </view>
+
+  <view class="section-head">
+    <view>
+      <view class="section-title">热门推荐商品</view>
+      <view class="section-subtitle" style="{{mutedTextStyle}}">{{sectionSubtitle}}</view>
+    </view>
+    <view class="section-more">精选</view>
+  </view>
+
+  <view class="product-list">
+    <view class="product-card" style="{{cardStyle}}" wx:for="{{products}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
+      <view class="product-cover cover-{{item.cover}}">
+        <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <view wx:if="{{item.badgeText}}" class="product-badge badge-{{item.badge}}">{{item.badgeText}}</view>
+      </view>
+      <view class="product-info">
+        <view class="product-name">{{item.name}}</view>
+        <view class="product-intro" style="{{mutedTextStyle}}">{{item.intro}}</view>
+        <view class="product-proof" style="{{mutedTextStyle}}">下单前确认设计稿</view>
+        <view class="product-bottom">
+          <view class="price" style="{{priceStyle}}">¥{{item.price}}</view>
+          <button class="buy-btn" style="{{primaryButtonStyle}}" catchtap="openProduct" data-id="{{item.id}}">查看</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-head">
+    <view>
+      <view class="section-title">爆款专区</view>
+      <view class="section-subtitle" style="{{mutedTextStyle}}">高人气单品，适合送礼和自用收藏</view>
+    </view>
+    <view class="section-more">热卖</view>
+  </view>
+
+  <scroll-view scroll-x class="hot-scroll">
+    <view class="hot-row">
+      <view class="hot-card" style="{{cardStyle}}" wx:for="{{hotProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
+        <view class="hot-cover cover-{{item.cover}}">
+          <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        </view>
+        <view class="hot-name">{{item.name}}</view>
+        <view class="hot-price" style="{{priceStyle}}">¥{{item.price}}</view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="section-head">
+    <view>
+      <view class="section-title">买家秀 / 用户评价</view>
+      <view class="section-subtitle" style="{{mutedTextStyle}}">真实反馈，看得见的品质</view>
+    </view>
+  </view>
+
+  <view class="review-list">
+    <view class="review-card" style="{{cardStyle}}" wx:for="{{reviews}}" wx:key="name">
+      <view class="review-top">
+        <view class="review-avatar">{{item.avatar}}</view>
+        <view>
+          <view class="review-name">{{item.name}}</view>
+          <view class="review-product">{{item.product}}</view>
+        </view>
+      </view>
+      <view class="review-text" style="{{mutedTextStyle}}">{{item.text}}</view>
+    </view>
+  </view>
+
+  <view class="contact-panel" style="{{cardStyle}}">
+    <view>
+      <view class="contact-title">需要先沟通方案？</view>
+      <view class="contact-subtitle" style="{{mutedTextStyle}}">客服会确认图片、文件、尺寸和交付时间</view>
+    </view>
+    <button class="contact-btn" style="{{primaryButtonStyle}}" bindtap="showContact">联系客服</button>
+  </view>
+</view>

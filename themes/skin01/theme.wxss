@@ -1,0 +1,17 @@
+/* Theme Skin 01: 青春活力商城风
+   小程序线上即时换肤通过 /api/theme/current 返回 colors.json 主题变量生效。
+   此文件用于后台上传留档、人工预览和后续发版时固化样式。 */
+
+.theme-skin01 {
+  --primary-color: #FF7A00;
+  --accent-color: #FF4D8D;
+  --soft-color: #FFF0F3;
+  --page-top-color: #FFF8F5;
+  --page-bottom-color: #FFF2F5;
+  --card-color: rgba(255,255,255,.88);
+  --text-color: #222024;
+  --muted-color: #8D7E80;
+  --price-color: #FF5A3C;
+  --card-radius: 30rpx;
+  --button-radius: 999rpx;
+}

@@ -1,0 +1,42 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/category/list",
+    "pages/poster/poster",
+    "pages/product/detail",
+    "pages/checkout/checkout",
+    "pages/promotion/promotion",
+    "pages/help/help",
+    "pages/orders/orders",
+    "pages/profile/profile"
+  ],
+  "window": {
+    "navigationBarTitleText": "非常智造",
+    "navigationBarBackgroundColor": "#FFF8F5",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#FFF8F5",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#8D8582",
+    "selectedColor": "#FF5A3C",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/orders/orders",
+        "text": "订单"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

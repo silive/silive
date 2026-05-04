@@ -1,0 +1,50 @@
+<view class="page {{themeClass}}" style="{{themeStyle}}">
+  <view class="title-block">
+    <view class="eyebrow">CATEGORY</view>
+    <view class="title">{{category}}</view>
+    <view class="subtitle">挑选喜欢的商品，进入详情后即可定制</view>
+  </view>
+
+  <view class="search-box">
+    <text class="search-icon">⌕</text>
+    <input class="search-input" value="{{searchKeyword}}" placeholder="搜索商品、类目、标签" placeholder-class="search-placeholder" bindinput="onSearchInput" confirm-type="search" />
+    <button wx:if="{{searchKeyword}}" class="search-clear" bindtap="clearSearch">×</button>
+  </view>
+
+  <view class="subnav">
+    <view class="subnav-item {{secondary === item.name ? 'active' : ''}} {{item.disabled ? 'disabled' : ''}}" wx:for="{{secondaryItems}}" wx:key="name" bindtap="switchSecondary" data-name="{{item.name}}" data-disabled="{{item.disabled}}">
+      <text>{{item.name}}</text>
+      <text wx:if="{{item.comingSoon}}" class="soon-tag">即将上线</text>
+      <text wx:if="{{item.count > 0}}" class="subnav-count">{{item.count}}</text>
+    </view>
+  </view>
+
+  <view class="product-list" wx:if="{{products.length}}">
+    <view class="product-card" wx:for="{{products}}" wx:key="id" bindtap="openProduct" data-index="{{index}}">
+      <view class="product-cover cover-{{item.cover}}">
+        <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <view wx:if="{{item.badgeText}}" class="product-badge badge-{{item.badge}}">{{item.badgeText}}</view>
+      </view>
+      <view class="product-info">
+        <view class="product-name">{{item.name}}</view>
+        <view class="product-intro">{{item.intro}}</view>
+        <view class="product-proof">下单前确认设计稿</view>
+        <view class="product-bottom">
+          <view class="price">¥{{item.price}}</view>
+          <button class="buy-btn">定制</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-card" wx:else>
+    <view class="empty-mark">NEW</view>
+    <view class="empty-title">{{searchKeyword ? '暂无相关商品' : '新品正在上架中'}}</view>
+    <view class="empty-desc">可联系客服先定制</view>
+    <view class="empty-actions">
+      <button class="empty-btn dark" bindtap="showContact">联系客服</button>
+      <button class="empty-btn" bindtap="backAll">返回全部商品</button>
+      <button class="empty-btn" bindtap="chooseImage">上传图片定制</button>
+    </view>
+  </view>
+</view>

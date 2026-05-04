@@ -1,0 +1,76 @@
+<view class="profile-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="user-card" style="{{cardStyle}}">
+    <image wx:if="{{userInfo.avatarUrl}}" class="avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill" />
+    <view wx:else class="avatar placeholder">我</view>
+    <view class="user-info">
+      <view class="user-name">{{loggedIn ? (userInfo.nickName || '微信用户') : '欢迎来到非常智造'}}</view>
+      <view class="user-desc" style="{{mutedTextStyle}}">{{loggedIn ? ('手机号 ' + maskedPhone) : '登录后同步订单、地址与会员权益'}}</view>
+    </view>
+    <button wx:if="{{loggedIn}}" class="auth-btn" style="{{secondaryButtonStyle}}" bindtap="getUserProfile">头像</button>
+    <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">微信快捷登录</button>
+  </view>
+
+  <view class="wallet-card" style="{{walletCardStyle}}">
+    <view>
+      <view class="wallet-label">我的购物金</view>
+      <view class="wallet-value">¥{{shoppingMoney}}</view>
+    </view>
+    <view class="wallet-pending">待发放 ¥{{pendingReward}}</view>
+  </view>
+
+  <view class="feature-panel">
+    <view class="feature-row top-row">
+      <button class="feature-card" style="{{cardStyle}}" bindtap="goOrders">
+        <view wx:if="{{pendingPayCount > 0}}" class="feature-badge">{{pendingPayCount}}</view>
+        <view class="feature-icon" style="{{iconBadgeStyle}}">≡</view>
+        <view class="feature-title">我的订单</view>
+        <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>
+      </button>
+      <button class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
+        <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
+        <view class="feature-title">我的推广</view>
+        <view class="feature-subtitle" style="{{mutedTextStyle}}">邀请赚佣金</view>
+      </button>
+      <button class="feature-card" style="{{cardStyle}}" bindtap="contact">
+        <view wx:if="{{contact.showWorkWechat !== 'false'}}" class="online-pill">在线</view>
+        <view class="feature-icon" style="{{iconBadgeStyle}}">☎</view>
+        <view class="feature-title">联系客服</view>
+        <view class="feature-subtitle" style="{{mutedTextStyle}}">1对1服务</view>
+      </button>
+    </view>
+    <view class="feature-row bottom-row">
+      <button class="feature-card" style="{{cardStyle}}" bindtap="chooseAddress">
+        <view class="feature-icon" style="{{iconBadgeStyle}}">⌂</view>
+        <view class="feature-title">收货地址</view>
+        <view class="feature-subtitle" style="{{mutedTextStyle}}">快速下单</view>
+      </button>
+      <button class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
+        <view wx:if="{{afterSaleDot}}" class="red-dot"></view>
+        <view class="feature-icon" style="{{iconBadgeStyle}}">✓</view>
+        <view class="feature-title">售后保障</view>
+        <view class="feature-subtitle" style="{{mutedTextStyle}}">退款/售后说明</view>
+      </button>
+    </view>
+  </view>
+  <view wx:if="{{banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
+    <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
+    <view class="profile-banner-mask"></view>
+    <view class="profile-banner-copy">
+      <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
+      <view class="profile-banner-title">{{banner.title}}</view>
+      <view class="profile-banner-desc">{{banner.desc}}</view>
+    </view>
+  </view>
+  <button class="copyright" bindtap="goHelp">本程序由 非常智造 开发与维护</button>
+
+  <login-sheet
+    visible="{{loginVisible}}"
+    loading="{{loginLoading}}"
+    title="微信快捷登录"
+    desc="登录后同步订单、地址、会员权益与售后服务"
+    confirm-text="授权手机号并登录"
+    cancel-text="暂不登录"
+    bind:getphonenumber="onLoginPhone"
+    bind:close="closeLoginSheet"
+  />
+</view>
