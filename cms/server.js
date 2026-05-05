@@ -301,6 +301,10 @@ function uploadInputError(status, message) {
   return error
 }
 
+function isMultipartFormRequest(req) {
+  return /^multipart\/form-data\b/i.test(String(req.headers["content-type"] || ""))
+}
+
 function maskSecret(value) {
   const text = String(value || "")
   if (!text) return "(empty)"
@@ -4089,6 +4093,10 @@ async function handle(req, res) {
 
   if ((url.pathname === "/api/upload" || url.pathname === "/api/upload/public") && req.method === "POST") {
     if (url.pathname === "/api/upload" && !requireAuth(req, res)) return
+    if (!isMultipartFormRequest(req)) {
+      sendJson(res, 400, { ok: false, message: "请使用 multipart/form-data 上传图片" })
+      return
+    }
     const isPublicUpload = url.pathname === "/api/upload/public"
     const userSession = isPublicUpload ? userSessionFromRequest(req) : null
     const loggedInPublicUpload = !!userSession?.openid
