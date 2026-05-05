@@ -21,6 +21,9 @@ function displayStatus(order) {
   if (order.refundStatus === "待审核" || order.status === "退款中") return "退款中"
   if (order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功") return "已退款"
   if (order.paymentStatus === "待支付" || order.status === "待支付") return "未支付"
+  if (order.deliveryType === "pickup" && order.pickupStatus === "arrived_store") return "已到店，待自提"
+  if (order.deliveryType === "pickup" && order.pickupStatus === "picked_up") return "已自提"
+  if (order.deliveryType === "pickup" && order.pickupStatus === "preparing") return "备货中"
   if (order.status === "待发货") return "待确认设计"
   return order.status || "待发货"
 }
@@ -42,6 +45,10 @@ function normalizeOrder(order, products = []) {
     product,
     categories: Array.isArray(product.categories) ? product.categories : [],
     displayStatus: displayStatus(order),
+    pickupLine: order.deliveryType === "pickup" && order.pickupStore ? `${order.pickupStore.name} · 取货码 ${order.pickupCode || "-"}` : "",
+    pickupTip: order.deliveryType === "pickup"
+      ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
+      : "",
     refundLine: order.refundStatus ? `${order.refundStatus}${order.refundAmount ? ` · ¥${order.refundAmount}` : ""}` : "",
     canRefund: ["待确认设计", "待发货", "已发货", "已完成"].includes(displayStatus(order))
   }

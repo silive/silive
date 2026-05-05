@@ -268,6 +268,124 @@ input {
   color: #8d5a54;
 }
 
+.delivery-section {
+  margin-top: 24rpx;
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 250, 251, .82);
+  border: 1rpx solid rgba(255, 128, 130, .18);
+}
+
+.delivery-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
+
+.delivery-tab {
+  height: 72rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #817679;
+  border: 1rpx solid rgba(255, 128, 130, .18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.delivery-tab.active {
+  background: linear-gradient(135deg, #ff7aa2, #ff8d60);
+  color: #fff;
+  box-shadow: 0 14rpx 30rpx rgba(255, 127, 116, .2);
+}
+
+.pickup-panel {
+  margin-top: 18rpx;
+}
+
+.pickup-tip {
+  padding: 14rpx 16rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  color: #8d8582;
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.pickup-tip.warn {
+  color: #ff5f6d;
+  background: #fff0f3;
+  font-weight: 800;
+}
+
+.pickup-store-list {
+  display: grid;
+  gap: 14rpx;
+  margin-top: 14rpx;
+}
+
+.pickup-store {
+  padding: 16rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  border: 1rpx solid rgba(255, 128, 130, .18);
+}
+
+.pickup-store.selected {
+  border-color: #ff8d60;
+  box-shadow: 0 12rpx 30rpx rgba(255, 127, 116, .14);
+}
+
+.pickup-store-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  color: #222024;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.pickup-tag {
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: #202020;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 900;
+}
+
+.pickup-tag.soft {
+  background: #fff0f3;
+  color: #ff6d7c;
+}
+
+.pickup-line {
+  margin-top: 8rpx;
+  color: #8d8582;
+  font-size: 21rpx;
+  line-height: 1.45;
+}
+
+.pickup-distance {
+  margin-top: 8rpx;
+  color: #ff6b6b;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.pickup-select {
+  width: 188rpx;
+  height: 60rpx;
+  margin: 14rpx 0 0;
+  border-radius: 999rpx;
+  font-size: 21rpx;
+  font-weight: 900;
+}
+
 .upload-field {
   padding: 18rpx;
   border-radius: 20rpx;
@@ -527,7 +645,10 @@ textarea {
 
 .light-btn,
 .ai-btn,
-.upload-drop {
+.upload-drop,
+.delivery-section,
+.pickup-tip,
+.pickup-store {
   background: var(--soft-color, #fff0f3);
   color: var(--accent-color, #ff6d7c);
 }

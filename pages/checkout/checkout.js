@@ -47,6 +47,12 @@ Page({
     category: "",
     source: "",
     uploadedImages: [],
+    deliveryType: "delivery",
+    pickupStores: [],
+    selectedPickupStoreId: "",
+    selectedPickupStore: null,
+    locationStatus: "",
+    userLocation: null,
     themeStyle: "",
     themeClass: "theme-skin01",
     paying: false
@@ -160,7 +166,109 @@ Page({
       wx.showToast({ title: "请输入正确的11位手机号", icon: "none" })
       return false
     }
+    if (this.data.deliveryType === "pickup" && !this.data.selectedPickupStoreId) {
+      wx.showToast({ title: "请选择自提门店", icon: "none" })
+      return false
+    }
     return true
+  },
+
+  switchDelivery(event) {
+    const type = event.currentTarget.dataset.type === "pickup" ? "pickup" : "delivery"
+    this.setData({ deliveryType: type })
+    if (type === "pickup") {
+      this.loadPickupStores()
+      this.requestPickupLocation()
+      this.requestPickupSubscribe()
+    }
+  },
+
+  requestPickupSubscribe() {
+    if (!wx.requestSubscribeMessage) return
+    const tmplId = wx.getStorageSync("PICKUP_TEMPLATE_ID") || ""
+    if (!tmplId) return
+    wx.requestSubscribeMessage({
+      tmplIds: [tmplId],
+      complete: () => {}
+    })
+  },
+
+  requestPickupLocation() {
+    this.setData({ locationStatus: "locating" })
+    wx.getLocation({
+      type: "gcj02",
+      success: res => {
+        const location = { latitude: res.latitude, longitude: res.longitude }
+        this.setData({ userLocation: location, locationStatus: "success" })
+        this.applyPickupDistances(location)
+      },
+      fail: () => {
+        this.setData({ locationStatus: "failed" })
+        wx.showToast({ title: "暂时无法获取位置，请手动选择自提门店", icon: "none" })
+      }
+    })
+  },
+
+  distanceKm(from, store) {
+    const lat1 = Number(from?.latitude)
+    const lng1 = Number(from?.longitude)
+    const lat2 = Number(store.latitude)
+    const lng2 = Number(store.longitude)
+    if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null
+    const rad = Math.PI / 180
+    const dLat = (lat2 - lat1) * rad
+    const dLng = (lng2 - lng1) * rad
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  },
+
+  formatDistance(km) {
+    if (km == null || !Number.isFinite(Number(km))) return ""
+    const num = Number(km)
+    return num < 1 ? `${Math.round(num * 1000)}m` : `${num.toFixed(1)}km`
+  },
+
+  applyPickupDistances(location) {
+    const stores = this.data.pickupStores.map((store, index) => {
+      const distance = this.distanceKm(location, store)
+      return {
+        ...store,
+        distance,
+        distanceText: this.formatDistance(distance),
+        nearest: index === 0
+      }
+    }).sort((a, b) => {
+      if (a.distance == null && b.distance == null) return Number(a.sortOrder || 999) - Number(b.sortOrder || 999)
+      if (a.distance == null) return 1
+      if (b.distance == null) return -1
+      return a.distance - b.distance
+    }).map((store, index) => ({ ...store, nearest: index === 0 && store.distance != null }))
+    this.setData({ pickupStores: stores })
+  },
+
+  loadPickupStores() {
+    request("/api/pickup/stores").then(stores => {
+      const list = (Array.isArray(stores) ? stores : []).map(store => ({
+        ...store,
+        distance: null,
+        distanceText: "",
+        nearest: false
+      }))
+      this.setData({ pickupStores: list })
+      if (this.data.userLocation) this.applyPickupDistances(this.data.userLocation)
+    }).catch(error => {
+      wx.showToast({ title: error.message || "自提门店读取失败", icon: "none" })
+    })
+  },
+
+  selectPickupStore(event) {
+    const id = event.currentTarget.dataset.id
+    const store = this.data.pickupStores.find(item => item.id === id)
+    if (!store) return
+    this.setData({
+      selectedPickupStoreId: id,
+      selectedPickupStore: store
+    })
   },
 
   chooseAddress(options = {}) {
@@ -397,6 +505,12 @@ Page({
           category: this.data.category,
           isCustomOrder: this.data.mode === "custom" ? "true" : "false",
           source: this.data.source || "",
+          deliveryType: this.data.deliveryType,
+          pickupStoreId: this.data.selectedPickupStoreId,
+          userLatitude: this.data.userLocation?.latitude || "",
+          userLongitude: this.data.userLocation?.longitude || "",
+          pickupDistance: this.data.selectedPickupStore?.distance == null ? "" : Number(this.data.selectedPickupStore.distance).toFixed(2),
+          referrerStoreId: wx.getStorageSync("referrerStoreId") || "",
           ...this.data.form
         }
       })).then(order => {

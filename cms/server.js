@@ -45,6 +45,8 @@ const promotionVisitsFile = path.join(seedDir, "promotion-visits.json")
 const orderRecommendationEventsFile = path.join(seedDir, "order-recommendation-events.json")
 const rewardRulesFile = path.join(seedDir, "reward-rules.json")
 const rewardRecordsFile = path.join(seedDir, "reward-records.json")
+const partnerStoresFile = path.join(seedDir, "partner-stores.json")
+const storeSettlementRecordsFile = path.join(seedDir, "store-settlement-records.json")
 const sessions = new Map()
 const userSessions = new Map()
 const publicUploadHits = new Map()
@@ -279,8 +281,8 @@ function sendJson(res, status, data, headers = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,X-User-Session,X-User-Token",
     "Cache-Control": "no-store",
     ...headers
   })
@@ -1504,7 +1506,24 @@ function normalizeOrder(order, index) {
     createdAt: order.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
     paidAt: order.paidAt || null,
     completedAt: order.completedAt || null,
-    refundAt: order.refundAt || null
+    refundAt: order.refundAt || null,
+    deliveryType: order.deliveryType || "delivery",
+    pickupStoreId: order.pickupStoreId || "",
+    pickupStore: order.pickupStore || null,
+    pickupCode: order.pickupCode || "",
+    pickupStatus: order.pickupStatus || "none",
+    arrivedStoreAt: order.arrivedStoreAt || null,
+    pickedUpAt: order.pickedUpAt || null,
+    userLatitude: order.userLatitude == null || order.userLatitude === "" ? "" : String(order.userLatitude),
+    userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
+    pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
+    referrerStoreId: order.referrerStoreId || "",
+    supplierStoreId: order.supplierStoreId || "",
+    referralCommission: order.referralCommission == null || order.referralCommission === "" ? "0.00" : String(order.referralCommission),
+    pickupServiceFee: order.pickupServiceFee == null || order.pickupServiceFee === "" ? "0.00" : String(order.pickupServiceFee),
+    supplierSettlementAmount: order.supplierSettlementAmount == null || order.supplierSettlementAmount === "" ? "0.00" : String(order.supplierSettlementAmount),
+    customCommissionAmount: order.customCommissionAmount == null || order.customCommissionAmount === "" ? "0.00" : String(order.customCommissionAmount),
+    storeSettlementStatus: order.storeSettlementStatus || "unsettled"
   }
 }
 
@@ -1528,6 +1547,103 @@ function orderBelongsToIdentity(order = {}, identity = {}) {
   if (current.userToken && order.userToken === current.userToken) return true
   if (current.openid && order.openid === current.openid) return true
   return false
+}
+
+function money(value) {
+  const num = Number(value || 0)
+  return Number.isFinite(num) ? num.toFixed(2) : "0.00"
+}
+
+function normalizeCommissionType(value) {
+  return ["none", "percent", "fixed"].includes(value) ? value : "none"
+}
+
+function normalizeStoreLevel(value) {
+  return ["display", "pickup", "supplier", "partner"].includes(value) ? value : "display"
+}
+
+function defaultStoreRules(level) {
+  if (level === "pickup") return { referralType: "percent", referralValue: "3", pickupType: "fixed", pickupValue: "2" }
+  if (level === "supplier") return { referralType: "percent", referralValue: "1", pickupType: "fixed", pickupValue: "1" }
+  return { referralType: "percent", referralValue: "3", pickupType: "none", pickupValue: "0" }
+}
+
+function normalizePartnerStore(store = {}, index = 0) {
+  const level = normalizeStoreLevel(store.level)
+  const defaults = defaultStoreRules(level)
+  return {
+    id: String(store.id || `STORE${Date.now()}${index}`),
+    name: store.name || "未命名门店",
+    level,
+    address: store.address || "",
+    phone: store.phone || "",
+    contactName: store.contactName || store.contact_name || "",
+    businessHours: store.businessHours || store.business_hours || "",
+    latitude: store.latitude == null || store.latitude === "" ? "" : String(store.latitude),
+    longitude: store.longitude == null || store.longitude === "" ? "" : String(store.longitude),
+    status: store.status === "disabled" ? "disabled" : "enabled",
+    isDisplayEnabled: String(store.isDisplayEnabled ?? store.is_display_enabled ?? (level === "display" || level === "pickup" || level === "partner" ? "true" : "false")) === "true" ? "true" : "false",
+    isPickupEnabled: String(store.isPickupEnabled ?? store.is_pickup_enabled ?? (level === "pickup" ? "true" : "false")) === "true" ? "true" : "false",
+    isSupplierEnabled: String(store.isSupplierEnabled ?? store.is_supplier_enabled ?? (level === "supplier" ? "true" : "false")) === "true" ? "true" : "false",
+    settlementCycle: store.settlementCycle || store.settlement_cycle || "monthly",
+    qrcodeScene: store.qrcodeScene || store.qrcode_scene || "",
+    sortOrder: String(store.sortOrder ?? store.sort_order ?? index + 1),
+    remark: store.remark || "",
+    referralCommissionType: normalizeCommissionType(store.referralCommissionType || store.referral_commission_type || defaults.referralType),
+    referralCommissionValue: money(store.referralCommissionValue ?? store.referral_commission_value ?? defaults.referralValue),
+    pickupFeeType: normalizeCommissionType(store.pickupFeeType || store.pickup_fee_type || defaults.pickupType),
+    pickupFeeValue: money(store.pickupFeeValue ?? store.pickup_fee_value ?? defaults.pickupValue),
+    supplierSettlementRule: store.supplierSettlementRule || store.supplier_settlement_rule || "",
+    customCommissionRule: store.customCommissionRule || store.custom_commission_rule || "",
+    createdAt: store.createdAt || store.created_at || formatDateTime(new Date()),
+    updatedAt: store.updatedAt || store.updated_at || formatDateTime(new Date())
+  }
+}
+
+function normalizeSettlementRecord(record = {}, index = 0) {
+  return {
+    id: String(record.id || `SSR${Date.now()}${index}`),
+    storeId: record.storeId || record.store_id || "",
+    orderId: record.orderId || record.order_id || "",
+    type: record.type || "referral",
+    amount: money(record.amount),
+    commissionType: normalizeCommissionType(record.commissionType || record.commission_type || "none"),
+    commissionValue: money(record.commissionValue ?? record.commission_value ?? 0),
+    orderPaidAmount: money(record.orderPaidAmount ?? record.order_paid_amount ?? 0),
+    status: record.status === "settled" ? "settled" : "unsettled",
+    description: record.description || "",
+    createdAt: record.createdAt || record.created_at || formatDateTime(new Date()),
+    settledAt: record.settledAt || record.settled_at || ""
+  }
+}
+
+function calculateStoreAmount(amount, type, value) {
+  const paid = Number(amount || 0)
+  const num = Math.max(0, Number(value || 0))
+  if (!paid || type === "none") return "0.00"
+  if (type === "percent") return money(paid * num / 100)
+  if (type === "fixed") return money(Math.min(num, paid * 0.5))
+  return "0.00"
+}
+
+function generatePickupCode() {
+  return String(Math.floor(100000 + Math.random() * 900000))
+}
+
+function storePublicView(store) {
+  return store ? {
+    id: store.id,
+    name: store.name,
+    level: store.level,
+    address: store.address,
+    phone: store.phone,
+    businessHours: store.businessHours,
+    latitude: store.latitude,
+    longitude: store.longitude,
+    status: store.status,
+    isPickupEnabled: store.isPickupEnabled,
+    sortOrder: store.sortOrder
+  } : null
 }
 
 function identityFromRequest(req, payload = {}) {
@@ -1825,6 +1941,121 @@ async function getProduct(id) {
   return rows[0] ? (await getProducts()).find(product => product.id === id) : null
 }
 
+async function getPartnerStores(filters = {}) {
+  if (!pool) {
+    let list = readJsonFile(partnerStoresFile, []).map(normalizePartnerStore)
+    if (filters.status) list = list.filter(store => store.status === filters.status)
+    if (filters.pickupOnly) list = list.filter(store => store.isPickupEnabled === "true")
+    if (filters.keyword) {
+      const keyword = String(filters.keyword).toLowerCase()
+      list = list.filter(store => [store.id, store.name, store.address, store.phone, store.contactName].some(value => String(value || "").toLowerCase().includes(keyword)))
+    }
+    return list.sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999))
+  }
+  const where = []
+  const params = {}
+  if (filters.status) {
+    where.push("status = :status")
+    params.status = filters.status
+  }
+  if (filters.pickupOnly) where.push("is_pickup_enabled = 'true'")
+  if (filters.keyword) {
+    where.push("(id LIKE :keyword OR name LIKE :keyword OR address LIKE :keyword OR phone LIKE :keyword OR contact_name LIKE :keyword)")
+    params.keyword = `%${filters.keyword}%`
+  }
+  const rows = await query(`SELECT * FROM partner_stores ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY sort_order ASC, id ASC`, params)
+  return rows.map((row, index) => normalizePartnerStore(row, index))
+}
+
+async function getPartnerStore(id) {
+  if (!id) return null
+  return (await getPartnerStores()).find(store => store.id === id) || null
+}
+
+async function savePartnerStores(stores) {
+  const list = (Array.isArray(stores) ? stores : []).map(normalizePartnerStore)
+  if (!pool) {
+    writeJsonFile(partnerStoresFile, list)
+    return list
+  }
+  await query("DELETE FROM partner_stores")
+  for (const store of list) {
+    await query(
+      `INSERT INTO partner_stores (id, name, level, address, phone, contact_name, business_hours, latitude, longitude, status, is_display_enabled, is_pickup_enabled, is_supplier_enabled, settlement_cycle, qrcode_scene, sort_order, remark, referral_commission_type, referral_commission_value, pickup_fee_type, pickup_fee_value, supplier_settlement_rule, custom_commission_rule, created_at, updated_at)
+       VALUES (:id, :name, :level, :address, :phone, :contactName, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :createdAt, NOW())`,
+      { ...store, latitude: store.latitude === "" ? null : store.latitude, longitude: store.longitude === "" ? null : store.longitude }
+    )
+  }
+  return list
+}
+
+async function upsertPartnerStore(store) {
+  const list = await getPartnerStores()
+  const normalized = normalizePartnerStore({
+    ...store,
+    id: store.id || `STORE${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    updatedAt: formatDateTime(new Date())
+  }, list.length)
+  const index = list.findIndex(item => item.id === normalized.id)
+  if (index >= 0) list[index] = { ...list[index], ...normalized }
+  else list.push(normalized)
+  await savePartnerStores(list)
+  return normalized
+}
+
+async function getStoreSettlementRecords(filters = {}) {
+  if (!pool) {
+    let records = readJsonFile(storeSettlementRecordsFile, []).map(normalizeSettlementRecord)
+    if (filters.storeId) records = records.filter(record => record.storeId === filters.storeId)
+    if (filters.status) records = records.filter(record => record.status === filters.status)
+    if (filters.type) records = records.filter(record => record.type === filters.type)
+    if (filters.startAt) records = records.filter(record => String(record.createdAt || "") >= filters.startAt)
+    if (filters.endAt) records = records.filter(record => String(record.createdAt || "") <= filters.endAt)
+    return records.reverse()
+  }
+  const where = []
+  const params = {}
+  if (filters.storeId) {
+    where.push("store_id = :storeId")
+    params.storeId = filters.storeId
+  }
+  if (filters.status) {
+    where.push("status = :status")
+    params.status = filters.status
+  }
+  if (filters.type) {
+    where.push("type = :type")
+    params.type = filters.type
+  }
+  if (filters.startAt) {
+    where.push("created_at >= :startAt")
+    params.startAt = filters.startAt
+  }
+  if (filters.endAt) {
+    where.push("created_at <= :endAt")
+    params.endAt = filters.endAt
+  }
+  const rows = await query(`SELECT * FROM store_settlement_records ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
+  return rows.map((row, index) => normalizeSettlementRecord(row, index))
+}
+
+async function saveStoreSettlementRecords(records) {
+  const list = (Array.isArray(records) ? records : []).map(normalizeSettlementRecord)
+  if (!pool) {
+    writeJsonFile(storeSettlementRecordsFile, list)
+    return list
+  }
+  for (const record of list) {
+    await query(
+      `INSERT INTO store_settlement_records (id, store_id, order_id, type, amount, commission_type, commission_value, order_paid_amount, status, description, created_at, settled_at)
+       VALUES (:id, :storeId, :orderId, :type, :amount, :commissionType, :commissionValue, :orderPaidAmount, :status, :description, :createdAt, :settledAt)
+       ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), amount = VALUES(amount), description = VALUES(description)`,
+      record
+    )
+  }
+  return list
+}
+
 async function saveProducts(products) {
   const list = products.map(normalizeProduct).sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999))
   const rewardList = list.map(product => ({
@@ -1860,7 +2091,11 @@ async function getOrders(filters = {}) {
   const identity = requestIdentity(filters)
   const hasIdentity = hasRequestIdentity(identity)
   if (!pool) {
-    let orders = readJsonFile(ordersFile, []).map(normalizeOrder)
+    const stores = readJsonFile(partnerStoresFile, []).map(normalizePartnerStore)
+    let orders = readJsonFile(ordersFile, []).map((order, index) => {
+      const normalized = normalizeOrder(order, index)
+      return { ...normalized, pickupStore: storePublicView(stores.find(store => store.id === normalized.pickupStoreId)) }
+    })
     if (filters.publicOnly && !hasIdentity) return []
     if (identity.userId) orders = orders.filter(order => order.userId === identity.userId)
     else if (identity.userToken) orders = orders.filter(order => order.userToken === identity.userToken)
@@ -1894,7 +2129,8 @@ async function getOrders(filters = {}) {
     params.keyword = `%${filters.keyword}%`
   }
   const rows = await query(`SELECT * FROM orders ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
-  return rows.map(row => ({
+  const stores = await getPartnerStores()
+  return rows.map(row => normalizeOrder({
     id: row.id,
     productId: row.product_id || "",
     customerName: row.customer_name,
@@ -1931,8 +2167,25 @@ async function getOrders(filters = {}) {
     createdAt: row.created_at ? new Date(row.created_at).toISOString().slice(0, 16).replace("T", " ") : "",
     paidAt: row.paid_at ? new Date(row.paid_at).toISOString().slice(0, 16).replace("T", " ") : "",
     completedAt: row.completed_at ? new Date(row.completed_at).toISOString().slice(0, 16).replace("T", " ") : "",
-    refundAt: row.refund_at ? new Date(row.refund_at).toISOString().slice(0, 16).replace("T", " ") : ""
-  }))
+    refundAt: row.refund_at ? new Date(row.refund_at).toISOString().slice(0, 16).replace("T", " ") : "",
+    deliveryType: row.delivery_type || "delivery",
+    pickupStoreId: row.pickup_store_id || "",
+    pickupStore: storePublicView(stores.find(store => store.id === row.pickup_store_id)),
+    pickupCode: row.pickup_code || "",
+    pickupStatus: row.pickup_status || "none",
+    arrivedStoreAt: row.arrived_store_at ? new Date(row.arrived_store_at).toISOString().slice(0, 16).replace("T", " ") : "",
+    pickedUpAt: row.picked_up_at ? new Date(row.picked_up_at).toISOString().slice(0, 16).replace("T", " ") : "",
+    userLatitude: row.user_latitude,
+    userLongitude: row.user_longitude,
+    pickupDistance: row.pickup_distance,
+    referrerStoreId: row.referrer_store_id || "",
+    supplierStoreId: row.supplier_store_id || "",
+    referralCommission: row.referral_commission,
+    pickupServiceFee: row.pickup_service_fee,
+    supplierSettlementAmount: row.supplier_settlement_amount,
+    customCommissionAmount: row.custom_commission_amount,
+    storeSettlementStatus: row.store_settlement_status || "unsettled"
+  }, 0))
 }
 
 async function saveOrders(orders) {
@@ -1958,11 +2211,14 @@ async function saveOrders(orders) {
   for (const order of list) {
     const orderParams = {
       ...order,
-      originalImageUrlsJson: JSON.stringify(order.originalImageUrls || [])
+      originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
+      userLatitude: order.userLatitude === "" ? null : order.userLatitude,
+      userLongitude: order.userLongitude === "" ? null : order.userLongitude,
+      pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_status, arrived_store_at, picked_up_at, user_latitude, user_longitude, pickup_distance, referrer_store_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -1993,12 +2249,124 @@ async function saveOrders(orders) {
        refund_reviewed_at = VALUES(refund_reviewed_at),
        paid_at = VALUES(paid_at),
        completed_at = IF(VALUES(status) = '已完成' AND completed_at IS NULL, NOW(), completed_at),
-       refund_at = IF(VALUES(status) = '已退款' AND refund_at IS NULL, NOW(), refund_at)`,
+       refund_at = IF(VALUES(status) = '已退款' AND refund_at IS NULL, NOW(), refund_at),
+       delivery_type = VALUES(delivery_type),
+       pickup_store_id = VALUES(pickup_store_id),
+       pickup_code = VALUES(pickup_code),
+       pickup_status = VALUES(pickup_status),
+       arrived_store_at = VALUES(arrived_store_at),
+       picked_up_at = VALUES(picked_up_at),
+       user_latitude = VALUES(user_latitude),
+       user_longitude = VALUES(user_longitude),
+       pickup_distance = VALUES(pickup_distance),
+       referrer_store_id = VALUES(referrer_store_id),
+       supplier_store_id = VALUES(supplier_store_id),
+       referral_commission = VALUES(referral_commission),
+       pickup_service_fee = VALUES(pickup_service_fee),
+       supplier_settlement_amount = VALUES(supplier_settlement_amount),
+       custom_commission_amount = VALUES(custom_commission_amount),
+       store_settlement_status = VALUES(store_settlement_status)`,
       orderParams
     )
   }
   await processRewardState()
   return list
+}
+
+async function calculateOrderStoreIncome(data, amount) {
+  const referrerStore = await getPartnerStore(data.referrerStoreId || data.referrer_store_id || "")
+  const pickupStore = data.deliveryType === "pickup" ? await getPartnerStore(data.pickupStoreId || data.pickup_store_id || "") : null
+  const referralCommission = referrerStore
+    ? calculateStoreAmount(amount, referrerStore.referralCommissionType, referrerStore.referralCommissionValue)
+    : "0.00"
+  const pickupServiceFee = pickupStore
+    ? calculateStoreAmount(amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
+    : "0.00"
+  return { referrerStore, pickupStore, referralCommission, pickupServiceFee }
+}
+
+async function createStoreSettlementRecordsForOrder(order) {
+  const existing = await getStoreSettlementRecords()
+  const next = existing.filter(record => order.id !== record.orderId)
+  const referrerStore = await getPartnerStore(order.referrerStoreId)
+  const pickupStore = await getPartnerStore(order.pickupStoreId)
+  const createdAt = formatDateTime(new Date())
+  if (referrerStore && Number(order.referralCommission || 0) > 0) {
+    next.push(normalizeSettlementRecord({
+      id: `SSR${order.id}REF`,
+      storeId: referrerStore.id,
+      orderId: order.id,
+      type: "referral",
+      amount: order.referralCommission,
+      commissionType: referrerStore.referralCommissionType,
+      commissionValue: referrerStore.referralCommissionValue,
+      orderPaidAmount: order.amount,
+      status: order.storeSettlementStatus || "unsettled",
+      description: `推广佣金：${order.productName}`,
+      createdAt
+    }))
+  }
+  if (pickupStore && Number(order.pickupServiceFee || 0) > 0) {
+    next.push(normalizeSettlementRecord({
+      id: `SSR${order.id}PIC`,
+      storeId: pickupStore.id,
+      orderId: order.id,
+      type: "pickup",
+      amount: order.pickupServiceFee,
+      commissionType: pickupStore.pickupFeeType,
+      commissionValue: pickupStore.pickupFeeValue,
+      orderPaidAmount: order.amount,
+      status: order.storeSettlementStatus || "unsettled",
+      description: `自提服务费：${order.productName}`,
+      createdAt
+    }))
+  }
+  await saveStoreSettlementRecords(next)
+  return next.filter(record => record.orderId === order.id)
+}
+
+async function sendPickupArrivedNotice(orderId) {
+  const templateId = process.env.WECHAT_PICKUP_TEMPLATE_ID || ""
+  const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!order) return { ok: false, message: "订单不存在" }
+  if (!templateId) {
+    console.log(`[pickup] subscription template not configured order=${orderId}`)
+    return { ok: true, skipped: true, message: "未配置订阅消息模板，已跳过真实发送" }
+  }
+  console.log(`[pickup] ready to send arrived notice order=${orderId} store=${order.pickupStore?.name || ""}`)
+  return { ok: true, skipped: true, message: "订阅消息发送方法已预留" }
+}
+
+async function getStoreSettlementSummary(filters = {}) {
+  const [stores, orders, records] = await Promise.all([
+    getPartnerStores(),
+    getOrders(),
+    getStoreSettlementRecords(filters)
+  ])
+  const targetStores = filters.storeId ? stores.filter(store => store.id === filters.storeId) : stores
+  const summary = targetStores.map(store => {
+    const storeRecords = records.filter(record => record.storeId === store.id)
+    const referralRecords = storeRecords.filter(record => record.type === "referral")
+    const pickupRecords = storeRecords.filter(record => record.type === "pickup")
+    const supplierRecords = storeRecords.filter(record => record.type === "supplier")
+    const customRecords = storeRecords.filter(record => record.type === "custom")
+    const settled = storeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const total = storeRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    return {
+      storeId: store.id,
+      storeName: store.name,
+      referralOrders: new Set(referralRecords.map(record => record.orderId)).size,
+      pickupOrders: orders.filter(order => order.pickupStoreId === store.id && order.deliveryType === "pickup").length,
+      referralAmount: money(referralRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+      pickupAmount: money(pickupRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+      supplierAmount: money(supplierRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+      customAmount: money(customRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+      totalAmount: money(total),
+      settledAmount: money(settled),
+      unsettledAmount: money(total - settled)
+    }
+  })
+  return { summary, records }
 }
 
 async function createOrder(data) {
@@ -2011,6 +2379,14 @@ async function createOrder(data) {
     }
   }
   if (!product) throw new Error("商品不存在")
+  const deliveryType = data.deliveryType === "pickup" ? "pickup" : "delivery"
+  let pickupStore = null
+  if (deliveryType === "pickup") {
+    pickupStore = await getPartnerStore(data.pickupStoreId)
+    if (!pickupStore || pickupStore.status !== "enabled" || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
+  }
+  const referrerStoreId = data.referrerStoreId || data.storeId || data.referrer_store_id || ""
+  const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, product.price)
   const order = normalizeOrder({
     id: `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     productId: product.id,
@@ -2032,7 +2408,22 @@ async function createOrder(data) {
     userId: data.userId || "",
     userToken: data.userToken || "",
     remark: [data.remark || "", data.newcomerBenefitText ? `新人福利：${data.newcomerBenefitText}` : ""].filter(Boolean).join("\n"),
-    inviterCode: data.inviterCode || ""
+    inviterCode: data.inviterCode || "",
+    deliveryType,
+    pickupStoreId: pickupStore?.id || "",
+    pickupStore: storePublicView(pickupStore),
+    pickupCode: deliveryType === "pickup" ? generatePickupCode() : "",
+    pickupStatus: deliveryType === "pickup" ? "preparing" : "none",
+    userLatitude: data.userLatitude || "",
+    userLongitude: data.userLongitude || "",
+    pickupDistance: data.pickupDistance || "",
+    referrerStoreId,
+    supplierStoreId: data.supplierStoreId || "",
+    referralCommission: income.referralCommission,
+    pickupServiceFee: income.pickupServiceFee,
+    supplierSettlementAmount: "0.00",
+    customCommissionAmount: "0.00",
+    storeSettlementStatus: "unsettled"
   }, 0)
   await ensureCustomerFromOrder(order)
   await bindPromotionFromOrder(order)
@@ -2046,8 +2437,14 @@ async function createOrder(data) {
     return order
   }
   await query(
-    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt)",
-    { ...order, originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []) }
+    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+    {
+      ...order,
+      originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
+      userLatitude: order.userLatitude === "" ? null : order.userLatitude,
+      userLongitude: order.userLongitude === "" ? null : order.userLongitude,
+      pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
+    }
   )
   if (data.source === "order-recommendation") {
     await recordOrderRecommendationEvent({ type: "conversion", productId: order.productId, productName: order.productName, orderId: order.id, amount: order.amount, phone: order.phone })
@@ -2081,6 +2478,7 @@ async function markOrderPaid(orderId, transactionId = "") {
       orders[index].paidAt = new Date().toISOString().slice(0, 16).replace("T", " ")
       writeJsonFile(ordersFile, orders)
       await createRewardsForOrder(orders[index])
+      await createStoreSettlementRecordsForOrder(orders[index])
       return true
     }
     return false
@@ -2091,7 +2489,10 @@ async function markOrderPaid(orderId, transactionId = "") {
   )
   if (!result.affectedRows) return false
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
-  if (order) await createRewardsForOrder(order)
+  if (order) {
+    await createRewardsForOrder(order)
+    await createStoreSettlementRecordsForOrder(order)
+  }
   return true
 }
 
@@ -2107,6 +2508,39 @@ async function applyShipment(data) {
     shippedAt: formatDateTime(new Date())
   }
   await saveOrders([orders[index]])
+  return orders[index]
+}
+
+async function markOrderArrivedStore(orderId) {
+  const orders = await getOrders()
+  const index = orders.findIndex(order => order.id === orderId)
+  if (index < 0) throw new Error("订单不存在")
+  if (orders[index].deliveryType !== "pickup") throw new Error("该订单不是到店自提订单")
+  orders[index] = {
+    ...orders[index],
+    status: "已到店",
+    pickupStatus: "arrived_store",
+    arrivedStoreAt: formatDateTime(new Date())
+  }
+  await saveOrders([orders[index]])
+  await sendPickupArrivedNotice(orderId)
+  return orders[index]
+}
+
+async function markOrderPickedUp(orderId) {
+  const orders = await getOrders()
+  const index = orders.findIndex(order => order.id === orderId)
+  if (index < 0) throw new Error("订单不存在")
+  if (orders[index].deliveryType !== "pickup") throw new Error("该订单不是到店自提订单")
+  orders[index] = {
+    ...orders[index],
+    status: "已完成",
+    pickupStatus: "picked_up",
+    pickedUpAt: formatDateTime(new Date()),
+    completedAt: orders[index].completedAt || formatDateTime(new Date())
+  }
+  await saveOrders([orders[index]])
+  await createStoreSettlementRecordsForOrder(orders[index])
   return orders[index]
 }
 
@@ -2673,6 +3107,65 @@ async function initDb() {
   await ensureColumn("orders", "paid_at", "DATETIME")
   await ensureColumn("orders", "completed_at", "DATETIME")
   await ensureColumn("orders", "refund_at", "DATETIME")
+  await ensureColumn("orders", "delivery_type", "VARCHAR(20) DEFAULT 'delivery'")
+  await ensureColumn("orders", "pickup_store_id", "VARCHAR(40)")
+  await ensureColumn("orders", "pickup_code", "VARCHAR(20)")
+  await ensureColumn("orders", "pickup_status", "VARCHAR(30) DEFAULT 'none'")
+  await ensureColumn("orders", "arrived_store_at", "DATETIME")
+  await ensureColumn("orders", "picked_up_at", "DATETIME")
+  await ensureColumn("orders", "user_latitude", "DECIMAL(10,6)")
+  await ensureColumn("orders", "user_longitude", "DECIMAL(10,6)")
+  await ensureColumn("orders", "pickup_distance", "DECIMAL(10,2)")
+  await ensureColumn("orders", "referrer_store_id", "VARCHAR(40)")
+  await ensureColumn("orders", "supplier_store_id", "VARCHAR(40)")
+  await ensureColumn("orders", "referral_commission", "DECIMAL(10,2) DEFAULT 0")
+  await ensureColumn("orders", "pickup_service_fee", "DECIMAL(10,2) DEFAULT 0")
+  await ensureColumn("orders", "supplier_settlement_amount", "DECIMAL(10,2) DEFAULT 0")
+  await ensureColumn("orders", "custom_commission_amount", "DECIMAL(10,2) DEFAULT 0")
+  await ensureColumn("orders", "store_settlement_status", "VARCHAR(30) DEFAULT 'unsettled'")
+  await query(`CREATE TABLE IF NOT EXISTS partner_stores (
+    id VARCHAR(40) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    level VARCHAR(20) DEFAULT 'display',
+    address VARCHAR(255),
+    phone VARCHAR(30),
+    contact_name VARCHAR(50),
+    business_hours VARCHAR(120),
+    latitude DECIMAL(10,6),
+    longitude DECIMAL(10,6),
+    status VARCHAR(20) DEFAULT 'enabled',
+    is_display_enabled VARCHAR(10) DEFAULT 'true',
+    is_pickup_enabled VARCHAR(10) DEFAULT 'false',
+    is_supplier_enabled VARCHAR(10) DEFAULT 'false',
+    settlement_cycle VARCHAR(20) DEFAULT 'monthly',
+    qrcode_scene VARCHAR(80),
+    sort_order INT DEFAULT 0,
+    remark TEXT,
+    referral_commission_type VARCHAR(20) DEFAULT 'percent',
+    referral_commission_value DECIMAL(10,2) DEFAULT 3,
+    pickup_fee_type VARCHAR(20) DEFAULT 'fixed',
+    pickup_fee_value DECIMAL(10,2) DEFAULT 2,
+    supplier_settlement_rule TEXT,
+    custom_commission_rule TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS store_settlement_records (
+    id VARCHAR(60) PRIMARY KEY,
+    store_id VARCHAR(40),
+    order_id VARCHAR(32),
+    type VARCHAR(20),
+    amount DECIMAL(10,2) DEFAULT 0,
+    commission_type VARCHAR(20),
+    commission_value DECIMAL(10,2) DEFAULT 0,
+    order_paid_amount DECIMAL(10,2) DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'unsettled',
+    description VARCHAR(255),
+    created_at DATETIME,
+    settled_at DATETIME,
+    INDEX idx_store_status (store_id, status),
+    INDEX idx_order_id (order_id)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -3091,6 +3584,12 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/pickup/stores" && req.method === "GET") {
+    const stores = (await getPartnerStores({ status: "enabled", pickupOnly: true })).map(storePublicView)
+    sendJson(res, 200, stores)
+    return
+  }
+
   if (url.pathname === "/api/product/detail" && req.method === "GET") {
     const id = url.searchParams.get("id") || url.searchParams.get("productId")
     const product = id ? await getProduct(decodeURIComponent(id)) : null
@@ -3144,6 +3643,22 @@ async function handle(req, res) {
       userToken: identity.userToken,
       publicOnly: true
     }))
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+$/) && req.method === "GET") {
+    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    if (!hasRequestIdentity(identity)) {
+      sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
+      return
+    }
+    const orderId = decodeURIComponent(url.pathname.split("/").pop())
+    const order = (await getOrders({ keyword: orderId, ...identity, publicOnly: true })).find(item => item.id === orderId)
+    if (!order) {
+      sendJson(res, 404, { ok: false, message: "订单不存在" })
+      return
+    }
+    sendJson(res, 200, order)
     return
   }
 
@@ -3436,8 +3951,72 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/arrived-store$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await markOrderArrivedStore(orderId) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/picked-up$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await markOrderPickedUp(orderId) })
+    return
+  }
+
   if (url.pathname === "/api/admin/orders/refund-review" && req.method === "POST") {
     sendJson(res, 200, { ok: true, data: await reviewRefund(JSON.parse((await readBody(req)).toString() || "{}")) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/stores" && req.method === "GET") {
+    sendJson(res, 200, await getPartnerStores({ keyword: url.searchParams.get("keyword") || "" }))
+    return
+  }
+
+  if (url.pathname === "/api/admin/stores" && req.method === "POST") {
+    sendJson(res, 200, { ok: true, data: await upsertPartnerStore(JSON.parse((await readBody(req)).toString() || "{}")) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/stores\/[^/]+$/) && req.method === "PUT") {
+    const id = decodeURIComponent(url.pathname.split("/").pop())
+    sendJson(res, 200, { ok: true, data: await upsertPartnerStore({ ...JSON.parse((await readBody(req)).toString() || "{}"), id }) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/stores\/[^/]+\/status$/) && req.method === "PATCH") {
+    const id = decodeURIComponent(url.pathname.split("/")[4])
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const store = await getPartnerStore(id)
+    if (!store) throw new Error("门店不存在")
+    sendJson(res, 200, { ok: true, data: await upsertPartnerStore({ ...store, status: body.status === "disabled" ? "disabled" : "enabled" }) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/store-settlements" && req.method === "GET") {
+    sendJson(res, 200, await getStoreSettlementSummary({
+      storeId: url.searchParams.get("storeId") || "",
+      status: url.searchParams.get("status") || "",
+      type: url.searchParams.get("type") || "",
+      startAt: url.searchParams.get("startAt") || "",
+      endAt: url.searchParams.get("endAt") || ""
+    }))
+    return
+  }
+
+  if (url.pathname === "/api/admin/store-settlements/mark-settled" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const ids = Array.isArray(body.ids) ? body.ids.map(String) : []
+    const records = await getStoreSettlementRecords()
+    const now = formatDateTime(new Date())
+    records.forEach(record => {
+      if (ids.includes(record.id)) {
+        record.status = "settled"
+        record.settledAt = now
+      }
+    })
+    await saveStoreSettlementRecords(records)
+    sendJson(res, 200, { ok: true, data: await getStoreSettlementSummary({}) })
     return
   }
 

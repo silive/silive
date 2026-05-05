@@ -73,7 +73,68 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at DATETIME,
   paid_at DATETIME,
   completed_at DATETIME,
-  refund_at DATETIME
+  refund_at DATETIME,
+  delivery_type VARCHAR(20) DEFAULT 'delivery',
+  pickup_store_id VARCHAR(40),
+  pickup_code VARCHAR(20),
+  pickup_status VARCHAR(30) DEFAULT 'none',
+  arrived_store_at DATETIME,
+  picked_up_at DATETIME,
+  user_latitude DECIMAL(10,6),
+  user_longitude DECIMAL(10,6),
+  pickup_distance DECIMAL(10,2),
+  referrer_store_id VARCHAR(40),
+  supplier_store_id VARCHAR(40),
+  referral_commission DECIMAL(10,2) DEFAULT 0,
+  pickup_service_fee DECIMAL(10,2) DEFAULT 0,
+  supplier_settlement_amount DECIMAL(10,2) DEFAULT 0,
+  custom_commission_amount DECIMAL(10,2) DEFAULT 0,
+  store_settlement_status VARCHAR(30) DEFAULT 'unsettled'
+);
+
+CREATE TABLE IF NOT EXISTS partner_stores (
+  id VARCHAR(40) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  level VARCHAR(20) DEFAULT 'display',
+  address VARCHAR(255),
+  phone VARCHAR(30),
+  contact_name VARCHAR(50),
+  business_hours VARCHAR(120),
+  latitude DECIMAL(10,6),
+  longitude DECIMAL(10,6),
+  status VARCHAR(20) DEFAULT 'enabled',
+  is_display_enabled VARCHAR(10) DEFAULT 'true',
+  is_pickup_enabled VARCHAR(10) DEFAULT 'false',
+  is_supplier_enabled VARCHAR(10) DEFAULT 'false',
+  settlement_cycle VARCHAR(20) DEFAULT 'monthly',
+  qrcode_scene VARCHAR(80),
+  sort_order INT DEFAULT 0,
+  remark TEXT,
+  referral_commission_type VARCHAR(20) DEFAULT 'percent',
+  referral_commission_value DECIMAL(10,2) DEFAULT 3,
+  pickup_fee_type VARCHAR(20) DEFAULT 'fixed',
+  pickup_fee_value DECIMAL(10,2) DEFAULT 2,
+  supplier_settlement_rule TEXT,
+  custom_commission_rule TEXT,
+  created_at DATETIME,
+  updated_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS store_settlement_records (
+  id VARCHAR(60) PRIMARY KEY,
+  store_id VARCHAR(40),
+  order_id VARCHAR(32),
+  type VARCHAR(20),
+  amount DECIMAL(10,2) DEFAULT 0,
+  commission_type VARCHAR(20),
+  commission_value DECIMAL(10,2) DEFAULT 0,
+  order_paid_amount DECIMAL(10,2) DEFAULT 0,
+  status VARCHAR(20) DEFAULT 'unsettled',
+  description VARCHAR(255),
+  created_at DATETIME,
+  settled_at DATETIME,
+  INDEX idx_store_status (store_id, status),
+  INDEX idx_order_id (order_id)
 );
 
 CREATE TABLE IF NOT EXISTS customers (

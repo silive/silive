@@ -56,6 +56,33 @@
       <button class="light-btn" style="{{secondaryButtonStyle}}" bindtap="chooseAddress">一键选择收货地址</button>
     </view>
     <view class="field">地址<textarea value="{{form.address}}" data-field="address" bindinput="onInput" placeholder="请输入收货地址"></textarea></view>
+    <view class="delivery-section">
+      <view class="upload-label">配送方式</view>
+      <view class="delivery-tabs">
+        <button class="delivery-tab {{deliveryType === 'delivery' ? 'active' : ''}}" data-type="delivery" bindtap="switchDelivery">同城配送 / 快递</button>
+        <button class="delivery-tab {{deliveryType === 'pickup' ? 'active' : ''}}" data-type="pickup" bindtap="switchDelivery">到店自提</button>
+      </view>
+      <view wx:if="{{deliveryType === 'pickup'}}" class="pickup-panel">
+        <view class="pickup-tip" style="{{mutedTextStyle}}" wx:if="{{locationStatus === 'success'}}">已为你推荐最近自提点，你也可以更换其他门店。顾客端显示到店自提免费。</view>
+        <view class="pickup-tip warn" wx:elif="{{locationStatus === 'failed'}}">暂时无法获取位置，请手动选择自提门店</view>
+        <view class="pickup-tip" style="{{mutedTextStyle}}" wx:else>选择到店自提后，商品到店会通知你领取。</view>
+        <view class="pickup-store-list">
+          <view class="pickup-store {{selectedPickupStoreId === item.id ? 'selected' : ''}}" wx:for="{{pickupStores}}" wx:key="id">
+            <view class="pickup-store-main">
+              <view class="pickup-store-title">
+                <text>{{item.name}}</text>
+                <text wx:if="{{item.nearest}}" class="pickup-tag">最近</text>
+                <text class="pickup-tag soft">支持自提</text>
+              </view>
+              <view class="pickup-line" style="{{mutedTextStyle}}">{{item.address}}</view>
+              <view class="pickup-line" style="{{mutedTextStyle}}">电话：{{item.phone || '到店咨询'}} · {{item.businessHours || '营业时间请咨询门店'}}</view>
+              <view wx:if="{{item.distanceText}}" class="pickup-distance">距离 {{item.distanceText}}</view>
+            </view>
+            <button class="pickup-select" style="{{selectedPickupStoreId === item.id ? primaryButtonStyle : secondaryButtonStyle}}" data-id="{{item.id}}" bindtap="selectPickupStore">{{selectedPickupStoreId === item.id ? '已选择' : '选择该门店'}}</button>
+          </view>
+        </view>
+      </view>
+    </view>
     <view class="field upload-field">
       <view class="upload-head">
         <view>

@@ -41,6 +41,12 @@ App({
 
   captureInvite(options = {}) {
     const query = options.query || {}
+    const scene = decodeURIComponent(query.scene || "")
+    const storeId = decodeURIComponent(query.store_id || query.storeId || (scene.match(/(?:^|&)store_id=([^&]+)/) || [])[1] || "")
+    if (storeId && !wx.getStorageSync("referrerStoreId")) {
+      wx.setStorageSync("referrerStoreId", storeId)
+      wx.setStorageSync("referrerStoreBoundAt", Date.now())
+    }
     const invite = decodeURIComponent(query.invite || query.inviterCode || "")
     if (!invite) return
     const localUserId = this.ensureLocalUserId()

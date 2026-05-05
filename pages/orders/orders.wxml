@@ -50,6 +50,11 @@
             <view class="status" style="{{tagStyle}}">{{item.displayStatus}}</view>
           </view>
           <view class="muted" style="{{mutedTextStyle}}">{{item.createdAt}}</view>
+          <view class="pickup-info" wx:if="{{item.pickupLine}}">
+            <view class="pickup-code">{{item.pickupLine}}</view>
+            <view class="muted" style="{{mutedTextStyle}}">{{item.pickupTip}}</view>
+            <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.pickupStore.address}}">{{item.pickupStore.address}}</view>
+          </view>
           <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.shippingCompany || item.trackingNumber}}">物流：{{item.shippingCompany}} · {{item.trackingNumber}}</view>
           <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.refundLine}}">退款：{{item.refundLine}}</view>
           <view class="amount" style="{{priceStyle}}">¥{{item.amount}}</view>

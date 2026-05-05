@@ -17,6 +17,14 @@
     "backgroundColor": "#FFF8F5",
     "backgroundTextStyle": "dark"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于为你推荐附近的自提门店"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
   "tabBar": {
     "color": "#8D8582",
     "selectedColor": "#FF5A3C",

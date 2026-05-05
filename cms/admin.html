@@ -415,6 +415,7 @@
         <button data-view="products">商品中心</button>
         <button data-view="orders">订单中心</button>
         <button data-view="customers">用户中心</button>
+        <button data-view="stores">合作门店</button>
         <button data-view="marketing">营销中心</button>
         <button data-view="home">页面装修</button>
         <button data-view="theme">皮肤管理</button>
@@ -640,6 +641,43 @@
         <div class="panel"><h3>客户管理</h3><div id="customersTable"></div></div>
       </section>
 
+      <section class="view" id="view-stores">
+        <div class="center-tabs">
+          <button class="center-tab active" data-subview="storeManager">门店 / 自提点管理</button>
+          <button class="center-tab" data-subview="storeSettlement">门店结算统计</button>
+        </div>
+        <div class="subview active" id="subview-storeManager">
+          <div class="panel">
+            <div class="item-head">
+              <div>
+                <h3>合作门店 / 自提点管理</h3>
+                <div class="upload-help">MVP 支持展示点、自提点、供货点和合伙点。可配置推广佣金和自提服务费。</div>
+              </div>
+              <button class="secondary" id="addStoreBtn">新增门店</button>
+            </div>
+            <div id="storesTable"></div>
+          </div>
+        </div>
+        <div class="subview" id="subview-storeSettlement">
+          <div class="panel">
+            <div class="item-head">
+              <h3>门店结算统计</h3>
+              <button class="secondary" id="markSettledBtn">标记选中为已结算</button>
+            </div>
+            <div class="filters">
+              <select id="settlementStoreFilter"></select>
+              <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option></select>
+              <select id="settlementTypeFilter"><option value="">全部类型</option><option value="referral">推广佣金</option><option value="pickup">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
+              <input id="settlementStartFilter" placeholder="开始时间 2026-05-01">
+              <input id="settlementEndFilter" placeholder="结束时间 2026-05-31">
+              <button class="secondary" id="filterSettlementsBtn">筛选</button>
+            </div>
+            <div id="storeSettlementSummary"></div>
+            <div id="storeSettlementRecords" style="margin-top:18px"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-marketing">
         <div class="center-tabs">
           <button class="center-tab active" data-subview="activityManager">活动管理</button>
@@ -752,6 +790,7 @@
       products: ["商品中心", "维护商品、库存、媒体素材和一二级类目。"],
       orders: ["订单中心", "查看订单详情、物流、售后和发货状态。"],
       customers: ["用户中心", "查看客户联系方式、消费记录和会员资产。"],
+      stores: ["合作门店", "维护展示点、自提点和门店收益结算。"],
       marketing: ["营销中心", "维护活动、新人福利、推广关系和奖励记录。"],
       home: ["页面装修", "修改 Banner、首页入口、客服和推荐商品。"],
       theme: ["皮肤管理", "上传、编辑、预览并一键启用小程序视觉皮肤。"],
@@ -764,12 +803,15 @@
     let allOrders = []
     let orders = []
     let customers = []
+    let stores = []
+    let storeSettlements = { summary: [], records: [] }
     let relations = []
     let rewards = []
     let settings = {}
     let themeState = { activeThemeSkin: "skin01", themes: [] }
     let editingThemeSkin = "skin01"
     let orderFilters = { keyword: "", status: "" }
+    let settlementFilters = { storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
     let productImportToken = ""
     let categorySearch = ""
@@ -1961,6 +2003,26 @@
             <button class="secondary" data-action="send-design-confirm" data-index="${index}">发送客户确认</button>
           </div>
         </div>
+        <div class="drawer-section"><h4>自提与门店收益</h4><div class="form-grid">
+          <label>配送方式<select data-order-key="deliveryType">
+            <option value="delivery" ${order.deliveryType === "pickup" ? "" : "selected"}>同城配送 / 快递</option>
+            <option value="pickup" ${order.deliveryType === "pickup" ? "selected" : ""}>到店自提</option>
+          </select></label>
+          <label>自提门店ID<input data-order-key="pickupStoreId" value="${escapeHtml(order.pickupStoreId || "")}"></label>
+          <label>取货码<input data-order-key="pickupCode" value="${escapeHtml(order.pickupCode || "")}"></label>
+          <label>自提状态<select data-order-key="pickupStatus">
+            ${["none", "preparing", "arrived_store", "picked_up"].map(status => `<option value="${status}" ${order.pickupStatus === status ? "selected" : ""}>${({ none: "无", preparing: "备货中", arrived_store: "已到店/待自提", picked_up: "已自提" })[status]}</option>`).join("")}
+          </select></label>
+          <label>推广门店ID<input data-order-key="referrerStoreId" value="${escapeHtml(order.referrerStoreId || "")}"></label>
+          <label>推广佣金<input data-order-key="referralCommission" value="${escapeHtml(order.referralCommission || "0.00")}"></label>
+          <label>自提服务费<input data-order-key="pickupServiceFee" value="${escapeHtml(order.pickupServiceFee || "0.00")}"></label>
+          <label>结算状态<select data-order-key="storeSettlementStatus"><option value="unsettled" ${order.storeSettlementStatus === "settled" ? "" : "selected"}>未结算</option><option value="settled" ${order.storeSettlementStatus === "settled" ? "selected" : ""}>已结算</option></select></label>
+        </div>
+        <p class="muted">自提门店：${escapeHtml(order.pickupStore?.name || "-")} ${order.pickupStore?.address ? `· ${escapeHtml(order.pickupStore.address)}` : ""}</p>
+        <div class="toolbar" style="margin-top:12px">
+          <button class="secondary" data-action="order-arrived-store" data-index="${index}">标记已到店 / 待自提</button>
+          <button class="secondary" data-action="order-picked-up" data-index="${index}">标记已自提 / 完成</button>
+        </div></div>
         <div class="drawer-section"><h4>物流信息</h4><div class="form-grid">
           <label>快递公司<input data-order-key="shippingCompany" value="${escapeHtml(order.shippingCompany)}" placeholder="例如：顺丰速运"></label>
           <label>快递单号<input data-order-key="trackingNumber" value="${escapeHtml(order.trackingNumber)}" placeholder="填写后可一键标记发货"></label>
@@ -2031,12 +2093,13 @@
       $("orderKeyword").value = orderFilters.keyword || ""
       $("orderStatusFilter").value = orderFilters.status || ""
       renderOrderWorkbench()
-      $("ordersTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox"></th><th>订单号</th><th>客户</th><th>金额</th><th>支付状态</th><th>发货状态</th><th>售后状态</th><th>时间</th><th>操作按钮</th></tr></thead><tbody>${orders.map((order, index) => `
+      $("ordersTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox"></th><th>订单号</th><th>客户</th><th>金额</th><th>配送/自提</th><th>支付状态</th><th>发货状态</th><th>售后状态</th><th>时间</th><th>操作按钮</th></tr></thead><tbody>${orders.map((order, index) => `
         <tr>
           <td><input type="checkbox"></td>
           <td><div class="table-title">${escapeHtml(order.id)}</div><div class="table-sub">${escapeHtml(order.productName)}</div></td>
           <td>${escapeHtml(order.customerName)}<div class="muted">${escapeHtml(order.phone)}</div></td>
           <td><strong>${formatMoney(order.amount)}</strong></td>
+          <td><span class="pill">${order.deliveryType === "pickup" ? "到店自提" : "配送/快递"}</span><div class="muted">${escapeHtml(order.pickupStore?.name || "")}</div><div class="muted">${order.pickupCode ? `取货码：${escapeHtml(order.pickupCode)}` : ""}</div></td>
           <td><span class="pill">${escapeHtml(order.paymentStatus || "待支付")}</span></td>
           <td><span class="pill">${escapeHtml(order.status || "待发货")}</span></td>
           <td><span class="pill">${escapeHtml(order.refundStatus || "无售后")}</span></td>
@@ -2047,6 +2110,114 @@
     function renderCustomers() {
       $("customersTable").innerHTML = `<table><thead><tr><th>客户</th><th>电话</th><th>邀请码</th><th>微信</th><th>订单数</th><th>累计消费</th><th>购物金</th></tr></thead><tbody>${customers.map(customer => `
         <tr><td>${escapeHtml(customer.name)}</td><td>${escapeHtml(customer.phone)}</td><td><span class="pill">${escapeHtml(customer.inviteCode)}</span></td><td>${escapeHtml(customer.wechat)}</td><td>${customer.orders}</td><td>¥${escapeHtml(customer.totalAmount)}</td><td>¥${escapeHtml(customer.shoppingMoney || "0")}</td></tr>`).join("")}</tbody></table>`
+    }
+    function storeLevelText(level) {
+      return ({ display: "展示点", pickup: "自提点", supplier: "供货点", partner: "合伙点" })[level] || "展示点"
+    }
+    function commissionText(type, value) {
+      if (type === "none") return "不计算"
+      if (type === "percent") return `${value || 0}%`
+      return `¥${value || 0}/单`
+    }
+    function renderStores() {
+      $("storesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>等级</th><th>能力</th><th>佣金/服务费</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead><tbody>${stores.map((store, index) => `
+        <tr>
+          <td><div class="table-title">${escapeHtml(store.name)}</div><div class="table-sub">${escapeHtml(store.address || "")}</div></td>
+          <td><span class="pill">${storeLevelText(store.level)}</span></td>
+          <td>${store.isDisplayEnabled === "true" ? "展示 " : ""}${store.isPickupEnabled === "true" ? "自提 " : ""}${store.isSupplierEnabled === "true" ? "供货" : ""}</td>
+          <td><div>推广：${commissionText(store.referralCommissionType, store.referralCommissionValue)}</div><div class="muted">自提：${commissionText(store.pickupFeeType, store.pickupFeeValue)}</div></td>
+          <td>${escapeHtml(store.contactName || "-")}<div class="muted">${escapeHtml(store.phone || "")}</div></td>
+          <td><span class="pill">${store.status === "enabled" ? "启用" : "停用"}</span></td>
+          <td><div class="table-actions"><button class="secondary" data-action="edit-store" data-index="${index}">编辑</button><button class="secondary" data-action="toggle-store-status" data-index="${index}">${store.status === "enabled" ? "停用" : "启用"}</button></div></td>
+        </tr>`).join("")}</tbody></table></div>`
+    }
+    function renderStoreSettlements() {
+      const summary = storeSettlements.summary || []
+      const records = storeSettlements.records || []
+      $("settlementStoreFilter").innerHTML = `<option value="">全部门店</option>${stores.map(store => `<option value="${escapeHtml(store.id)}" ${settlementFilters.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)}</option>`).join("")}`
+      $("settlementStatusFilter").value = settlementFilters.status || ""
+      $("settlementTypeFilter").value = settlementFilters.type || ""
+      $("settlementStartFilter").value = settlementFilters.startAt || ""
+      $("settlementEndFilter").value = settlementFilters.endAt || ""
+      $("storeSettlementSummary").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>供货/定制</th><th>应结算</th><th>已结算</th><th>未结算</th></tr></thead><tbody>${summary.map(item => `
+        <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.supplierAmount} / ¥${item.customAmount}</td><td><strong>¥${item.totalAmount}</strong></td><td>¥${item.settledAmount}</td><td>¥${item.unsettledAmount}</td></tr>`).join("")}</tbody></table></div>`
+      $("storeSettlementRecords").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th></tr></thead><tbody>${records.map(record => {
+        const store = stores.find(item => item.id === record.storeId) || {}
+        return `<tr>
+          <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${record.status === "settled" ? "disabled" : ""}></td>
+          <td>${escapeHtml(record.orderId)}</td>
+          <td>${escapeHtml(store.name || record.storeId)}</td>
+          <td>${({ referral: "推广佣金", pickup: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整" })[record.type] || record.type}</td>
+          <td>${commissionText(record.commissionType, record.commissionValue)}</td>
+          <td><strong>¥${record.amount}</strong></td>
+          <td><span class="pill">${record.status === "settled" ? "已结算" : "未结算"}</span></td>
+          <td>${escapeHtml(record.createdAt || "")}<div class="muted">${record.settledAt ? `结算：${escapeHtml(record.settledAt)}` : ""}</div></td>
+        </tr>`
+      }).join("")}</tbody></table></div>`
+    }
+    function openStoreDrawer(index) {
+      const store = stores[index]
+      if (!store) return
+      drawerMode = "store"
+      drawerIndex = index
+      $("drawerTitle").textContent = "门店详情"
+      $("drawerDesc").textContent = `${store.id} · ${store.name}`
+      $("drawerBody").innerHTML = `
+        <div class="drawer-section"><h4>基础信息</h4><div class="form-grid">
+          <label>门店名称<input data-store-key="name" value="${escapeHtml(store.name)}"></label>
+          <label>等级<select data-store-key="level">
+            ${["display", "pickup", "supplier", "partner"].map(level => `<option value="${level}" ${store.level === level ? "selected" : ""}>${storeLevelText(level)}</option>`).join("")}
+          </select></label>
+          <label>状态<select data-store-key="status"><option value="enabled" ${store.status === "enabled" ? "selected" : ""}>启用</option><option value="disabled" ${store.status === "disabled" ? "selected" : ""}>停用</option></select></label>
+          <label>联系人<input data-store-key="contactName" value="${escapeHtml(store.contactName)}"></label>
+          <label>电话<input data-store-key="phone" value="${escapeHtml(store.phone)}"></label>
+          <label>营业时间<input data-store-key="businessHours" value="${escapeHtml(store.businessHours)}"></label>
+          <label>地址<textarea data-store-key="address">${escapeHtml(store.address)}</textarea></label>
+          <label>纬度<input data-store-key="latitude" value="${escapeHtml(store.latitude)}"></label>
+          <label>经度<input data-store-key="longitude" value="${escapeHtml(store.longitude)}"></label>
+          <label>排序<input data-store-key="sortOrder" value="${escapeHtml(store.sortOrder)}"></label>
+          <label>二维码场景值<input data-store-key="qrcodeScene" value="${escapeHtml(store.qrcodeScene || `store_id=${store.id}`)}"></label>
+          <label>结算周期<select data-store-key="settlementCycle"><option value="weekly" ${store.settlementCycle === "weekly" ? "selected" : ""}>每周</option><option value="monthly" ${store.settlementCycle !== "weekly" ? "selected" : ""}>每月</option></select></label>
+        </div></div>
+        <div class="drawer-section"><h4>门店能力</h4><div class="form-grid">
+          <label>展示点<select data-store-key="isDisplayEnabled"><option value="true" ${store.isDisplayEnabled === "true" ? "selected" : ""}>支持</option><option value="false" ${store.isDisplayEnabled === "false" ? "selected" : ""}>不支持</option></select></label>
+          <label>自提点<select data-store-key="isPickupEnabled"><option value="true" ${store.isPickupEnabled === "true" ? "selected" : ""}>支持</option><option value="false" ${store.isPickupEnabled === "false" ? "selected" : ""}>不支持</option></select></label>
+          <label>供货点（预留）<select data-store-key="isSupplierEnabled"><option value="true" ${store.isSupplierEnabled === "true" ? "selected" : ""}>支持</option><option value="false" ${store.isSupplierEnabled === "false" ? "selected" : ""}>不支持</option></select></label>
+        </div></div>
+        <div class="drawer-section"><h4>收益规则</h4><div class="form-grid">
+          <label>推广佣金<select data-store-key="referralCommissionType"><option value="none" ${store.referralCommissionType === "none" ? "selected" : ""}>不计算</option><option value="percent" ${store.referralCommissionType === "percent" ? "selected" : ""}>按订单金额百分比</option><option value="fixed" ${store.referralCommissionType === "fixed" ? "selected" : ""}>按每单固定金额</option></select></label>
+          <label>推广佣金数值<input data-store-key="referralCommissionValue" value="${escapeHtml(store.referralCommissionValue)}" placeholder="% 或 元"></label>
+          <label>自提服务费<select data-store-key="pickupFeeType"><option value="none" ${store.pickupFeeType === "none" ? "selected" : ""}>不计算</option><option value="percent" ${store.pickupFeeType === "percent" ? "selected" : ""}>按订单金额百分比</option><option value="fixed" ${store.pickupFeeType === "fixed" ? "selected" : ""}>按每单固定金额</option></select></label>
+          <label>自提服务费数值<input data-store-key="pickupFeeValue" value="${escapeHtml(store.pickupFeeValue)}" placeholder="% 或 元"></label>
+          <label>供货结算规则（预留）<textarea data-store-key="supplierSettlementRule">${escapeHtml(store.supplierSettlementRule)}</textarea></label>
+          <label>定制加购分成（预留）<textarea data-store-key="customCommissionRule">${escapeHtml(store.customCommissionRule)}</textarea></label>
+          <label>备注<textarea data-store-key="remark">${escapeHtml(store.remark)}</textarea></label>
+        </div></div>`
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-store-drawer">保存门店</button>`
+      $("detailDrawer").classList.add("show")
+    }
+    function collectStoreDrawer() {
+      if (drawerMode !== "store" || !stores[drawerIndex]) return null
+      const target = stores[drawerIndex]
+      $("drawerBody").querySelectorAll("[data-store-key]").forEach(input => {
+        target[input.dataset.storeKey] = input.value
+      })
+      ;["referralCommissionValue", "pickupFeeValue"].forEach(key => {
+        target[key] = Math.max(0, Number(target[key] || 0)).toFixed(2)
+      })
+      target.updatedAt = new Date().toISOString().slice(0, 16).replace("T", " ")
+      return target
+    }
+    function saveStoreDrawer() {
+      const store = collectStoreDrawer()
+      if (!store) return
+      api(`/api/admin/stores/${encodeURIComponent(store.id)}`, "PUT", store)
+        .then(() => loadAll())
+        .then(() => {
+          setStatus("门店已保存")
+          closeDrawer()
+        })
+        .catch(error => setStatus(error.message))
     }
     function renderRelations() {
       $("relationsTable").innerHTML = `<table><thead><tr><th>邀请人</th><th>被邀请人</th><th>邀请码</th><th>层级</th><th>建立时间</th></tr></thead><tbody>${relations.map((relation, index) => `
@@ -2167,14 +2338,17 @@
     }
     async function loadAll() {
       setStatus("正在读取...")
-      const [overview, homeData, productData, orderData, customerData, settingData, themeData] = await Promise.all([
+      const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
+      const [overview, homeData, productData, orderData, customerData, settingData, themeData, storeData, settlementData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
         api("/api/admin/orders"),
         api("/api/admin/customers"),
         api("/api/admin/settings"),
-        api("/api/admin/themes")
+        api("/api/admin/themes"),
+        api("/api/admin/stores"),
+        api(`/api/admin/store-settlements${settlementQuery ? `?${settlementQuery}` : ""}`)
       ])
       const [relationData, rewardData] = await Promise.all([
         api("/api/admin/promotion-relations"),
@@ -2185,6 +2359,8 @@
       allOrders = orderData
       orders = getFilteredOrders(orderData)
       customers = customerData
+      stores = storeData
+      storeSettlements = settlementData
       relations = relationData
       rewards = rewardData
       settings = settingData
@@ -2198,6 +2374,8 @@
       renderCategoryManager()
       renderOrders()
       renderCustomers()
+      renderStores()
+      renderStoreSettlements()
       renderRelations()
       renderRewards()
       renderActivities()
@@ -2247,6 +2425,10 @@
         })
         await api("/api/admin/settings", "PUT", { ...settings, activities })
         await api("/api/admin/promotion-relations", "PUT", relations)
+      }
+      if (currentView === "stores") {
+        renderStores()
+        renderStoreSettlements()
       }
       if (currentView === "theme") {
         collectThemeEditor()
@@ -2318,6 +2500,56 @@
       renderActivities()
       setStatus("已新增活动，记得保存营销中心")
     })
+    $("addStoreBtn").addEventListener("click", () => {
+      const store = {
+        id: `STORE${Date.now()}`,
+        name: "新合作门店",
+        level: "pickup",
+        address: "",
+        phone: "",
+        contactName: "",
+        businessHours: "10:00-21:00",
+        latitude: "",
+        longitude: "",
+        status: "enabled",
+        isDisplayEnabled: "true",
+        isPickupEnabled: "true",
+        isSupplierEnabled: "false",
+        settlementCycle: "monthly",
+        qrcodeScene: "",
+        sortOrder: String(stores.length + 1),
+        remark: "",
+        referralCommissionType: "percent",
+        referralCommissionValue: "3.00",
+        pickupFeeType: "fixed",
+        pickupFeeValue: "2.00",
+        supplierSettlementRule: "",
+        customCommissionRule: ""
+      }
+      api("/api/admin/stores", "POST", store)
+        .then(() => loadAll())
+        .then(() => setStatus("门店已新增"))
+        .catch(error => setStatus(error.message))
+    })
+    $("markSettledBtn").addEventListener("click", () => {
+      const ids = Array.from(document.querySelectorAll("[data-settlement-id]:checked")).map(input => input.dataset.settlementId)
+      if (!ids.length) return setStatus("请先勾选结算记录")
+      if (!confirm(`确认将 ${ids.length} 条记录标记为已结算？`)) return
+      api("/api/admin/store-settlements/mark-settled", "POST", { ids })
+        .then(() => loadAll())
+        .then(() => setStatus("已标记结算"))
+        .catch(error => setStatus(error.message))
+    })
+    $("filterSettlementsBtn").addEventListener("click", () => {
+      settlementFilters = {
+        storeId: $("settlementStoreFilter").value,
+        status: $("settlementStatusFilter").value,
+        type: $("settlementTypeFilter").value,
+        startAt: $("settlementStartFilter").value.trim(),
+        endAt: $("settlementEndFilter").value.trim()
+      }
+      loadAll().catch(error => setStatus(error.message))
+    })
     $("addThemeBtn").addEventListener("click", () => {
       collectThemeEditor()
       const skin = `skin-custom-${Date.now()}`
@@ -2385,6 +2617,15 @@
       }
       if (event.target.dataset.action === "edit-product") openProductDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "view-order") openOrderDrawer(Number(event.target.dataset.index))
+      if (event.target.dataset.action === "edit-store") openStoreDrawer(Number(event.target.dataset.index))
+      if (event.target.dataset.action === "toggle-store-status") {
+        const store = stores[Number(event.target.dataset.index)]
+        if (!store) return
+        api(`/api/admin/stores/${encodeURIComponent(store.id)}/status`, "PATCH", { status: store.status === "enabled" ? "disabled" : "enabled" })
+          .then(() => loadAll())
+          .then(() => setStatus(store.status === "enabled" ? "门店已停用" : "门店已启用"))
+          .catch(error => setStatus(error.message))
+      }
       if (event.target.dataset.action === "close-drawer") closeDrawer()
       if (event.target.dataset.drawerTab) {
         const tabName = event.target.dataset.drawerTab
@@ -2480,6 +2721,7 @@
       }
       if (event.target.dataset.action === "save-product-drawer") saveProductDrawer()
       if (event.target.dataset.action === "save-order-drawer") saveOrderDrawer()
+      if (event.target.dataset.action === "save-store-drawer") saveStoreDrawer()
       if (event.target.dataset.action === "add-media") {
         const key = event.target.dataset.key
         const kind = event.target.dataset.kind
@@ -2517,6 +2759,22 @@
         api("/api/admin/orders/ship", "POST", { orderId: orders[index].id, shippingCompany, trackingNumber })
           .then(() => loadAll())
           .then(() => setStatus("已标记发货"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "order-arrived-store") {
+        const order = orders[Number(event.target.dataset.index)]
+        if (!order) return
+        api(`/api/admin/orders/${encodeURIComponent(order.id)}/arrived-store`, "POST", {})
+          .then(() => loadAll())
+          .then(() => setStatus("已标记到店，已预留通知发送"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "order-picked-up") {
+        const order = orders[Number(event.target.dataset.index)]
+        if (!order) return
+        api(`/api/admin/orders/${encodeURIComponent(order.id)}/picked-up`, "POST", {})
+          .then(() => loadAll())
+          .then(() => setStatus("已标记自提完成"))
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "refund-approve") {
@@ -2627,6 +2885,12 @@
           else selectedProducts.delete(index)
         })
         renderProducts()
+        return
+      }
+      if (event.target.id === "selectAllSettlements") {
+        document.querySelectorAll("[data-settlement-id]:not(:disabled)").forEach(input => {
+          input.checked = event.target.checked
+        })
         return
       }
       if (event.target.dataset.selectProduct) {
