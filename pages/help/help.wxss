@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 36rpx 28rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #fdf7f4 0%, #fffdfb 52%, #f4f8f6 100%);
+  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
 }
 
 .hero {
@@ -21,14 +21,14 @@
 
 .title {
   margin-top: 8rpx;
-  color: #242120;
+  color: #1f2937;
   font-size: 42rpx;
   font-weight: 900;
 }
 
 .subtitle {
   margin-top: 10rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 24rpx;
 }
 
@@ -52,14 +52,14 @@
 }
 
 .article-title {
-  color: #242120;
+  color: #1f2937;
   font-size: 29rpx;
   font-weight: 900;
 }
 
 .article-summary {
   margin-top: 8rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 22rpx;
   line-height: 1.45;
 }
@@ -68,7 +68,7 @@
   width: 52rpx;
   height: 52rpx;
   border-radius: 50%;
-  background: #f7efec;
+  background: #f4f9ff;
   color: #8d5a54;
   display: flex;
   align-items: center;
@@ -107,14 +107,14 @@
 }
 
 .empty-title {
-  color: #242120;
+  color: #1f2937;
   font-size: 30rpx;
   font-weight: 900;
 }
 
 .empty-desc {
   margin-top: 10rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 23rpx;
 }
 
@@ -123,7 +123,7 @@
   height: 74rpx;
   margin: 24rpx auto 0;
   border-radius: 999rpx;
-  background: #202020;
+  background: #1f2937;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -138,7 +138,7 @@
   margin-top: 28rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #202020;
+  background: #1f2937;
   box-shadow: 0 18rpx 42rpx rgba(32, 32, 32, .14);
 }
 
@@ -181,7 +181,7 @@
 .help-page {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 126, 159, .18), transparent 28%),
-    linear-gradient(180deg, #fff8f5 0%, #fffefd 50%, #fff2f5 100%);
+    linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
   animation: pageFade .34s ease both;
 }
 
@@ -191,23 +191,23 @@
 }
 
 .eyebrow {
-  color: #ff7f74;
+  color: #36cfc9;
 }
 
 .hero,
 .article-card,
 .empty-card {
-  border: 1rpx solid rgba(255, 169, 158, .22);
+  border: 1rpx solid rgba(22,119,255,.14);
   border-radius: 30rpx;
   background: rgba(255, 255, 255, .86);
-  box-shadow: 0 18rpx 48rpx rgba(255, 132, 128, .10);
+  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
   backdrop-filter: blur(18rpx);
 }
 
 .title,
 .article-title,
 .empty-title {
-  color: #222024;
+  color: #1f2937;
   font-weight: 950;
 }
 
@@ -221,14 +221,14 @@
 
 .article-arrow,
 .contact-btn {
-  background: linear-gradient(135deg, #ff7aa2, #ff8d60);
+  background: linear-gradient(135deg, #1677ff, #36cfc9);
   color: #fff;
-  box-shadow: 0 14rpx 30rpx rgba(255, 127, 116, .22);
+  box-shadow: 0 14rpx 30rpx rgba(22,119,255,.14);
 }
 
 .help-banner {
   border-radius: 30rpx;
-  box-shadow: 0 24rpx 56rpx rgba(255, 127, 116, .18);
+  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.14);
 }
 
 .banner-copy,
@@ -238,7 +238,7 @@
 
 /* Runtime theme variables */
 .help-page {
-  background: linear-gradient(180deg, var(--page-top-color, #fff8f5) 0%, #fffefd 50%, var(--page-bottom-color, #fff2f5) 100%);
+  background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .hero,
@@ -246,22 +246,22 @@
 .empty-card {
   border-radius: var(--card-radius, 30rpx);
   background: var(--card-color, rgba(255,255,255,.86));
-  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(255,132,128,.10));
+  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(22,119,255,.10));
 }
 
 .article-arrow,
 .contact-btn {
-  background: linear-gradient(135deg, var(--button-start, #ff7aa2), var(--button-end, #ff8d60));
+  background: linear-gradient(135deg, var(--button-start, #1677ff), var(--button-end, #36cfc9));
 }
 
 .eyebrow {
-  color: var(--accent-color, #ff7f74);
+  color: var(--accent-color, #36cfc9);
 }
 
 .title,
 .article-title,
 .empty-title {
-  color: var(--text-color, #222024);
+  color: var(--text-color, #1f2937);
 }
 
 .subtitle,

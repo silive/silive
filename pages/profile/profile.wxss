@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 36rpx 28rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #fdf7f4 0%, #fffdfb 52%, #f4f8f6 100%);
+  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
 }
 
 .user-card {
@@ -27,8 +27,8 @@
 }
 
 .placeholder {
-  background: #202020;
-  color: #fff6ef;
+  background: #1f2937;
+  color: #f8fbff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -37,14 +37,14 @@
 }
 
 .user-name {
-  color: #242120;
+  color: #1f2937;
   font-size: 32rpx;
   font-weight: 850;
 }
 
 .user-desc {
   margin-top: 8rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 22rpx;
 }
 
@@ -53,7 +53,7 @@
   min-width: 112rpx;
   padding: 0 20rpx;
   border-radius: 999rpx;
-  background: #e4f0ec;
+  background: #e6f7ff;
   color: #24302d;
   font-size: 23rpx;
   font-weight: 850;
@@ -66,7 +66,7 @@
   width: 220rpx;
   height: 72rpx;
   padding: 0 28rpx;
-  background: #202020;
+  background: #1f2937;
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 900;
@@ -88,8 +88,8 @@
   margin-top: 28rpx;
   padding: 26rpx;
   border-radius: 22rpx;
-  background: #202020;
-  color: #fff6ef;
+  background: #1f2937;
+  color: #f8fbff;
   box-shadow: 0 18rpx 42rpx rgba(32, 32, 32, .16);
 }
 
@@ -122,21 +122,21 @@
   padding: 24rpx;
   border-radius: 26rpx;
   background: rgba(255, 255, 255, .9);
-  border: 1rpx solid rgba(255, 128, 130, .16);
+  border: 1rpx solid rgba(22,119,255,.14);
   box-shadow: 0 14rpx 36rpx rgba(83, 69, 64, .08);
 }
 
 .store-entry-card:active {
   transform: scale(.985);
-  background: #fff0f3;
+  background: #eef6ff;
 }
 
 .store-entry-icon {
   width: 72rpx;
   height: 72rpx;
   border-radius: 24rpx;
-  background: linear-gradient(135deg, #fff0f5, #ffe4d8);
-  color: #ff6d7c;
+  background: linear-gradient(135deg, #eef6ff, #e6f4ff);
+  color: #1677ff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -149,14 +149,14 @@
 }
 
 .store-entry-title {
-  color: #242120;
+  color: #1f2937;
   font-size: 28rpx;
   font-weight: 950;
 }
 
 .store-entry-subtitle {
   margin-top: 6rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 22rpx;
   font-weight: 700;
 }
@@ -168,7 +168,7 @@
   padding: 6rpx 14rpx;
   border-radius: 999rpx;
   background: rgba(255, 125, 116, .12);
-  color: #ff6d7c;
+  color: #1677ff;
   font-size: 20rpx;
   font-weight: 850;
   box-sizing: border-box;
@@ -215,20 +215,20 @@
   height: 164rpx;
   padding: 20rpx 10rpx 18rpx;
   border-radius: 22rpx;
-  background: #fbfbfd;
-  color: #242120;
+  background: #ffffff;
+  color: #1f2937;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 1rpx solid #eee4df;
+  border: 1rpx solid #dcebff;
   box-sizing: border-box;
   flex-shrink: 0;
   box-shadow: 0 8rpx 22rpx rgba(83, 69, 64, .05);
 }
 
 .feature-card:active {
-  background: #e8e4e0;
+  background: #e6f4ff;
   transform: scale(.985);
 }
 
@@ -236,7 +236,7 @@
   width: 52rpx;
   height: 52rpx;
   border-radius: 50%;
-  background: #f1ece8;
+  background: #eef6ff;
   color: #5f5753;
   display: flex;
   align-items: center;
@@ -248,7 +248,7 @@
 
 .feature-title {
   margin-top: 14rpx;
-  color: #242120;
+  color: #1f2937;
   font-size: 24rpx;
   font-weight: 900;
   line-height: 1.2;
@@ -257,7 +257,7 @@
 
 .feature-subtitle {
   margin-top: 7rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 19rpx;
   font-weight: 700;
   line-height: 1.2;
@@ -272,7 +272,7 @@
   height: 38rpx;
   padding: 0 10rpx;
   border-radius: 999rpx;
-  background: #202020;
+  background: #1f2937;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -288,7 +288,7 @@
   right: 12rpx;
   padding: 5rpx 12rpx;
   border-radius: 999rpx;
-  background: #202020;
+  background: #1f2937;
   color: #ffffff;
   font-size: 18rpx;
   font-weight: 900;
@@ -301,7 +301,7 @@
   width: 14rpx;
   height: 14rpx;
   border-radius: 50%;
-  background: #d35f55;
+  background: #1677ff;
   box-shadow: 0 0 0 6rpx rgba(211, 95, 85, .12);
 }
 
@@ -311,7 +311,7 @@
   margin-top: 26rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #202020;
+  background: #1f2937;
   box-shadow: 0 18rpx 42rpx rgba(32, 32, 32, .14);
 }
 
@@ -324,7 +324,7 @@
 .profile-banner-mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(32, 32, 32, .72), rgba(32, 32, 32, .08));
+  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(22,119,255,.08));
 }
 
 .profile-banner-copy {
@@ -370,7 +370,7 @@
 .profile-page {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 126, 159, .18), transparent 28%),
-    linear-gradient(180deg, #fff8f5 0%, #fffefd 50%, #fff2f5 100%);
+    linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
   animation: pageFade .34s ease both;
 }
 
@@ -381,10 +381,10 @@
 
 .user-card,
 .feature-panel {
-  border: 1rpx solid rgba(255, 169, 158, .22);
+  border: 1rpx solid rgba(22,119,255,.14);
   border-radius: 30rpx;
   background: rgba(255, 255, 255, .86);
-  box-shadow: 0 18rpx 48rpx rgba(255, 132, 128, .10);
+  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
   backdrop-filter: blur(18rpx);
 }
 
@@ -392,65 +392,65 @@
 .login-auth-btn,
 .feature-badge,
 .online-pill {
-  background: linear-gradient(135deg, #ff7aa2, #ff8d60);
+  background: linear-gradient(135deg, #1677ff, #36cfc9);
   color: #fff;
-  box-shadow: 0 14rpx 30rpx rgba(255, 127, 116, .22);
+  box-shadow: 0 14rpx 30rpx rgba(22,119,255,.14);
 }
 
 .auth-btn {
-  background: #fff0f3;
-  color: #ff6d7c;
+  background: #eef6ff;
+  color: #1677ff;
 }
 
 .user-name,
 .feature-title,
 .profile-banner-title {
-  color: #222024;
+  color: #1f2937;
   font-weight: 950;
 }
 
 .user-desc,
 .feature-subtitle,
 .copyright {
-  color: #8d7e80;
+  color: #6b7280;
 }
 
 .wallet-card {
   border-radius: 30rpx;
   background:
     radial-gradient(circle at 86% 0%, rgba(255, 255, 255, .24), transparent 30%),
-    linear-gradient(135deg, #26222a 0%, #ff7f74 100%);
-  box-shadow: 0 24rpx 56rpx rgba(255, 127, 116, .20);
+    linear-gradient(135deg, #1f2937 0%, #36cfc9 100%);
+  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.13);
 }
 
 .feature-card {
-  border-color: rgba(255, 128, 130, .16);
+  border-color: rgba(22,119,255,.14);
   border-radius: 26rpx;
-  background: #fffafb;
-  box-shadow: 0 10rpx 24rpx rgba(255, 132, 128, .08);
+  background: #ffffff;
+  box-shadow: 0 10rpx 24rpx rgba(22,119,255,.08);
 }
 
 .feature-card:active {
-  background: #fff0f3;
+  background: #eef6ff;
 }
 
 .feature-icon {
-  background: linear-gradient(135deg, #fff0f5, #ffe4d8);
-  color: #ff6d7c;
+  background: linear-gradient(135deg, #eef6ff, #e6f4ff);
+  color: #1677ff;
 }
 
 .red-dot {
-  background: #ff5f6d;
+  background: #ef4444;
   box-shadow: 0 0 0 6rpx rgba(255, 95, 109, .14);
 }
 
 .profile-banner {
   border-radius: 30rpx;
-  box-shadow: 0 24rpx 56rpx rgba(255, 127, 116, .18);
+  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.14);
 }
 
 .profile-banner-mask {
-  background: linear-gradient(90deg, rgba(38, 34, 42, .72), rgba(255, 127, 116, .10));
+  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(22,119,255,.10));
 }
 
 .profile-banner-copy,
@@ -460,14 +460,14 @@
 
 /* Runtime theme variables */
 .profile-page {
-  background: linear-gradient(180deg, var(--page-top-color, #fff8f5) 0%, #fffefd 50%, var(--page-bottom-color, #fff2f5) 100%);
+  background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .user-card,
 .feature-panel {
   border-radius: var(--card-radius, 30rpx);
   background: var(--card-color, rgba(255,255,255,.86));
-  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(255,132,128,.10));
+  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(22,119,255,.10));
 }
 
 .placeholder,
@@ -475,29 +475,29 @@
 .feature-badge,
 .online-pill {
   border-radius: var(--button-radius, 999rpx);
-  background: linear-gradient(135deg, var(--button-start, #ff7aa2), var(--button-end, #ff8d60));
+  background: linear-gradient(135deg, var(--button-start, #1677ff), var(--button-end, #36cfc9));
 }
 
 .wallet-card {
   background:
     radial-gradient(circle at 86% 0%, rgba(255, 255, 255, .24), transparent 30%),
-    linear-gradient(135deg, var(--button-start, #26222a), var(--button-end, #ff7f74));
-  box-shadow: 0 24rpx 56rpx var(--theme-shadow, rgba(255,127,116,.20));
+    linear-gradient(135deg, var(--button-start, #1f2937), var(--button-end, #36cfc9));
+  box-shadow: 0 24rpx 56rpx var(--theme-shadow, rgba(22,119,255,.13));
 }
 
 .auth-btn,
 .feature-icon {
-  background: var(--soft-color, #fff0f3);
-  color: var(--accent-color, #ff6d7c);
+  background: var(--soft-color, #eef6ff);
+  color: var(--accent-color, #1677ff);
 }
 
 .user-name,
 .feature-title {
-  color: var(--text-color, #222024);
+  color: var(--text-color, #1f2937);
 }
 
 .user-desc,
 .feature-subtitle,
 .copyright {
-  color: var(--muted-color, #8d7e80);
+  color: var(--muted-color, #6b7280);
 }

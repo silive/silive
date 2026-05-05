@@ -3,35 +3,38 @@ const ENABLE_REMOTE_THEME = false
 const DEFAULT_THEME = {
   skinId: "skin01",
   skin: "skin01",
-  name: "Skin01 青春活力商城风",
+  name: "Skin01 蓝白清爽科技风",
   version: 1,
   updatedAt: "",
   colors: {
-    primaryColor: "#FF7A00",
-    accentColor: "#FF4D8D",
-    lightBg: "#FFF0F3",
-    pageTopColor: "#FFF8F5",
-    pageBottomColor: "#FFF2F5",
-    cardColor: "rgba(255,255,255,.88)",
-    textColor: "#222024",
-    mutedTextColor: "#8D7E80",
-    priceColor: "#FF5A3C",
-    buttonGradientStart: "#FF7A00",
-    buttonGradientEnd: "#FF4D8D",
-    shadowColor: "rgba(255,122,0,.16)"
+    primaryColor: "#1677FF",
+    accentColor: "#36CFC9",
+    lightBg: "#EEF6FF",
+    pageTopColor: "#F4F9FF",
+    pageBottomColor: "#FFFFFF",
+    cardColor: "#FFFFFF",
+    textColor: "#1F2937",
+    mutedTextColor: "#6B7280",
+    priceColor: "#FF6B35",
+    successColor: "#22C55E",
+    warningColor: "#F59E0B",
+    borderColor: "#DCEBFF",
+    buttonGradientStart: "#1677FF",
+    buttonGradientEnd: "#36CFC9",
+    shadowColor: "rgba(22,119,255,.10)"
   },
   radius: {
     cardRadius: 28,
     buttonRadius: 999
   },
   tabbar: {
-    activeColor: "#FF5A3C",
+    activeColor: "#1677FF",
     inactiveColor: "#999999",
     backgroundColor: "#FFFFFF"
   },
   navigationBar: {
     frontColor: "#000000",
-    backgroundColor: "#FFF8F5"
+    backgroundColor: "#F4F9FF"
   },
   banners: {},
   icons: {},
@@ -128,6 +131,9 @@ function buildThemeStyle(theme = DEFAULT_THEME) {
     `--text-color:${c.textColor}`,
     `--muted-color:${c.mutedTextColor}`,
     `--price-color:${c.priceColor}`,
+    `--success-color:${c.successColor || "#22C55E"}`,
+    `--warning-color:${c.warningColor || "#F59E0B"}`,
+    `--border-color:${c.borderColor || "#DCEBFF"}`,
     `--button-start:${c.buttonGradientStart}`,
     `--button-end:${c.buttonGradientEnd}`,
     `--card-radius:${next.radius.cardRadius}rpx`,
@@ -146,11 +152,11 @@ function buildThemeStyles(theme = DEFAULT_THEME) {
   return {
     themeStyle: buildThemeStyle(next),
     pageStyle: buildThemeStyle(next),
-    cardStyle: `border-radius:${next.radius.cardRadius}rpx;background:${c.cardColor};box-shadow:0 18rpx 46rpx ${c.shadowColor}`,
+    cardStyle: `border-radius:${next.radius.cardRadius}rpx;background:${c.cardColor};border:1rpx solid ${c.borderColor || "#DCEBFF"};box-shadow:0 12rpx 32rpx ${c.shadowColor}`,
     primaryButtonStyle: `background:${gradient};border-radius:${next.radius.buttonRadius}rpx;color:#fff`,
-    secondaryButtonStyle: `background:${c.cardColor};border:1rpx solid ${c.lightBg};border-radius:${next.radius.buttonRadius}rpx;color:${c.textColor}`,
-    bannerStyle: `background:${bannerGradient};border-radius:${next.radius.cardRadius}rpx;box-shadow:0 22rpx 52rpx ${c.shadowColor}`,
-    bannerOverlayStyle: `background:linear-gradient(90deg, ${hexToRgba(c.primaryColor, .8)}, ${hexToRgba(c.accentColor, .28)})`,
+    secondaryButtonStyle: `background:${c.cardColor};border:1rpx solid ${c.borderColor || c.lightBg};border-radius:${next.radius.buttonRadius}rpx;color:${c.primaryColor}`,
+    bannerStyle: `background:${bannerGradient};border-radius:${next.radius.cardRadius}rpx;box-shadow:0 12rpx 32rpx ${c.shadowColor}`,
+    bannerOverlayStyle: `background:linear-gradient(90deg, ${hexToRgba(c.primaryColor, .72)}, ${hexToRgba(c.accentColor, .22)})`,
     bannerImageStyle: "",
     priceStyle: `color:${c.priceColor}`,
     mutedTextStyle: `color:${c.mutedTextColor}`,
@@ -158,7 +164,7 @@ function buildThemeStyles(theme = DEFAULT_THEME) {
     iconBadgeStyle: `background:${gradient};color:#fff;box-shadow:0 10rpx 24rpx ${c.shadowColor}`,
     tabActiveColor: next.tabbar.activeColor,
     tabInactiveColor: next.tabbar.inactiveColor,
-    walletCardStyle: `background:${bannerGradient};border-radius:${next.radius.cardRadius}rpx;box-shadow:0 22rpx 52rpx ${c.shadowColor};color:#fff`
+    walletCardStyle: `background:${bannerGradient};border-radius:${next.radius.cardRadius}rpx;box-shadow:0 12rpx 32rpx ${c.shadowColor};color:#fff`
   }
 }
 

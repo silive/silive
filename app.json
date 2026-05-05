@@ -17,9 +17,9 @@
   ],
   "window": {
     "navigationBarTitleText": "非常智造",
-    "navigationBarBackgroundColor": "#FFF8F5",
+    "navigationBarBackgroundColor": "#F4F9FF",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#FFF8F5",
+    "backgroundColor": "#F4F9FF",
     "backgroundTextStyle": "dark"
   },
   "permission": {
@@ -31,8 +31,8 @@
     "getLocation"
   ],
   "tabBar": {
-    "color": "#8D8582",
-    "selectedColor": "#FF5A3C",
+    "color": "#6B7280",
+    "selectedColor": "#1677FF",
     "backgroundColor": "#FFFFFF",
     "borderStyle": "white",
     "list": [

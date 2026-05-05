@@ -2,11 +2,11 @@
   min-height: 100vh;
   padding: 30rpx 28rpx 48rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #fdf7f4 0%, #fffdfb 52%, #f4f8f6 100%);
+  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
 }
 
 .title {
-  color: #242120;
+  color: #1f2937;
   font-size: 42rpx;
   font-weight: 850;
   margin-bottom: 24rpx;
@@ -21,7 +21,7 @@
 .empty {
   margin-top: 120rpx;
   text-align: center;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 26rpx;
 }
 
@@ -29,7 +29,7 @@
 .page {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 126, 159, .18), transparent 28%),
-    linear-gradient(180deg, #fff8f5 0%, #fffefd 50%, #fff2f5 100%);
+    linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
   animation: pageFade .34s ease both;
 }
 
@@ -39,24 +39,24 @@
 }
 
 .title {
-  color: #222024;
+  color: #1f2937;
   font-weight: 950;
 }
 
 .poster {
   border-radius: 30rpx;
-  box-shadow: 0 24rpx 56rpx rgba(255, 127, 116, .18);
+  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.14);
 }
 
 /* Runtime theme variables */
 .page {
-  background: linear-gradient(180deg, var(--page-top-color, #fff8f5) 0%, #fffefd 50%, var(--page-bottom-color, #fff2f5) 100%);
+  background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .title {
-  color: var(--text-color, #222024);
+  color: var(--text-color, #1f2937);
 }
 
 .poster {
-  box-shadow: 0 24rpx 56rpx var(--theme-shadow, rgba(255,127,116,.18));
+  box-shadow: 0 24rpx 56rpx var(--theme-shadow, rgba(22,119,255,.12));
 }

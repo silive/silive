@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 30rpx 28rpx 48rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #fdf7f4 0%, #fffdfb 52%, #f4f8f6 100%);
+  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
 }
 
 .hero-card,
@@ -26,14 +26,14 @@
 
 .title {
   margin-top: 8rpx;
-  color: #242120;
+  color: #1f2937;
   font-size: 42rpx;
   font-weight: 850;
 }
 
 .subtitle {
   margin-top: 10rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 24rpx;
   line-height: 1.45;
 }
@@ -43,7 +43,7 @@
   margin-top: 18rpx;
   padding: 8rpx 18rpx;
   border-radius: 999rpx;
-  background: #f7efec;
+  background: #f4f9ff;
   color: #8d5a54;
   font-size: 21rpx;
   font-weight: 800;
@@ -65,10 +65,10 @@ input {
   height: 78rpx;
   margin-top: 12rpx;
   padding: 0 22rpx;
-  border: 1rpx solid #eadcd7;
+  border: 1rpx solid #dcebff;
   border-radius: 16rpx;
-  background: #fbfbfd;
-  color: #242120;
+  background: #ffffff;
+  color: #1f2937;
   box-sizing: border-box;
   font-size: 26rpx;
 }
@@ -86,12 +86,12 @@ input {
 }
 
 .light-btn {
-  background: #f7efec;
+  background: #f4f9ff;
   color: #8d5a54;
 }
 
 .primary-btn {
-  background: #202020;
+  background: #1f2937;
   color: #ffffff;
 }
 
@@ -107,12 +107,12 @@ input {
 }
 
 .wallet.dark {
-  background: #202020;
-  color: #fff6ef;
+  background: #1f2937;
+  color: #f8fbff;
 }
 
 .wallet-label {
-  color: #8d8582;
+  color: #6b7280;
   font-size: 22rpx;
   font-weight: 800;
 }
@@ -128,7 +128,7 @@ input {
 }
 
 .panel-title {
-  color: #242120;
+  color: #1f2937;
   font-size: 30rpx;
   font-weight: 850;
 }
@@ -139,7 +139,7 @@ input {
   margin: 24rpx auto 18rpx;
   padding: 18rpx;
   border-radius: 22rpx;
-  background: repeating-linear-gradient(45deg, #202020 0 12rpx, #fff 12rpx 24rpx);
+  background: repeating-linear-gradient(45deg, #1f2937 0 12rpx, #fff 12rpx 24rpx);
   box-sizing: border-box;
 }
 
@@ -148,7 +148,7 @@ input {
   height: 100%;
   border-radius: 16rpx;
   background: rgba(255,255,255,.92);
-  color: #202020;
+  color: #1f2937;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -165,7 +165,7 @@ input {
 
 .qr-text,
 .empty {
-  color: #8d8582;
+  color: #6b7280;
   text-align: center;
   font-size: 24rpx;
   line-height: 1.45;
@@ -175,8 +175,8 @@ input {
   margin-top: 18rpx;
   padding: 18rpx;
   border-radius: 16rpx;
-  background: #fbfbfd;
-  color: #8d8582;
+  background: #ffffff;
+  color: #6b7280;
   font-size: 22rpx;
   line-height: 1.45;
   word-break: break-all;
@@ -196,7 +196,7 @@ input {
 }
 
 .primary-btn.ghost {
-  background: #f7efec;
+  background: #f4f9ff;
   color: #8d5a54;
 }
 
@@ -215,7 +215,7 @@ input {
   width: 100%;
   height: 150rpx;
   border-radius: 18rpx;
-  background: #f7efec;
+  background: #f4f9ff;
 }
 
 .hot-placeholder {
@@ -229,7 +229,7 @@ input {
 
 .hot-name {
   margin-top: 12rpx;
-  color: #242120;
+  color: #1f2937;
   font-size: 23rpx;
   font-weight: 850;
   line-height: 1.25;
@@ -241,7 +241,7 @@ input {
 
 .hot-price {
   margin-top: 8rpx;
-  color: #d35f55;
+  color: #1677ff;
   font-size: 24rpx;
   font-weight: 850;
 }
@@ -252,32 +252,32 @@ input {
   justify-content: space-between;
   gap: 20rpx;
   padding: 22rpx 0;
-  border-bottom: 1rpx solid #f0e7e3;
+  border-bottom: 1rpx solid #dcebff;
 }
 
 .record-title {
-  color: #242120;
+  color: #1f2937;
   font-size: 27rpx;
   font-weight: 850;
 }
 
 .record-desc {
   margin-top: 8rpx;
-  color: #8d8582;
+  color: #6b7280;
   font-size: 22rpx;
 }
 
 .pill {
   padding: 8rpx 16rpx;
   border-radius: 999rpx;
-  background: #e4f0ec;
+  background: #e6f7ff;
   color: #24302d;
   font-size: 21rpx;
   font-weight: 850;
 }
 
 .amount {
-  color: #d35f55;
+  color: #1677ff;
   font-size: 30rpx;
   font-weight: 850;
 }
@@ -286,7 +286,7 @@ input {
 .page {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 126, 159, .18), transparent 28%),
-    linear-gradient(180deg, #fff8f5 0%, #fffefd 50%, #fff2f5 100%);
+    linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
   animation: pageFade .34s ease both;
 }
 
@@ -296,16 +296,16 @@ input {
 }
 
 .eyebrow {
-  color: #ff7f74;
+  color: #36cfc9;
 }
 
 .hero-card,
 .panel,
 .wallet {
-  border: 1rpx solid rgba(255, 169, 158, .22);
+  border: 1rpx solid rgba(22,119,255,.14);
   border-radius: 30rpx;
   background: rgba(255, 255, 255, .86);
-  box-shadow: 0 18rpx 48rpx rgba(255, 132, 128, .10);
+  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
   backdrop-filter: blur(18rpx);
 }
 
@@ -314,7 +314,7 @@ input {
 .wallet-value,
 .hot-name,
 .record-title {
-  color: #222024;
+  color: #1f2937;
   font-weight: 950;
 }
 
@@ -331,15 +331,15 @@ input {
 .light-btn,
 .primary-btn.ghost,
 .pill {
-  background: #fff0f3;
-  color: #ff6d7c;
+  background: #eef6ff;
+  color: #1677ff;
 }
 
 .primary-btn,
 .wallet.dark {
-  background: linear-gradient(135deg, #ff7aa2, #ff8d60);
+  background: linear-gradient(135deg, #1677ff, #36cfc9);
   color: #fff;
-  box-shadow: 0 18rpx 40rpx rgba(255, 127, 116, .24);
+  box-shadow: 0 18rpx 40rpx rgba(22,119,255,.16);
 }
 
 .wallet.dark .wallet-label,
@@ -348,31 +348,31 @@ input {
 }
 
 .qr-box {
-  background: repeating-linear-gradient(45deg, #ff7aa2 0 12rpx, #fff 12rpx 24rpx);
-  box-shadow: 0 18rpx 40rpx rgba(255, 127, 116, .16);
+  background: repeating-linear-gradient(45deg, #1677ff 0 12rpx, #fff 12rpx 24rpx);
+  box-shadow: 0 18rpx 40rpx rgba(22,119,255,.10);
 }
 
 .invite-link {
-  border: 1rpx solid rgba(255, 128, 130, .18);
-  background: #fffafb;
+  border: 1rpx solid rgba(22,119,255,.16);
+  background: #ffffff;
 }
 
 .hot-image {
   border-radius: 24rpx;
   background:
     radial-gradient(circle at 28% 20%, rgba(255, 255, 255, .75), transparent 22%),
-    linear-gradient(135deg, #ffd9e3, #ff9a7a 52%, #343036);
+    linear-gradient(135deg, #dcecff, #36cfc9 52%, #1677ff);
 }
 
 .hot-price,
 .amount {
-  color: #ff6b6b;
+  color: #ff6b35;
   font-weight: 950;
 }
 
 /* Runtime theme variables */
 .page {
-  background: linear-gradient(180deg, var(--page-top-color, #fff8f5) 0%, #fffefd 50%, var(--page-bottom-color, #fff2f5) 100%);
+  background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .hero-card,
@@ -380,12 +380,12 @@ input {
 .wallet {
   border-radius: var(--card-radius, 30rpx);
   background: var(--card-color, rgba(255,255,255,.86));
-  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(255,132,128,.10));
+  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(22,119,255,.10));
 }
 
 .primary-btn,
 .wallet.dark {
-  background: linear-gradient(135deg, var(--button-start, #ff7aa2), var(--button-end, #ff8d60));
+  background: linear-gradient(135deg, var(--button-start, #1677ff), var(--button-end, #36cfc9));
 }
 
 .eyebrow,
@@ -393,14 +393,14 @@ input {
 .light-btn,
 .primary-btn.ghost,
 .pill {
-  color: var(--accent-color, #ff6d7c);
+  color: var(--accent-color, #1677ff);
 }
 
 .title,
 .panel-title,
 .hot-name,
 .record-title {
-  color: var(--text-color, #222024);
+  color: var(--text-color, #1f2937);
 }
 
 .subtitle,
@@ -416,10 +416,10 @@ input {
 .light-btn,
 .primary-btn.ghost,
 .pill {
-  background: var(--soft-color, #fff0f3);
+  background: var(--soft-color, #eef6ff);
 }
 
 .hot-price,
 .amount {
-  color: var(--price-color, #ff6b6b);
+  color: var(--price-color, #ff6b35);
 }
