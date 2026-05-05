@@ -2126,7 +2126,7 @@
           <td><span class="pill">${storeLevelText(store.level)}</span></td>
           <td>${store.isDisplayEnabled === "true" ? "展示 " : ""}${store.isPickupEnabled === "true" ? "自提 " : ""}${store.isSupplierEnabled === "true" ? "供货" : ""}</td>
           <td><div>推广：${commissionText(store.referralCommissionType, store.referralCommissionValue)}</div><div class="muted">自提：${commissionText(store.pickupFeeType, store.pickupFeeValue)}</div></td>
-          <td>${escapeHtml(store.contactName || "-")}<div class="muted">${escapeHtml(store.phone || "")}</div></td>
+          <td>${escapeHtml(store.contactName || "-")}<div class="muted">${escapeHtml(store.phone || "")}</div><div class="muted">负责人：${escapeHtml(store.managerPhone || "-")}</div></td>
           <td><span class="pill">${store.status === "enabled" ? "启用" : "停用"}</span></td>
           <td><div class="table-actions"><button class="secondary" data-action="edit-store" data-index="${index}">编辑</button><button class="secondary" data-action="toggle-store-status" data-index="${index}">${store.status === "enabled" ? "停用" : "启用"}</button></div></td>
         </tr>`).join("")}</tbody></table></div>`
@@ -2171,6 +2171,14 @@
           <label>状态<select data-store-key="status"><option value="enabled" ${store.status === "enabled" ? "selected" : ""}>启用</option><option value="disabled" ${store.status === "disabled" ? "selected" : ""}>停用</option></select></label>
           <label>联系人<input data-store-key="contactName" value="${escapeHtml(store.contactName)}"></label>
           <label>电话<input data-store-key="phone" value="${escapeHtml(store.phone)}"></label>
+          <label>门店负责人手机号<input data-store-key="managerPhone" value="${escapeHtml(store.managerPhone || "")}" placeholder="用于小程序门店中心登录匹配"></label>
+          <label>负责人角色<select data-store-key="storeRole">
+            <option value="manager" ${store.storeRole === "manager" ? "selected" : ""}>负责人</option>
+            <option value="owner" ${store.storeRole === "owner" ? "selected" : ""}>老板</option>
+            <option value="clerk" ${store.storeRole === "clerk" ? "selected" : ""}>店员</option>
+          </select></label>
+          <label>门店端状态<select data-store-key="storeStatus"><option value="active" ${store.storeStatus === "disabled" ? "" : "selected"}>启用</option><option value="disabled" ${store.storeStatus === "disabled" ? "selected" : ""}>禁用</option></select></label>
+          <label>负责人 OpenID<input data-store-key="managerOpenid" value="${escapeHtml(store.managerOpenid || "")}" placeholder="登录后自动补写，可留空"></label>
           <label>营业时间<input data-store-key="businessHours" value="${escapeHtml(store.businessHours)}"></label>
           <label>地址<textarea data-store-key="address">${escapeHtml(store.address)}</textarea></label>
           <label>纬度<input data-store-key="latitude" value="${escapeHtml(store.latitude)}"></label>
@@ -2192,7 +2200,16 @@
           <label>供货结算规则（预留）<textarea data-store-key="supplierSettlementRule">${escapeHtml(store.supplierSettlementRule)}</textarea></label>
           <label>定制加购分成（预留）<textarea data-store-key="customCommissionRule">${escapeHtml(store.customCommissionRule)}</textarea></label>
           <label>备注<textarea data-store-key="remark">${escapeHtml(store.remark)}</textarea></label>
-        </div></div>`
+        </div></div>
+        <div class="drawer-section"><h4>门店数据快捷查看</h4>
+          <p class="muted">门店ID：${escapeHtml(store.id)}</p>
+          <div class="toolbar" style="margin-top:12px">
+            <button class="secondary" data-action="copy-store-id" data-id="${escapeHtml(store.id)}">复制门店ID</button>
+            <button class="secondary" data-action="filter-store-referral" data-id="${escapeHtml(store.id)}">查看推广订单</button>
+            <button class="secondary" data-action="filter-store-pickup" data-id="${escapeHtml(store.id)}">查看自提订单</button>
+            <button class="secondary" data-action="filter-store-settlement" data-id="${escapeHtml(store.id)}">查看结算明细</button>
+          </div>
+        </div>`
       $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-store-drawer">保存门店</button>`
       $("detailDrawer").classList.add("show")
     }
@@ -2508,6 +2525,10 @@
         address: "",
         phone: "",
         contactName: "",
+        managerPhone: "",
+        managerOpenid: "",
+        storeRole: "manager",
+        storeStatus: "active",
         businessHours: "10:00-21:00",
         latitude: "",
         longitude: "",
@@ -2625,6 +2646,28 @@
           .then(() => loadAll())
           .then(() => setStatus(store.status === "enabled" ? "门店已停用" : "门店已启用"))
           .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "copy-store-id") {
+        const id = event.target.dataset.id || ""
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(id).then(() => setStatus("门店ID已复制")).catch(() => setStatus(`门店ID：${id}`))
+        } else {
+          setStatus(`门店ID：${id}`)
+        }
+      }
+      if (event.target.dataset.action === "filter-store-referral" || event.target.dataset.action === "filter-store-pickup" || event.target.dataset.action === "filter-store-settlement") {
+        const id = event.target.dataset.id || ""
+        settlementFilters = {
+          storeId: id,
+          status: "",
+          type: event.target.dataset.action === "filter-store-referral" ? "referral" : event.target.dataset.action === "filter-store-pickup" ? "pickup" : "",
+          startAt: "",
+          endAt: ""
+        }
+        closeDrawer()
+        switchView("stores")
+        switchSubview("storeSettlement")
+        loadAll().then(() => setStatus("已筛选该门店结算与关联订单收益")).catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "close-drawer") closeDrawer()
       if (event.target.dataset.drawerTab) {

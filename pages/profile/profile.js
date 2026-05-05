@@ -23,7 +23,10 @@ Page({
       showPhone: "true",
       showWechat: "true"
     },
-    banner: null
+    banner: null,
+    storeBound: false,
+    storeInfo: null,
+    storeStats: null
   },
 
   onShow() {
@@ -32,6 +35,7 @@ Page({
     this.loadContact()
     this.loadPromotionSummary()
     this.loadOrderSummary()
+    this.loadStoreMe()
   },
 
   refreshLoginState() {
@@ -84,6 +88,7 @@ Page({
       wx.showToast({ title: "登录成功", icon: "success" })
       this.loadPromotionSummary()
       this.loadOrderSummary()
+      this.loadStoreMe()
     }).catch(error => {
       if (error.isAuthDenied) {
         wx.showToast({ title: "未授权手机号", icon: "none" })
@@ -164,6 +169,34 @@ Page({
       .catch(() => {
         this.setData({ pendingPayCount: 0 })
       })
+  },
+
+  loadStoreMe() {
+    if (!this.data.loggedIn) {
+      this.setData({ storeBound: false, storeInfo: null, storeStats: null })
+      return
+    }
+    const { request } = require("../../utils/api")
+    request("/api/store/me")
+      .then(data => {
+        const levelMap = { display: "展示点", pickup: "自提点", supplier: "供货点", partner: "合伙点" }
+        const storeInfo = data.storeInfo
+          ? { ...data.storeInfo, levelText: levelMap[data.storeInfo.level] || data.storeInfo.level || "门店" }
+          : null
+        this.setData({
+          storeBound: !!data.bound,
+          storeInfo,
+          storeStats: data.stats || null
+        })
+      })
+      .catch(() => {
+        this.setData({ storeBound: false, storeInfo: null, storeStats: null })
+      })
+  },
+
+  goStoreCenter() {
+    if (!this.requireLogin()) return
+    wx.navigateTo({ url: "/pages/store/center/center" })
   },
 
   chooseAddress() {

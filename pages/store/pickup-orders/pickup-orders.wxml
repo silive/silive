@@ -1,0 +1,18 @@
+<view class="store-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="store-card" style="{{cardStyle}}">
+    <view class="eyebrow">PICKUP ORDERS</view>
+    <view class="store-name">我负责的自提</view>
+    <view class="store-meta">只显示当前门店的自提订单</view>
+  </view>
+  <view class="tabs">
+    <button class="tab {{active === item.key ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="key" data-key="{{item.key}}" bindtap="switchTab">{{item.label}}</button>
+  </view>
+  <view class="list">
+    <view class="order-card" style="{{cardStyle}}" wx:for="{{visibleOrders}}" wx:key="id">
+      <view class="order-head"><view><view class="order-title">{{item.productName}}</view><view class="order-sub">{{item.id}}</view></view><view class="pill">{{item.pickupText}}</view></view>
+      <view class="order-sub">客户：{{item.phone}} · 取货码：{{item.pickupCode}}</view>
+      <view class="order-sub">到店：{{item.arrivedStoreAt || '-'}} · 自提：{{item.pickedUpAt || '-'}}</view>
+      <view class="amount">自提服务费 ¥{{item.pickupServiceFee || '0.00'}}</view>
+    </view>
+  </view>
+</view>

@@ -406,18 +406,18 @@ function clearAdminLoginFailures(req) {
   adminLoginFailures.delete(clientIp(req) || "unknown")
 }
 
-function createUserSession(openid) {
+function createUserSession(openid, phone = "") {
   const token = crypto.randomBytes(24).toString("hex")
-  userSessions.set(token, { openid, createdAt: Date.now() })
+  userSessions.set(token, { openid, phone, createdAt: Date.now() })
   return token
 }
 
-function createWechatUserSession(openid) {
+function createWechatUserSession(openid, phone = "") {
   if (canUseMockWechatLogin() && openid === MOCK_WECHAT_OPENID) {
-    userSessions.set(MOCK_WECHAT_USER_SESSION, { openid, createdAt: Date.now() })
+    userSessions.set(MOCK_WECHAT_USER_SESSION, { openid, phone: phone || MOCK_WECHAT_PHONE, createdAt: Date.now() })
     return MOCK_WECHAT_USER_SESSION
   }
-  return createUserSession(openid)
+  return createUserSession(openid, phone)
 }
 
 function isPlaceholderWechatValue(value) {
@@ -1578,6 +1578,10 @@ function normalizePartnerStore(store = {}, index = 0) {
     address: store.address || "",
     phone: store.phone || "",
     contactName: store.contactName || store.contact_name || "",
+    managerPhone: store.managerPhone || store.manager_phone || "",
+    managerOpenid: store.managerOpenid || store.manager_openid || "",
+    storeRole: store.storeRole || store.store_role || "manager",
+    storeStatus: store.storeStatus || store.store_status || "active",
     businessHours: store.businessHours || store.business_hours || "",
     latitude: store.latitude == null || store.latitude === "" ? "" : String(store.latitude),
     longitude: store.longitude == null || store.longitude === "" ? "" : String(store.longitude),
@@ -1644,6 +1648,30 @@ function storePublicView(store) {
     isPickupEnabled: store.isPickupEnabled,
     sortOrder: store.sortOrder
   } : null
+}
+
+function storePrivateView(store) {
+  return store ? {
+    ...storePublicView(store),
+    contactName: store.contactName,
+    managerPhone: maskPhone(store.managerPhone),
+    storeRole: store.storeRole,
+    storeRoleText: storeRoleText(store.storeRole),
+    storeStatus: store.storeStatus,
+    settlementCycle: store.settlementCycle,
+    qrcodeScene: store.qrcodeScene,
+    isDisplayEnabled: store.isDisplayEnabled,
+    isSupplierEnabled: store.isSupplierEnabled
+  } : null
+}
+
+function maskPhone(phone) {
+  const text = String(phone || "")
+  return text.length === 11 ? `${text.slice(0, 3)}****${text.slice(7)}` : text
+}
+
+function storeRoleText(role) {
+  return ({ manager: "负责人", clerk: "店员", owner: "老板" })[role] || "负责人"
 }
 
 function identityFromRequest(req, payload = {}) {
@@ -1981,8 +2009,8 @@ async function savePartnerStores(stores) {
   await query("DELETE FROM partner_stores")
   for (const store of list) {
     await query(
-      `INSERT INTO partner_stores (id, name, level, address, phone, contact_name, business_hours, latitude, longitude, status, is_display_enabled, is_pickup_enabled, is_supplier_enabled, settlement_cycle, qrcode_scene, sort_order, remark, referral_commission_type, referral_commission_value, pickup_fee_type, pickup_fee_value, supplier_settlement_rule, custom_commission_rule, created_at, updated_at)
-       VALUES (:id, :name, :level, :address, :phone, :contactName, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :createdAt, NOW())`,
+      `INSERT INTO partner_stores (id, name, level, address, phone, contact_name, manager_phone, manager_openid, store_role, store_status, business_hours, latitude, longitude, status, is_display_enabled, is_pickup_enabled, is_supplier_enabled, settlement_cycle, qrcode_scene, sort_order, remark, referral_commission_type, referral_commission_value, pickup_fee_type, pickup_fee_value, supplier_settlement_rule, custom_commission_rule, created_at, updated_at)
+       VALUES (:id, :name, :level, :address, :phone, :contactName, :managerPhone, :managerOpenid, :storeRole, :storeStatus, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :createdAt, NOW())`,
       { ...store, latitude: store.latitude === "" ? null : store.latitude, longitude: store.longitude === "" ? null : store.longitude }
     )
   }
@@ -2367,6 +2395,81 @@ async function getStoreSettlementSummary(filters = {}) {
     }
   })
   return { summary, records }
+}
+
+async function getStoreSession(req) {
+  const token = String(req.headers["x-user-session"] || req.headers["x-user-token"] || "").trim()
+  const session = getUserSession(token)
+  if (!session?.phone) return null
+  const stores = await getPartnerStores({ status: "enabled" })
+  const store = stores.find(item => item.managerPhone && item.managerPhone === session.phone && item.storeStatus !== "disabled")
+  if (!store) return null
+  if (session.openid && !store.managerOpenid) {
+    await upsertPartnerStore({ ...store, managerOpenid: session.openid })
+    store.managerOpenid = session.openid
+  }
+  return { token, session, store }
+}
+
+async function requireStoreSession(req, res) {
+  const storeSession = await getStoreSession(req)
+  if (!storeSession) {
+    sendJson(res, 403, { ok: false, message: "当前手机号未绑定门店" })
+    return null
+  }
+  return storeSession
+}
+
+function storeOrderView(order, mode = "referral") {
+  return {
+    id: order.id,
+    createdAt: order.createdAt,
+    productName: order.productName,
+    amount: order.amount,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    phone: maskPhone(order.phone),
+    pickupCode: order.pickupCode,
+    pickupStatus: order.pickupStatus,
+    arrivedStoreAt: order.arrivedStoreAt,
+    pickedUpAt: order.pickedUpAt,
+    referralCommission: mode === "pickup" ? "" : order.referralCommission,
+    pickupServiceFee: mode === "referral" ? "" : order.pickupServiceFee,
+    storeSettlementStatus: order.storeSettlementStatus
+  }
+}
+
+function storeCenterStats(store, orders, records) {
+  const today = new Date().toISOString().slice(0, 10)
+  const month = new Date().toISOString().slice(0, 7)
+  const referralOrders = orders.filter(order => order.referrerStoreId === store.id)
+  const pickupOrders = orders.filter(order => order.pickupStoreId === store.id)
+  const sumByStatus = status => records.filter(record => record.status === status).reduce((sum, record) => sum + Number(record.amount || 0), 0).toFixed(2)
+  return {
+    todayReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
+    monthReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(month)).length,
+    todayPickupOrders: pickupOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
+    pendingPickupOrders: pickupOrders.filter(order => order.pickupStatus === "arrived_store").length,
+    unsettledAmount: sumByStatus("unsettled"),
+    settledAmount: sumByStatus("settled")
+  }
+}
+
+async function verifyStorePickupOrder(store, orderId, pickupCode) {
+  const orders = await getOrders()
+  const order = orders.find(item => item.id === orderId)
+  if (!order) throw httpError(404, "订单不存在")
+  if (order.pickupStoreId !== store.id) throw httpError(403, "不能核销其他门店订单")
+  if (order.paymentStatus !== "已支付") throw httpError(400, "订单未支付，暂不能核销")
+  if (order.pickupStatus === "picked_up") throw httpError(400, "该订单已核销")
+  if (!pickupCode || String(order.pickupCode) !== String(pickupCode)) throw httpError(400, "取货码不正确")
+  order.pickupStatus = "picked_up"
+  order.status = "已完成"
+  order.pickedUpAt = formatDateTime(new Date())
+  order.completedAt = order.completedAt || order.pickedUpAt
+  await saveOrders([order])
+  await createStoreSettlementRecordsForOrder(order)
+  return storeOrderView(order, "pickup")
 }
 
 async function createOrder(data) {
@@ -3150,6 +3253,10 @@ async function initDb() {
     created_at DATETIME,
     updated_at DATETIME
   )`)
+  await ensureColumn("partner_stores", "manager_phone", "VARCHAR(30)")
+  await ensureColumn("partner_stores", "manager_openid", "VARCHAR(80)")
+  await ensureColumn("partner_stores", "store_role", "VARCHAR(30) DEFAULT 'manager'")
+  await ensureColumn("partner_stores", "store_status", "VARCHAR(30) DEFAULT 'active'")
   await query(`CREATE TABLE IF NOT EXISTS store_settlement_records (
     id VARCHAR(60) PRIMARY KEY,
     store_id VARCHAR(40),
@@ -3590,6 +3697,72 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/store/me" && req.method === "GET") {
+    const storeSession = await getStoreSession(req)
+    if (!storeSession) {
+      sendJson(res, 200, { ok: true, bound: false })
+      return
+    }
+    const [orders, records] = await Promise.all([getOrders(), getStoreSettlementRecords({ storeId: storeSession.store.id })])
+    sendJson(res, 200, { ok: true, bound: true, storeInfo: storePrivateView(storeSession.store), stats: storeCenterStats(storeSession.store, orders, records) })
+    return
+  }
+
+  if (url.pathname === "/api/store/referral-orders" && req.method === "GET") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id)
+    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "referral" })
+    const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const today = new Date().toISOString().slice(0, 10)
+    const month = new Date().toISOString().slice(0, 7)
+    sendJson(res, 200, {
+      storeInfo: storePrivateView(storeSession.store),
+      summary: {
+        todayOrders: orders.filter(order => String(order.createdAt || "").startsWith(today)).length,
+        monthOrders: orders.filter(order => String(order.createdAt || "").startsWith(month)).length,
+        unsettledCommission: money(unsettled),
+        settledCommission: money(settled)
+      },
+      orders: orders.map(order => storeOrderView(order, "referral"))
+    })
+    return
+  }
+
+  if (url.pathname === "/api/store/pickup-orders" && req.method === "GET") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const orders = (await getOrders()).filter(order => order.pickupStoreId === storeSession.store.id)
+    sendJson(res, 200, { storeInfo: storePrivateView(storeSession.store), orders: orders.map(order => storeOrderView(order, "pickup")) })
+    return
+  }
+
+  if (url.pathname === "/api/store/settlements" && req.method === "GET") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id })
+    const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const referral = records.filter(record => record.type === "referral").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const pickup = records.filter(record => record.type === "pickup").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    sendJson(res, 200, {
+      storeInfo: storePrivateView(storeSession.store),
+      summary: { unsettledAmount: money(unsettled), settledAmount: money(settled), referralAmount: money(referral), pickupAmount: money(pickup) },
+      records: records.map(record => ({ ...record, typeText: record.type === "referral" ? "推广佣金" : record.type === "pickup" ? "自提服务费" : record.type }))
+    })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/store\/orders\/[^/]+\/verify-pickup$/) && req.method === "POST") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await verifyStorePickupOrder(storeSession.store, orderId, body.pickupCode) })
+    return
+  }
+
   if (url.pathname === "/api/product/detail" && req.method === "GET") {
     const id = url.searchParams.get("id") || url.searchParams.get("productId")
     const product = id ? await getProduct(decodeURIComponent(id)) : null
@@ -3702,7 +3875,7 @@ async function handle(req, res) {
       getWechatPhoneNumber(body.code),
       body.loginCode ? getOpenid(body.loginCode) : Promise.resolve("")
     ])
-    const userSession = openid ? createWechatUserSession(openid) : ""
+    const userSession = openid ? createWechatUserSession(openid, phoneNumber) : ""
     sendJson(res, 200, {
       ok: true,
       phoneNumber,

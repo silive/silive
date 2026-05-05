@@ -1,0 +1,20 @@
+<view class="store-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="store-card" style="{{cardStyle}}">
+    <view class="eyebrow">REFERRAL ORDERS</view>
+    <view class="store-name">我推广的订单</view>
+    <view class="store-meta">只显示当前门店带来的订单</view>
+  </view>
+  <view class="stats-grid">
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{summary.todayOrders || 0}}</view><view class="stat-label">今日订单</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{summary.monthOrders || 0}}</view><view class="stat-label">本月订单</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.unsettledCommission || '0.00'}}</view><view class="stat-label">未结算佣金</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.settledCommission || '0.00'}}</view><view class="stat-label">已结算佣金</view></view>
+  </view>
+  <view class="list">
+    <view class="order-card" style="{{cardStyle}}" wx:for="{{orders}}" wx:key="id">
+      <view class="order-head"><view><view class="order-title">{{item.productName}}</view><view class="order-sub">{{item.id}} · {{item.createdAt}}</view></view><view class="pill">{{item.storeSettlementStatus === 'settled' ? '已结算' : '未结算'}}</view></view>
+      <view class="order-sub">客户：{{item.phone}} · {{item.status}} / {{item.paymentStatus}}</view>
+      <view class="amount">订单 ¥{{item.amount}} · 佣金 ¥{{item.referralCommission}}</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,15 @@
+<view class="store-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="verify-card" style="{{cardStyle}}">
+    <view class="eyebrow">VERIFY PICKUP</view>
+    <view class="store-name">取货核销</view>
+    <view class="store-meta">第一版先输入订单号和取货码，后续可扩展扫码核销。</view>
+    <input class="input" value="{{orderId}}" data-field="orderId" bindinput="onInput" placeholder="请输入订单号" />
+    <input class="input" value="{{pickupCode}}" data-field="pickupCode" bindinput="onInput" placeholder="请输入取货码" />
+    <button class="primary-btn" bindtap="verify" loading="{{verifying}}">确认核销</button>
+  </view>
+  <view wx:if="{{result}}" class="order-card" style="{{cardStyle}}">
+    <view class="order-title">核销成功</view>
+    <view class="order-sub">{{result.id}} · {{result.productName}}</view>
+    <view class="amount">状态：已自提</view>
+  </view>
+</view>

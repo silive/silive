@@ -6,6 +6,11 @@
     "pages/product/detail",
     "pages/checkout/checkout",
     "pages/promotion/promotion",
+    "pages/store/center/center",
+    "pages/store/referral-orders/referral-orders",
+    "pages/store/pickup-orders/pickup-orders",
+    "pages/store/settlements/settlements",
+    "pages/store/verify/verify",
     "pages/help/help",
     "pages/orders/orders",
     "pages/profile/profile"

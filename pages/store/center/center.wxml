@@ -1,0 +1,31 @@
+<view class="store-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{storeInfo}}" class="store-card" style="{{cardStyle}}">
+    <view class="eyebrow">STORE CENTER</view>
+    <view class="store-name">{{storeInfo.name}}</view>
+    <view class="store-meta">{{storeInfo.levelText}} · {{storeInfo.storeRoleText || '负责人'}}</view>
+    <view class="store-address">{{storeInfo.address}}</view>
+  </view>
+
+  <view class="stats-grid">
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.todayReferralOrders || 0}}</view><view class="stat-label">今日推广订单</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.monthReferralOrders || 0}}</view><view class="stat-label">本月推广订单</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.todayPickupOrders || 0}}</view><view class="stat-label">今日自提订单</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.pendingPickupOrders || 0}}</view><view class="stat-label">待自提订单</view></view>
+    <view class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.unsettledAmount || '0.00'}}</view><view class="stat-label">未结算金额</view></view>
+    <view class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.settledAmount || '0.00'}}</view><view class="stat-label">已结算金额</view></view>
+  </view>
+
+  <view class="entry-grid">
+    <button class="entry-card" style="{{cardStyle}}" bindtap="goReferralOrders"><view class="entry-icon" style="{{iconBadgeStyle}}">↗</view><view class="entry-title">我推广的订单</view><view class="entry-sub">展示点收益</view></button>
+    <button class="entry-card" style="{{cardStyle}}" bindtap="goPickupOrders"><view class="entry-icon" style="{{iconBadgeStyle}}">⌂</view><view class="entry-title">我负责的自提</view><view class="entry-sub">取货与状态</view></button>
+    <button class="entry-card" style="{{cardStyle}}" bindtap="goVerify"><view class="entry-icon" style="{{iconBadgeStyle}}">✓</view><view class="entry-title">取货核销</view><view class="entry-sub">输入取货码</view></button>
+    <button class="entry-card" style="{{cardStyle}}" bindtap="goSettlements"><view class="entry-icon" style="{{iconBadgeStyle}}">¥</view><view class="entry-title">收益明细</view><view class="entry-sub">结算统计</view></button>
+  </view>
+
+  <view wx:if="{{storeInfo}}" class="profile-card" style="{{cardStyle}}">
+    <view class="section-title">门店资料</view>
+    <view class="info-line">电话：{{storeInfo.phone || '未填写'}}</view>
+    <view class="info-line">营业时间：{{storeInfo.businessHours || '未填写'}}</view>
+    <view class="info-line">门店ID：{{storeInfo.id}}</view>
+  </view>
+</view>

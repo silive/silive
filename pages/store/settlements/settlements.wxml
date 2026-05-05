@@ -1,0 +1,20 @@
+<view class="store-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="store-card" style="{{cardStyle}}">
+    <view class="eyebrow">SETTLEMENTS</view>
+    <view class="store-name">收益明细</view>
+    <view class="store-meta">当前门店的推广佣金与自提服务费</view>
+  </view>
+  <view class="stats-grid">
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.unsettledAmount || '0.00'}}</view><view class="stat-label">未结算金额</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.settledAmount || '0.00'}}</view><view class="stat-label">已结算金额</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.referralAmount || '0.00'}}</view><view class="stat-label">推广佣金</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.pickupAmount || '0.00'}}</view><view class="stat-label">自提服务费</view></view>
+  </view>
+  <view class="list">
+    <view class="order-card" style="{{cardStyle}}" wx:for="{{records}}" wx:key="id">
+      <view class="order-head"><view><view class="order-title">{{item.typeText}}</view><view class="order-sub">{{item.orderId}} · {{item.createdAt}}</view></view><view class="pill">{{item.status === 'settled' ? '已结算' : '未结算'}}</view></view>
+      <view class="amount">¥{{item.amount}}</view>
+      <view class="order-sub">结算时间：{{item.settledAt || '-'}}</view>
+    </view>
+  </view>
+</view>
