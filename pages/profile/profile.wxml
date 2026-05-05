@@ -18,16 +18,6 @@
     <view class="wallet-pending">待发放 ¥{{pendingReward}}</view>
   </view>
 
-  <view wx:if="{{loggedIn && storeBound}}" class="store-entry-card" style="{{cardStyle}}" bindtap="goStoreCenter">
-    <view class="store-entry-icon" style="{{iconBadgeStyle}}">店</view>
-    <view class="store-entry-main">
-      <view class="store-entry-title">门店中心</view>
-      <view class="store-entry-subtitle" style="{{mutedTextStyle}}">查看推广订单、自提订单与收益</view>
-      <view class="store-entry-meta">{{storeInfo.name}} · {{storeInfo.levelText}}</view>
-    </view>
-    <view class="store-entry-arrow">›</view>
-  </view>
-
   <view class="feature-panel">
     <view class="feature-row top-row">
       <button class="feature-card" style="{{cardStyle}}" bindtap="goOrders">
@@ -36,11 +26,18 @@
         <view class="feature-title">我的订单</view>
         <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>
       </button>
-      <button class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
-        <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
-        <view class="feature-title">我的推广</view>
-        <view class="feature-subtitle" style="{{mutedTextStyle}}">邀请赚佣金</view>
-      </button>
+      <block wx:if="{{!loggedIn || storeChecked}}">
+        <button wx:if="{{loggedIn && storeBound}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
+          <view class="feature-icon" style="{{iconBadgeStyle}}">店</view>
+          <view class="feature-title">门店中心</view>
+          <view class="feature-subtitle" style="{{mutedTextStyle}}">订单与收益</view>
+        </button>
+        <button wx:else class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
+          <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
+          <view class="feature-title">我的推广</view>
+          <view class="feature-subtitle" style="{{mutedTextStyle}}">邀请赚佣金</view>
+        </button>
+      </block>
       <button class="feature-card" style="{{cardStyle}}" bindtap="contact">
         <view wx:if="{{contact.showWorkWechat !== 'false'}}" class="online-pill">在线</view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">☎</view>

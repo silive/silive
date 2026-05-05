@@ -24,6 +24,7 @@ Page({
       showWechat: "true"
     },
     banner: null,
+    storeChecked: false,
     storeBound: false,
     storeInfo: null,
     storeStats: null
@@ -44,7 +45,11 @@ Page({
     this.setData({
       loggedIn: state.loggedIn,
       memberPhone: state.phone,
-      maskedPhone: this.maskPhone(state.phone)
+      maskedPhone: this.maskPhone(state.phone),
+      storeChecked: !state.loggedIn,
+      storeBound: state.loggedIn ? this.data.storeBound : false,
+      storeInfo: state.loggedIn ? this.data.storeInfo : null,
+      storeStats: state.loggedIn ? this.data.storeStats : null
     })
   },
 
@@ -83,7 +88,11 @@ Page({
         loggedIn: true,
         memberPhone: state.phone,
         maskedPhone: this.maskPhone(state.phone),
-        loginVisible: false
+        loginVisible: false,
+        storeChecked: false,
+        storeBound: false,
+        storeInfo: null,
+        storeStats: null
       })
       wx.showToast({ title: "登录成功", icon: "success" })
       this.loadPromotionSummary()
@@ -173,7 +182,7 @@ Page({
 
   loadStoreMe() {
     if (!this.data.loggedIn) {
-      this.setData({ storeBound: false, storeInfo: null, storeStats: null })
+      this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null })
       return
     }
     const { request } = require("../../utils/api")
@@ -184,13 +193,14 @@ Page({
           ? { ...data.storeInfo, levelText: levelMap[data.storeInfo.level] || data.storeInfo.level || "门店" }
           : null
         this.setData({
+          storeChecked: true,
           storeBound: !!data.bound,
           storeInfo,
           storeStats: data.stats || null
         })
       })
       .catch(() => {
-        this.setData({ storeBound: false, storeInfo: null, storeStats: null })
+        this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null })
       })
   },
 
