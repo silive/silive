@@ -2126,7 +2126,7 @@
           <td><span class="pill">${storeLevelText(store.level)}</span></td>
           <td>${store.isDisplayEnabled === "true" ? "展示 " : ""}${store.isPickupEnabled === "true" ? "自提 " : ""}${store.isSupplierEnabled === "true" ? "供货" : ""}</td>
           <td><div>推广：${commissionText(store.referralCommissionType, store.referralCommissionValue)}</div><div class="muted">自提：${commissionText(store.pickupFeeType, store.pickupFeeValue)}</div></td>
-          <td>${escapeHtml(store.contactName || "-")}<div class="muted">${escapeHtml(store.phone || "")}</div><div class="muted">负责人：${escapeHtml(store.managerPhone || "-")}</div></td>
+          <td>${escapeHtml(store.contactName || "-")}<div class="muted">${escapeHtml(store.phone || "")}</div><div class="muted">负责人：${escapeHtml(store.managerPhone || "-")}</div>${store.managerPhoneDuplicated ? `<div class="muted" style="color:#d35f55;font-weight:800">手机号重复绑定</div>` : ""}</td>
           <td><span class="pill">${store.status === "enabled" ? "启用" : "停用"}</span></td>
           <td><div class="table-actions"><button class="secondary" data-action="edit-store" data-index="${index}">编辑</button><button class="secondary" data-action="toggle-store-status" data-index="${index}">${store.status === "enabled" ? "停用" : "启用"}</button></div></td>
         </tr>`).join("")}</tbody></table></div>`
@@ -2163,6 +2163,7 @@
       $("drawerTitle").textContent = "门店详情"
       $("drawerDesc").textContent = `${store.id} · ${store.name}`
       $("drawerBody").innerHTML = `
+        ${store.managerPhoneDuplicated ? `<div class="drawer-section" style="border-color:#f0b7b7;background:#fff7f7"><h4 style="color:#b42318">负责人手机号重复</h4><p class="muted">${escapeHtml(store.managerPhoneWarning || "该手机号已绑定多个启用门店，请联系管理员处理")}</p></div>` : ""}
         <div class="drawer-section"><h4>基础信息</h4><div class="form-grid">
           <label>门店名称<input data-store-key="name" value="${escapeHtml(store.name)}"></label>
           <label>等级<select data-store-key="level">

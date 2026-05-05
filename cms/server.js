@@ -2000,6 +2000,41 @@ async function getPartnerStore(id) {
   return (await getPartnerStores()).find(store => store.id === id) || null
 }
 
+function isActiveStoreManagerBinding(store) {
+  return !!store.managerPhone && store.status === "enabled" && store.storeStatus !== "disabled"
+}
+
+function managerPhoneDuplicateMap(stores = []) {
+  const groups = new Map()
+  stores.filter(isActiveStoreManagerBinding).forEach(store => {
+    const phone = String(store.managerPhone || "").trim()
+    if (!groups.has(phone)) groups.set(phone, [])
+    groups.get(phone).push(store)
+  })
+  return groups
+}
+
+function withStoreManagerWarnings(stores = []) {
+  const groups = managerPhoneDuplicateMap(stores)
+  return stores.map(store => {
+    const duplicates = groups.get(String(store.managerPhone || "").trim()) || []
+    return duplicates.length > 1
+      ? { ...store, managerPhoneDuplicated: true, managerPhoneWarning: "该手机号已绑定多个启用门店，请联系管理员处理" }
+      : store
+  })
+}
+
+function assertUniqueManagerPhone(stores = [], candidate = {}) {
+  if (!isActiveStoreManagerBinding(candidate)) return
+  const phone = String(candidate.managerPhone || "").trim()
+  const conflict = stores.find(store =>
+    store.id !== candidate.id &&
+    isActiveStoreManagerBinding(store) &&
+    String(store.managerPhone || "").trim() === phone
+  )
+  if (conflict) throw httpError(400, "该手机号已绑定其他门店，请更换负责人手机号或先解绑原门店。")
+}
+
 async function savePartnerStores(stores) {
   const list = (Array.isArray(stores) ? stores : []).map(normalizePartnerStore)
   if (!pool) {
@@ -2025,7 +2060,9 @@ async function upsertPartnerStore(store) {
     updatedAt: formatDateTime(new Date())
   }, list.length)
   const index = list.findIndex(item => item.id === normalized.id)
-  if (index >= 0) list[index] = { ...list[index], ...normalized }
+  const candidate = index >= 0 ? { ...list[index], ...normalized } : normalized
+  assertUniqueManagerPhone(list, candidate)
+  if (index >= 0) list[index] = candidate
   else list.push(normalized)
   await savePartnerStores(list)
   return normalized
@@ -2426,7 +2463,11 @@ async function getStoreSession(req) {
   const session = getUserSession(token)
   if (!session?.phone) return null
   const stores = await getPartnerStores({ status: "enabled" })
-  const store = stores.find(item => item.managerPhone && item.managerPhone === session.phone && item.storeStatus !== "disabled")
+  const matches = stores.filter(item => item.managerPhone && item.managerPhone === session.phone && item.storeStatus !== "disabled")
+  if (matches.length > 1) {
+    return { token, session, store: null, duplicated: true, error: "该手机号绑定多个门店，请联系管理员处理" }
+  }
+  const store = matches[0]
   if (!store) return null
   if (session.openid && !store.managerOpenid) {
     await upsertPartnerStore({ ...store, managerOpenid: session.openid })
@@ -2437,6 +2478,10 @@ async function getStoreSession(req) {
 
 async function requireStoreSession(req, res) {
   const storeSession = await getStoreSession(req)
+  if (storeSession?.duplicated) {
+    sendJson(res, 403, { ok: false, message: storeSession.error || "该手机号绑定多个门店，请联系管理员处理" })
+    return null
+  }
   if (!storeSession) {
     sendJson(res, 403, { ok: false, message: "当前手机号未绑定门店" })
     return null
@@ -3750,6 +3795,10 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/store/me" && req.method === "GET") {
     const storeSession = await getStoreSession(req)
+    if (storeSession?.duplicated) {
+      sendJson(res, 200, { ok: true, bound: false, error: storeSession.error || "该手机号绑定多个门店，请联系管理员处理" })
+      return
+    }
     if (!storeSession) {
       sendJson(res, 200, { ok: true, bound: false })
       return
@@ -4194,7 +4243,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/admin/stores" && req.method === "GET") {
-    sendJson(res, 200, await getPartnerStores({ keyword: url.searchParams.get("keyword") || "" }))
+    sendJson(res, 200, withStoreManagerWarnings(await getPartnerStores({ keyword: url.searchParams.get("keyword") || "" })))
     return
   }
 
