@@ -25,6 +25,21 @@ function buildCustomProduct(category = "图片定制") {
   }
 }
 
+function getValidReferrerStoreId() {
+  const app = getApp()
+  if (app && typeof app.getValidReferrerStoreId === "function") return app.getValidReferrerStoreId()
+  const storeId = wx.getStorageSync("referrerStoreId") || ""
+  const expireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
+  if (!storeId) return ""
+  if (!expireAt || Date.now() > expireAt) {
+    wx.removeStorageSync("referrerStoreId")
+    wx.removeStorageSync("referrerStoreBoundAt")
+    wx.removeStorageSync("referrerStoreExpireAt")
+    return ""
+  }
+  return storeId
+}
+
 Page({
   data: {
     product: null,
@@ -487,6 +502,7 @@ Page({
     this.setData({ paying: true })
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
+    const referrerStoreId = getValidReferrerStoreId()
     ensureOpenid().then(openid => request("/api/orders", {
         method: "POST",
         data: {
@@ -510,7 +526,7 @@ Page({
           userLatitude: this.data.userLocation?.latitude || "",
           userLongitude: this.data.userLocation?.longitude || "",
           pickupDistance: this.data.selectedPickupStore?.distance == null ? "" : Number(this.data.selectedPickupStore.distance).toFixed(2),
-          referrerStoreId: wx.getStorageSync("referrerStoreId") || "",
+          referrerStoreId,
           ...this.data.form
         }
       })).then(order => {

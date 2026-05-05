@@ -1,5 +1,6 @@
 const { checkApiConnectivity, request } = require("./utils/api")
 const { loadCurrentTheme } = require("./utils/theme")
+const STORE_REFERRER_TTL = 30 * 24 * 60 * 60 * 1000
 
 App({
   globalData: {
@@ -43,10 +44,7 @@ App({
     const query = options.query || {}
     const scene = decodeURIComponent(query.scene || "")
     const storeId = decodeURIComponent(query.store_id || query.storeId || (scene.match(/(?:^|&)store_id=([^&]+)/) || [])[1] || "")
-    if (storeId && !wx.getStorageSync("referrerStoreId")) {
-      wx.setStorageSync("referrerStoreId", storeId)
-      wx.setStorageSync("referrerStoreBoundAt", Date.now())
-    }
+    if (storeId) this.captureStoreReferrer(storeId)
     const invite = decodeURIComponent(query.invite || query.inviterCode || "")
     if (!invite) return
     const localUserId = this.ensureLocalUserId()
@@ -70,5 +68,35 @@ App({
         timeout: 5000
       }).catch(() => {})
     }
+  },
+
+  captureStoreReferrer(storeId) {
+    const now = Date.now()
+    const expireAt = now + STORE_REFERRER_TTL
+    wx.setStorageSync("referrerStoreId", storeId)
+    wx.setStorageSync("referrerStoreBoundAt", now)
+    wx.setStorageSync("referrerStoreExpireAt", expireAt)
+    request(`/api/store/source/validate?storeId=${encodeURIComponent(storeId)}`, { timeout: 5000 })
+      .then(data => {
+        if (!data.valid && wx.getStorageSync("referrerStoreId") === storeId) this.clearStoreReferrer()
+      })
+      .catch(() => {})
+  },
+
+  clearStoreReferrer() {
+    wx.removeStorageSync("referrerStoreId")
+    wx.removeStorageSync("referrerStoreBoundAt")
+    wx.removeStorageSync("referrerStoreExpireAt")
+  },
+
+  getValidReferrerStoreId() {
+    const storeId = wx.getStorageSync("referrerStoreId") || ""
+    const expireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
+    if (!storeId) return ""
+    if (!expireAt || Date.now() > expireAt) {
+      this.clearStoreReferrer()
+      return ""
+    }
+    return storeId
   }
 })

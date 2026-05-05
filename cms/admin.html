@@ -667,7 +667,7 @@
             <div class="filters">
               <select id="settlementStoreFilter"></select>
               <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option></select>
-              <select id="settlementTypeFilter"><option value="">全部类型</option><option value="referral">推广佣金</option><option value="pickup">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
+              <select id="settlementTypeFilter"><option value="">全部类型</option><option value="store_referral_commission">门店推广佣金</option><option value="pickup_service_fee">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
               <input id="settlementStartFilter" placeholder="开始时间 2026-05-01">
               <input id="settlementEndFilter" placeholder="结束时间 2026-05-31">
               <button class="secondary" id="filterSettlementsBtn">筛选</button>
@@ -2147,7 +2147,7 @@
           <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${record.status === "settled" ? "disabled" : ""}></td>
           <td>${escapeHtml(record.orderId)}</td>
           <td>${escapeHtml(store.name || record.storeId)}</td>
-          <td>${({ referral: "推广佣金", pickup: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整" })[record.type] || record.type}</td>
+          <td>${({ referral: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整" })[record.type] || record.type}</td>
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
           <td><strong>¥${record.amount}</strong></td>
           <td><span class="pill">${record.status === "settled" ? "已结算" : "未结算"}</span></td>
@@ -2660,7 +2660,7 @@
         settlementFilters = {
           storeId: id,
           status: "",
-          type: event.target.dataset.action === "filter-store-referral" ? "referral" : event.target.dataset.action === "filter-store-pickup" ? "pickup" : "",
+          type: event.target.dataset.action === "filter-store-referral" ? "store_referral_commission" : event.target.dataset.action === "filter-store-pickup" ? "pickup_service_fee" : "",
           startAt: "",
           endAt: ""
         }

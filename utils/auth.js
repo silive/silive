@@ -59,6 +59,21 @@ function unauthorizedPhoneError() {
   return error
 }
 
+function bindStoredPromotionRelation(name = "微信用户") {
+  const inviterCode = wx.getStorageSync("boundInviterCode") || wx.getStorageSync("inviterCode") || ""
+  if (!inviterCode) return Promise.resolve(null)
+  return request("/api/promotion/bind", {
+    method: "POST",
+    data: {
+      inviterCode,
+      name
+    }
+  }).catch(error => {
+    console.warn("[promotion] bind failed:", error.message || error)
+    return null
+  })
+}
+
 function loginWithPhoneDetail(detail = {}) {
   const errMsg = String(detail.errMsg || "")
   if (errMsg && !/ok/i.test(errMsg)) return Promise.reject(unauthorizedPhoneError())
@@ -100,12 +115,14 @@ function loginWithPhoneDetail(detail = {}) {
       openid: state.openid,
       userSession: state.userSession
     }
-    if (state.openid && state.userSession) return state
-    return ensureOpenid().then(() => ({
-      ...getLoginState(),
-      loggedIn: true,
-      phone
-    }))
+    const readyState = state.openid && state.userSession
+      ? Promise.resolve(state)
+      : ensureOpenid().then(() => ({
+          ...getLoginState(),
+          loggedIn: true,
+          phone
+        }))
+    return readyState.then(nextState => bindStoredPromotionRelation(wx.getStorageSync("memberName") || "微信用户").then(() => nextState))
   })
 }
 
@@ -123,5 +140,6 @@ module.exports = {
   getLoginState,
   ensureOpenid,
   loginWithPhoneDetail,
+  bindStoredPromotionRelation,
   logout
 }

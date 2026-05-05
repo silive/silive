@@ -1684,7 +1684,7 @@ function identityFromRequest(req, payload = {}) {
     ""
   ).trim()
   const session = getUserSession(token)
-  if (session?.openid) return { openid: session.openid, userSession: token, userToken: token }
+  if (session?.openid) return { openid: session.openid, phone: session.phone || "", userSession: token, userToken: token }
   return {}
 }
 
@@ -2036,7 +2036,7 @@ async function getStoreSettlementRecords(filters = {}) {
     let records = readJsonFile(storeSettlementRecordsFile, []).map(normalizeSettlementRecord)
     if (filters.storeId) records = records.filter(record => record.storeId === filters.storeId)
     if (filters.status) records = records.filter(record => record.status === filters.status)
-    if (filters.type) records = records.filter(record => record.type === filters.type)
+    if (filters.type) records = records.filter(record => settlementTypeAliases(filters.type).includes(record.type))
     if (filters.startAt) records = records.filter(record => String(record.createdAt || "") >= filters.startAt)
     if (filters.endAt) records = records.filter(record => String(record.createdAt || "") <= filters.endAt)
     return records.reverse()
@@ -2052,8 +2052,9 @@ async function getStoreSettlementRecords(filters = {}) {
     params.status = filters.status
   }
   if (filters.type) {
-    where.push("type = :type")
-    params.type = filters.type
+    const aliases = settlementTypeAliases(filters.type)
+    where.push(`type IN (${aliases.map((_, index) => `:type${index}`).join(",")})`)
+    aliases.forEach((type, index) => { params[`type${index}`] = type })
   }
   if (filters.startAt) {
     where.push("created_at >= :startAt")
@@ -2065,6 +2066,20 @@ async function getStoreSettlementRecords(filters = {}) {
   }
   const rows = await query(`SELECT * FROM store_settlement_records ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
   return rows.map((row, index) => normalizeSettlementRecord(row, index))
+}
+
+function settlementTypeAliases(type) {
+  if (type === "referral" || type === "store_referral_commission") return ["referral", "store_referral_commission"]
+  if (type === "pickup" || type === "pickup_service_fee") return ["pickup", "pickup_service_fee"]
+  return [type]
+}
+
+function isStoreReferralSettlement(type) {
+  return settlementTypeAliases("referral").includes(type)
+}
+
+function isPickupServiceSettlement(type) {
+  return settlementTypeAliases("pickup").includes(type)
 }
 
 async function saveStoreSettlementRecords(records) {
@@ -2313,6 +2328,15 @@ async function calculateOrderStoreIncome(data, amount) {
   return { referrerStore, pickupStore, referralCommission, pickupServiceFee }
 }
 
+function isValidReferrerStore(store) {
+  return !!store && store.status === "enabled" && store.isDisplayEnabled === "true" && store.referralCommissionType !== "none"
+}
+
+async function resolveValidReferrerStoreId(storeId) {
+  const store = await getPartnerStore(storeId || "")
+  return isValidReferrerStore(store) ? store.id : ""
+}
+
 async function createStoreSettlementRecordsForOrder(order) {
   const existing = await getStoreSettlementRecords()
   const next = existing.filter(record => order.id !== record.orderId)
@@ -2324,7 +2348,7 @@ async function createStoreSettlementRecordsForOrder(order) {
       id: `SSR${order.id}REF`,
       storeId: referrerStore.id,
       orderId: order.id,
-      type: "referral",
+      type: "store_referral_commission",
       amount: order.referralCommission,
       commissionType: referrerStore.referralCommissionType,
       commissionValue: referrerStore.referralCommissionValue,
@@ -2339,7 +2363,7 @@ async function createStoreSettlementRecordsForOrder(order) {
       id: `SSR${order.id}PIC`,
       storeId: pickupStore.id,
       orderId: order.id,
-      type: "pickup",
+      type: "pickup_service_fee",
       amount: order.pickupServiceFee,
       commissionType: pickupStore.pickupFeeType,
       commissionValue: pickupStore.pickupFeeValue,
@@ -2374,8 +2398,8 @@ async function getStoreSettlementSummary(filters = {}) {
   const targetStores = filters.storeId ? stores.filter(store => store.id === filters.storeId) : stores
   const summary = targetStores.map(store => {
     const storeRecords = records.filter(record => record.storeId === store.id)
-    const referralRecords = storeRecords.filter(record => record.type === "referral")
-    const pickupRecords = storeRecords.filter(record => record.type === "pickup")
+    const referralRecords = storeRecords.filter(record => isStoreReferralSettlement(record.type))
+    const pickupRecords = storeRecords.filter(record => isPickupServiceSettlement(record.type))
     const supplierRecords = storeRecords.filter(record => record.type === "supplier")
     const customRecords = storeRecords.filter(record => record.type === "custom")
     const settled = storeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
@@ -2488,7 +2512,7 @@ async function createOrder(data) {
     pickupStore = await getPartnerStore(data.pickupStoreId)
     if (!pickupStore || pickupStore.status !== "enabled" || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
   }
-  const referrerStoreId = data.referrerStoreId || data.storeId || data.referrer_store_id || ""
+  const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.storeId || data.referrer_store_id || "")
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, product.price)
   const order = normalizeOrder({
     id: `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
@@ -2835,18 +2859,33 @@ async function getPromotionVisits() {
 }
 
 async function bindPromotionFromOrder(order) {
-  if (!order.inviterCode || !order.phone) return null
+  return bindPromotionRelation(order.inviterCode, order.phone, order.customerName, false)
+}
+
+async function bindPromotionRelation(inviterCode, inviteePhone, inviteeName = "微信用户", strict = true) {
+  if (!inviterCode || !inviteePhone) {
+    if (strict) throw httpError(400, "缺少邀请关系参数")
+    return null
+  }
   const customers = await getCustomers()
-  const inviter = customers.find(customer => customer.inviteCode === order.inviterCode)
-  if (!inviter || inviter.phone === order.phone) return null
+  const inviter = customers.find(customer => customer.inviteCode === inviterCode)
+  if (!inviter) {
+    if (strict) throw httpError(400, "邀请码不存在")
+    return null
+  }
+  if (inviter.phone === inviteePhone) {
+    if (strict) throw httpError(400, "不能绑定自己的邀请码")
+    return null
+  }
   const relations = await getPromotionRelations()
-  if (relations.some(relation => relation.inviteePhone === order.phone)) return null
+  const existing = relations.find(relation => relation.inviteePhone === inviteePhone)
+  if (existing) return { ...existing, alreadyBound: true }
   const relation = normalizePromotionRelation({
     inviterPhone: inviter.phone,
     inviterName: inviter.name,
     inviterCode: inviter.inviteCode,
-    inviteePhone: order.phone,
-    inviteeName: order.customerName,
+    inviteePhone,
+    inviteeName,
     level: 1
   }, relations.length)
   relations.unshift(relation)
@@ -2932,6 +2971,7 @@ async function saveRewardRecords(records) {
 async function createRewardsForOrder(order) {
   const normalized = normalizeOrder(order, 0)
   if (normalized.paymentStatus !== "已支付") return []
+  if (normalized.referrerStoreId) return await getRewardRecords()
   const existing = await getRewardRecords()
   if (existing.some(record => record.orderId === normalized.id)) return existing
   const relations = await getPromotionRelations()
@@ -3697,6 +3737,17 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/store/source/validate" && req.method === "GET") {
+    const storeId = url.searchParams.get("storeId") || url.searchParams.get("store_id") || ""
+    const store = await getPartnerStore(storeId)
+    if (!isValidReferrerStore(store)) {
+      sendJson(res, 200, { ok: true, valid: false })
+      return
+    }
+    sendJson(res, 200, { ok: true, valid: true, store: storePublicView(store) })
+    return
+  }
+
   if (url.pathname === "/api/store/me" && req.method === "GET") {
     const storeSession = await getStoreSession(req)
     if (!storeSession) {
@@ -3712,7 +3763,7 @@ async function handle(req, res) {
     const storeSession = await requireStoreSession(req, res)
     if (!storeSession) return
     const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id)
-    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "referral" })
+    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "store_referral_commission" })
     const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const today = new Date().toISOString().slice(0, 10)
@@ -3744,12 +3795,12 @@ async function handle(req, res) {
     const records = await getStoreSettlementRecords({ storeId: storeSession.store.id })
     const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const referral = records.filter(record => record.type === "referral").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const pickup = records.filter(record => record.type === "pickup").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const referral = records.filter(record => isStoreReferralSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const pickup = records.filter(record => isPickupServiceSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
     sendJson(res, 200, {
       storeInfo: storePrivateView(storeSession.store),
       summary: { unsettledAmount: money(unsettled), settledAmount: money(settled), referralAmount: money(referral), pickupAmount: money(pickup) },
-      records: records.map(record => ({ ...record, typeText: record.type === "referral" ? "推广佣金" : record.type === "pickup" ? "自提服务费" : record.type }))
+      records: records.map(record => ({ ...record, typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type }))
     })
     return
   }
@@ -3960,11 +4011,12 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/promotion/bind" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const relation = await bindPromotionFromOrder(normalizeOrder({
-      phone: body.phone,
-      customerName: body.name || "微信用户",
-      inviterCode: body.inviterCode || body.invite
-    }, 0))
+    const identity = identityFromRequest(req, body)
+    if (!identity.phone) {
+      sendJson(res, 401, { ok: false, message: "请先完成微信手机号登录" })
+      return
+    }
+    const relation = await bindPromotionRelation(body.inviterCode || body.invite, identity.phone, body.name || "微信用户", true)
     sendJson(res, 200, { ok: true, data: relation })
     return
   }

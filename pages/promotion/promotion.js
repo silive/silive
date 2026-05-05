@@ -37,7 +37,18 @@ Page({
     const phone = wx.getStorageSync("memberPhone") || ""
     this.setData({ phone })
     this.loadStoreShareImage()
-    if (phone) this.loadSummary(phone)
+    if (phone) {
+      request("/api/store/me")
+        .then(data => {
+          if (data.bound) {
+            wx.showToast({ title: "门店负责人请使用门店中心", icon: "none" })
+            wx.redirectTo({ url: "/pages/store/center/center" })
+            return
+          }
+          this.loadSummary(phone)
+        })
+        .catch(() => this.loadSummary(phone))
+    }
     else {
       const localCode = wx.getStorageSync("profileInviteCode") || wx.getStorageSync("localUserId") || "U0000"
       this.setData({
