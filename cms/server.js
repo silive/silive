@@ -1154,13 +1154,7 @@ function normalizeHome(data) {
       sort: String(item.sort || index + 1)
     })),
     trustTags: Array.isArray(data.trustTags) ? data.trustTags : [],
-    products: (Array.isArray(data.products) ? data.products : []).map(item => ({
-      ...item,
-      imageUrl: publicAssetUrl(item.imageUrl),
-      galleryImages: normalizeAssetUrls(item.galleryImages),
-      videoUrl: publicAssetUrl(item.videoUrl),
-      detailImages: normalizeAssetUrls(item.detailImages)
-    })),
+    products: (Array.isArray(data.products) ? data.products : []).map(normalizeProduct),
     reviews: Array.isArray(data.reviews) ? data.reviews : [],
     promoText: data.promoText || "",
     sectionTitle: data.sectionTitle || "热门商品",
@@ -1191,6 +1185,20 @@ function normalizeBadge(value) {
   return map[value] || value || "none"
 }
 
+function normalizeBooleanText(value, defaultValue = false) {
+  if (value == null || value === "") return defaultValue ? "true" : "false"
+  const text = String(value).trim().toLowerCase()
+  if (["true", "1", "yes", "y", "on", "是", "热门", "推荐"].includes(text)) return "true"
+  if (["false", "0", "no", "n", "off", "否", "不推荐"].includes(text)) return "false"
+  return defaultValue ? "true" : "false"
+}
+
+function normalizeProductStatus(value) {
+  const text = String(value == null ? "on" : value).trim().toLowerCase()
+  if (["off", "下架", "disabled", "inactive", "false", "0"].includes(text)) return "off"
+  return "on"
+}
+
 function inferProductCategories(product) {
   const text = `${product.name || ""} ${product.intro || ""}`
   return PRODUCT_CATEGORIES.filter(category => {
@@ -1209,7 +1217,29 @@ function normalizeProductCategories(value, product) {
     ? value
     : String(value || "").split(/[,，;]/).map(item => item.trim()).filter(Boolean)
   const categories = list.map(item => String(item || "").trim()).filter(Boolean)
+  const primary = String(product?.categoryLevel1 || product?.primaryCategory || product?.primary || "").trim()
+  const secondSource = product?.categoryLevel2 || product?.secondaryCategories || product?.secondaryCategory || product?.secondary || ""
+  const seconds = Array.isArray(secondSource)
+    ? secondSource
+    : String(secondSource || "").split(/[,，;]/)
+  if (primary) {
+    categories.push(primary)
+    seconds.map(item => String(item || "").trim()).filter(Boolean).forEach(second => {
+      categories.push(second.includes("/") ? second : `${primary}/${second}`)
+    })
+  }
   return categories.length ? [...new Set(categories)] : inferProductCategories(product)
+}
+
+function productCategoryLevels(categories = []) {
+  const list = Array.isArray(categories) ? categories.map(item => String(item || "").trim()).filter(Boolean) : []
+  const firstWithSecond = list.find(item => item.includes("/"))
+  if (firstWithSecond) {
+    const [categoryLevel1, categoryLevel2] = firstWithSecond.split("/")
+    return { categoryLevel1, categoryLevel2 }
+  }
+  const categoryLevel1 = list[0] || ""
+  return { categoryLevel1, categoryLevel2: "" }
 }
 
 function detectImageExt(buffer) {
@@ -1445,6 +1475,12 @@ function assertProductionPaymentConfig() {
 }
 
 function normalizeProduct(product, index) {
+  const imageUrl = publicAssetUrl(product.mainImage || product.imageUrl || product.image || product.coverImage)
+  const categories = normalizeProductCategories(product.categories, product)
+  const levels = productCategoryLevels(categories)
+  const isHot = normalizeBooleanText(product.isHot ?? product.is_hot ?? product.hot ?? product.hotRecommend, false)
+  const promotionHot = normalizeBooleanText(product.promotionHot ?? product.isPromotionHot ?? product.promotion_hot, false)
+  const sortOrder = product.sortOrder ?? product.sort ?? product.sort_order ?? index ?? 0
   return {
     id: product.id || `P${Date.now()}${index}`,
     name: product.name || "未命名商品",
@@ -1453,22 +1489,27 @@ function normalizeProduct(product, index) {
     costPrice: String(product.costPrice || "0"),
     badge: normalizeBadge(product.badge),
     cover: product.cover || "keyring",
-    imageUrl: publicAssetUrl(product.imageUrl),
+    imageUrl,
+    mainImage: imageUrl,
     galleryImages: normalizeAssetUrls(normalizeMediaList(product.galleryImages)),
     videoUrl: publicAssetUrl(product.videoUrl),
     detailImages: normalizeAssetUrls(normalizeMediaList(product.detailImages)),
     detailText: product.detailText || "",
-    categories: normalizeProductCategories(product.categories, product),
-    status: product.status === "off" ? "off" : "on",
+    categories,
+    categoryLevel1: product.categoryLevel1 || levels.categoryLevel1,
+    categoryLevel2: product.categoryLevel2 || levels.categoryLevel2,
+    status: normalizeProductStatus(product.status),
     stock: String(product.stock || "0"),
-    isHot: String(product.isHot == null ? "false" : product.isHot) === "true" ? "true" : "false",
-    promotionHot: String(product.promotionHot == null ? "false" : product.promotionHot) === "true" ? "true" : "false",
-    aiPreviewEnabled: String(product.aiPreviewEnabled == null ? "false" : product.aiPreviewEnabled) === "true" ? "true" : "false",
+    isHot,
+    isPromotionHot: promotionHot,
+    promotionHot,
+    aiPreviewEnabled: normalizeBooleanText(product.aiPreviewEnabled, false),
     aiPreviewType: product.aiPreviewType || inferAiPreviewType(product),
     rewardEnabled: String(product.rewardEnabled == null ? "true" : product.rewardEnabled) === "false" ? "false" : "true",
     firstReward: String(product.firstReward || "0"),
     secondReward: String(product.secondReward || "0"),
-    sortOrder: String(product.sortOrder == null ? index || 0 : product.sortOrder)
+    sort: String(sortOrder),
+    sortOrder: String(sortOrder)
   }
 }
 
@@ -1932,14 +1973,14 @@ async function getProducts() {
     firstReward: row.first_reward,
     secondReward: row.second_reward
   }, 0))
-  return rows.map(row => {
+  return rows.map((row, index) => {
     const product = {
     id: row.id,
     name: row.name,
     intro: row.intro || "",
     price: String(row.price || "0"),
     costPrice: String(row.cost_price || "0"),
-    badge: row.badge || "",
+    badge: normalizeBadge(row.badge || ""),
     cover: row.cover || "keyring",
     imageUrl: publicAssetUrl(row.image_url),
     galleryImages: normalizeAssetUrls(normalizeMediaList(parseJsonValue(row.gallery_images, []))),
@@ -1949,20 +1990,21 @@ async function getProducts() {
     categories: normalizeProductCategories(parseJsonValue(row.categories, []), row),
     status: row.status || "on",
     stock: String(row.stock || "0"),
-    isHot: String(row.is_hot == null ? "false" : row.is_hot) === "true" ? "true" : "false",
-    promotionHot: String(row.promotion_hot == null ? "false" : row.promotion_hot) === "true" ? "true" : "false",
-    aiPreviewEnabled: String(row.ai_preview_enabled == null ? "false" : row.ai_preview_enabled) === "true" ? "true" : "false",
+    isHot: normalizeBooleanText(row.is_hot, false),
+    promotionHot: normalizeBooleanText(row.promotion_hot, false),
+    aiPreviewEnabled: normalizeBooleanText(row.ai_preview_enabled, false),
     aiPreviewType: row.ai_preview_type || "",
     rewardEnabled: String(row.reward_enabled == null ? "true" : row.reward_enabled) === "false" ? "false" : "true",
     firstReward: String(row.first_reward || "0"),
     secondReward: String(row.second_reward || "0"),
     sortOrder: String(row.sort_order || "0")
     }
+    const normalized = normalizeProduct(product, index)
     const rule = rules.find(item => item.productId === product.id || item.productName === product.name)
     return {
-      ...product,
-      firstReward: product.firstReward !== "0" ? product.firstReward : (rule?.firstReward || product.firstReward),
-      secondReward: product.secondReward !== "0" ? product.secondReward : (rule?.secondReward || product.secondReward)
+      ...normalized,
+      firstReward: normalized.firstReward !== "0" ? normalized.firstReward : (rule?.firstReward || normalized.firstReward),
+      secondReward: normalized.secondReward !== "0" ? normalized.secondReward : (rule?.secondReward || normalized.secondReward)
     }
   })
 }
