@@ -320,11 +320,12 @@ function httpError(status, message) {
   return error
 }
 
-function wechatApiError(errcode, errmsg) {
+function wechatApiError(errcode, errmsg, label = "微信接口") {
   const code = errcode === undefined || errcode === null || errcode === "" ? "unknown" : errcode
   const message = errmsg || "微信接口返回异常"
-  const error = httpError(400, `微信接口失败：${code} ${message}`)
+  const error = httpError(400, `${label}失败：${code} ${message}`)
   error.errcode = code
+  error.errmsg = message
   return error
 }
 
@@ -3624,8 +3625,8 @@ async function getOpenid(code) {
   if (!hasRealWechatConfig()) throw new Error("缺少真实 WECHAT_APPID 或 WECHAT_SECRET")
   const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}&js_code=${code}&grant_type=authorization_code`
   const result = await requestJson(url)
-  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg)
-  if (!result.data.openid) throw httpError(400, result.data.errmsg || "获取 openid 失败")
+  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg, "微信登录接口")
+  if (!result.data.openid) throw wechatApiError("openid_missing", result.data.errmsg || "微信未返回 openid", "微信登录接口")
   return result.data.openid
 }
 
@@ -3636,8 +3637,8 @@ async function getAccessToken() {
   if (!hasRealWechatConfig()) throw new Error("缺少真实 WECHAT_APPID 或 WECHAT_SECRET")
   const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}`
   const result = await requestJson(url)
-  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg)
-  if (!result.data.access_token) throw new Error(result.data.errmsg || "获取 access_token 失败")
+  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg, "微信 access_token 接口")
+  if (!result.data.access_token) throw wechatApiError("access_token_missing", result.data.errmsg || "微信未返回 access_token", "微信 access_token 接口")
   accessTokenCache = {
     token: result.data.access_token,
     expiresAt: Date.now() + Math.max(0, Number(result.data.expires_in || 7200) - 300) * 1000
@@ -3654,9 +3655,11 @@ async function getWechatPhoneNumber(code) {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   }, body)
-  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg)
+  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg, "微信手机号接口")
   const phoneNumber = result.data.phone_info && result.data.phone_info.phoneNumber
-  if (!phoneNumber) throw httpError(400, result.data.errmsg || "获取手机号失败")
+  if (!phoneNumber) {
+    throw wechatApiError("phone_info_missing", result.data.errmsg || "微信未返回 phone_info.phoneNumber", "微信手机号接口")
+  }
   return phoneNumber
 }
 
@@ -4568,6 +4571,7 @@ initDb().then(() => {
       const status = Number(error.statusCode || error.status || 500)
       const body = { ok: false, message: publicErrorMessage(error) }
       if (error.errcode !== undefined) body.errcode = error.errcode
+      if (error.errmsg !== undefined) body.errmsg = error.errmsg
       sendJson(res, status >= 400 && status < 600 ? status : 500, body)
     })
   }
