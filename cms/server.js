@@ -271,6 +271,24 @@ function formatDateTime(date) {
   return date.toISOString().slice(0, 16).replace("T", " ")
 }
 
+function toMysqlDatetime(value, fallback = null) {
+  if (value == null || value === "") return fallback
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return fallback
+    return value.toISOString().slice(0, 19).replace("T", " ")
+  }
+  const text = String(value).trim()
+  const matched = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?$/)
+  if (matched) return `${matched[1]} ${matched[2]}:${matched[3] || "00"}`
+  const date = parseDateValue(text)
+  if (!date) return fallback
+  return date.toISOString().slice(0, 19).replace("T", " ")
+}
+
+function nowMysqlDatetime() {
+  return toMysqlDatetime(new Date())
+}
+
 function addDays(value, days) {
   const date = parseDateValue(value) || new Date()
   date.setDate(date.getDate() + days)
@@ -287,6 +305,13 @@ function sendJson(res, status, data, headers = {}) {
     ...headers
   })
   res.end(JSON.stringify(data))
+}
+
+function publicErrorMessage(error) {
+  const message = String(error?.message || "")
+  if (/Incorrect datetime value/i.test(message)) return "保存失败：时间格式异常，请刷新后重试"
+  if (error?.code && String(error.code).startsWith("ER_")) return "保存失败，请检查填写内容后重试"
+  return message || "服务器错误"
 }
 
 function httpError(status, message) {
@@ -1572,6 +1597,20 @@ function normalizeOrder(order, index) {
   }
 }
 
+function mysqlOrderParams(order) {
+  return {
+    ...order,
+    shippedAt: toMysqlDatetime(order.shippedAt),
+    refundReviewedAt: toMysqlDatetime(order.refundReviewedAt),
+    createdAt: toMysqlDatetime(order.createdAt, nowMysqlDatetime()),
+    paidAt: toMysqlDatetime(order.paidAt),
+    completedAt: toMysqlDatetime(order.completedAt),
+    refundAt: toMysqlDatetime(order.refundAt),
+    arrivedStoreAt: toMysqlDatetime(order.arrivedStoreAt),
+    pickedUpAt: toMysqlDatetime(order.pickedUpAt)
+  }
+}
+
 function requestIdentity(query = {}) {
   return {
     userId: String(query.userId || "").trim(),
@@ -2089,10 +2128,17 @@ async function savePartnerStores(stores) {
   }
   await query("DELETE FROM partner_stores")
   for (const store of list) {
+    const params = {
+      ...store,
+      latitude: store.latitude === "" ? null : store.latitude,
+      longitude: store.longitude === "" ? null : store.longitude,
+      createdAt: toMysqlDatetime(store.createdAt, nowMysqlDatetime()),
+      updatedAt: toMysqlDatetime(store.updatedAt, nowMysqlDatetime())
+    }
     await query(
       `INSERT INTO partner_stores (id, name, level, address, phone, contact_name, manager_phone, manager_openid, store_role, store_status, business_hours, latitude, longitude, status, is_display_enabled, is_pickup_enabled, is_supplier_enabled, settlement_cycle, qrcode_scene, sort_order, remark, referral_commission_type, referral_commission_value, pickup_fee_type, pickup_fee_value, supplier_settlement_rule, custom_commission_rule, created_at, updated_at)
-       VALUES (:id, :name, :level, :address, :phone, :contactName, :managerPhone, :managerOpenid, :storeRole, :storeStatus, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :createdAt, NOW())`,
-      { ...store, latitude: store.latitude === "" ? null : store.latitude, longitude: store.longitude === "" ? null : store.longitude }
+       VALUES (:id, :name, :level, :address, :phone, :contactName, :managerPhone, :managerOpenid, :storeRole, :storeStatus, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :createdAt, :updatedAt)`,
+      params
     )
   }
   return list
@@ -2172,11 +2218,16 @@ async function saveStoreSettlementRecords(records) {
     return list
   }
   for (const record of list) {
+    const params = {
+      ...record,
+      createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
+      settledAt: toMysqlDatetime(record.settledAt)
+    }
     await query(
       `INSERT INTO store_settlement_records (id, store_id, order_id, type, amount, commission_type, commission_value, order_paid_amount, status, description, created_at, settled_at)
        VALUES (:id, :storeId, :orderId, :type, :amount, :commissionType, :commissionValue, :orderPaidAmount, :status, :description, :createdAt, :settledAt)
        ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), amount = VALUES(amount), description = VALUES(description)`,
-      record
+      params
     )
   }
   return list
@@ -2336,7 +2387,7 @@ async function saveOrders(orders) {
   }
   for (const order of list) {
     const orderParams = {
-      ...order,
+      ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
       userLatitude: order.userLatitude === "" ? null : order.userLatitude,
       userLongitude: order.userLongitude === "" ? null : order.userLongitude,
@@ -2657,7 +2708,7 @@ async function createOrder(data) {
   await query(
     "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
     {
-      ...order,
+      ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
       userLatitude: order.userLatitude === "" ? null : order.userLatitude,
       userLongitude: order.userLongitude === "" ? null : order.userLongitude,
@@ -2918,7 +2969,7 @@ async function savePromotionRelations(relations) {
   for (const relation of list) {
     await query(
       "INSERT INTO promotion_relations (id, inviter_phone, inviter_name, inviter_code, invitee_phone, invitee_name, level, created_at) VALUES (:id, :inviterPhone, :inviterName, :inviterCode, :inviteePhone, :inviteeName, :level, :createdAt)",
-      relation
+      { ...relation, createdAt: toMysqlDatetime(relation.createdAt, nowMysqlDatetime()) }
     )
   }
   return list
@@ -2939,7 +2990,7 @@ async function recordPromotionVisit(data = {}) {
   }
   await query(
     "INSERT IGNORE INTO promotion_visits (id, invite, visitor_id, created_at) VALUES (:id, :invite, :visitorId, :createdAt)",
-    { id: `PV${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`, invite, visitorId, createdAt: formatDateTime(new Date()) }
+    { id: `PV${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`, invite, visitorId, createdAt: nowMysqlDatetime() }
   )
   return { invite, visitorId }
 }
@@ -3053,7 +3104,12 @@ async function saveRewardRecords(records) {
   for (const record of list) {
     await query(
       "INSERT INTO reward_records (id, order_id, product_name, buyer_phone, promoter_phone, promoter_name, level, amount, status, release_at, created_at, updated_at) VALUES (:id, :orderId, :productName, :buyerPhone, :promoterPhone, :promoterName, :level, :amount, :status, :releaseAt, :createdAt, :updatedAt)",
-      record
+      {
+        ...record,
+        releaseAt: toMysqlDatetime(record.releaseAt),
+        createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
+        updatedAt: toMysqlDatetime(record.updatedAt, nowMysqlDatetime())
+      }
     )
   }
   return list
@@ -4493,7 +4549,7 @@ initDb().then(() => {
     handle(req, res).catch(error => {
       console.error(error)
       const status = Number(error.statusCode || error.status || 500)
-      sendJson(res, status >= 400 && status < 600 ? status : 500, { ok: false, message: error.message })
+      sendJson(res, status >= 400 && status < 600 ? status : 500, { ok: false, message: publicErrorMessage(error) })
     })
   }
   http.createServer(serverHandler).listen(PORT, () => {
