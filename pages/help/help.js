@@ -17,6 +17,7 @@ Page({
   data: {
     articles: [],
     banner: null,
+    guideAd: null,
     contact: {},
     themeStyle: "",
     themeClass: "theme-skin01",
@@ -35,9 +36,16 @@ Page({
   loadHelp() {
     request(`/api/help-center?t=${Date.now()}`)
       .then(data => {
+        const guideAd = data.afterSalesGuideAd || data.ads?.after_sales_guide_ad || null
         this.setData({
           articles: (data.articles || []).map(normalizeArticle),
           banner: data.helpBanner || data.banner || null,
+          guideAd: guideAd && String(guideAd.enabled) !== "false" ? {
+            ...guideAd,
+            desc: guideAd.desc || guideAd.subtitle || "",
+            targetType: guideAd.targetType || guideAd.linkType,
+            targetValue: guideAd.targetValue || guideAd.linkValue
+          } : null,
           contact: data.contact || {},
           loading: false
         })
@@ -60,6 +68,10 @@ Page({
 
   openBanner() {
     this.handleTarget(this.data.banner)
+  },
+
+  openGuideAd() {
+    this.handleTarget(this.data.guideAd)
   },
 
   contact() {
@@ -91,29 +103,31 @@ Page({
 
   handleTarget(entry) {
     if (!entry) return
-    const value = entry.targetValue || ""
-    if (entry.targetType === "service") {
+    const type = entry.targetType || entry.linkType || "none"
+    const value = entry.targetValue || entry.linkValue || ""
+    if (type === "none") return
+    if (type === "service" || type === "contact") {
       this.contact()
       return
     }
-    if (entry.targetType === "secondary") {
+    if (type === "secondary") {
       const parts = value.split("/")
       wx.navigateTo({ url: `/pages/category/list?primary=${encodeURIComponent(parts[0] || "")}&secondary=${encodeURIComponent(parts[1] || "全部")}` })
       return
     }
-    if (entry.targetType === "product") {
+    if (type === "product") {
       wx.navigateTo({ url: `/pages/product/detail?id=${encodeURIComponent(value)}` })
       return
     }
-    if (entry.targetType === "productList") {
+    if (type === "productList") {
       wx.navigateTo({ url: `/pages/category/list?ids=${encodeURIComponent(value)}&primary=${encodeURIComponent(entry.title || "精选商品")}` })
       return
     }
-    if (entry.targetType === "poster") {
+    if (type === "poster") {
       wx.navigateTo({ url: `/pages/poster/poster?title=${encodeURIComponent(entry.title || "活动海报")}&image=${encodeURIComponent(entry.imageUrl || "")}` })
       return
     }
-    if (entry.targetType === "custom") {
+    if (type === "custom" || type === "page" || type === "web") {
       if (value.indexOf("/") === 0) wx.navigateTo({ url: value })
       else wx.showModal({ title: entry.title || "链接", content: value || "暂未配置链接", showCancel: false })
       return

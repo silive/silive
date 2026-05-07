@@ -1,6 +1,7 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { ensureOpenid, getLoginState } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
+const { chooseWechatAddress, formatWechatAddress, addressErrorMessage } = require("../../utils/address")
 
 function safeJson(value, fallback = null) {
   try {
@@ -313,14 +314,9 @@ Page({
   },
 
   chooseAddress(options = {}) {
-    wx.chooseAddress({
-      success: address => {
-        const fullAddress = [
-          address.provinceName,
-          address.cityName,
-          address.countyName,
-          address.detailInfo
-        ].filter(Boolean).join(" ")
+    chooseWechatAddress()
+      .then(address => {
+        const fullAddress = formatWechatAddress(address)
         const apply = () => {
           this.setData({
             "form.customerName": address.userName || this.data.form.customerName,
@@ -346,13 +342,11 @@ Page({
           return
         }
         apply()
-      },
-      fail: error => {
+      })
+      .catch(error => {
         if (options.silent) return
-        const msg = String(error.errMsg || "")
-        wx.showToast({ title: msg.includes("cancel") ? "未选择地址，可手动填写" : "无法打开微信地址，请手动填写", icon: "none" })
-      }
-    })
+        wx.showToast({ title: addressErrorMessage(error), icon: "none" })
+      })
   },
 
   templateType() {

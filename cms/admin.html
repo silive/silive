@@ -478,6 +478,7 @@
           </div>
           <div class="panel"><h3>Banner 图与文字</h3><div class="list" id="homeBanners"></div></div>
           <div class="panel"><h3>首页入口管理</h3><div class="upload-help">共4个卡片位。跳转目标改为联动选择，避免手输错误。类目来自商品中心，活动来自营销中心。</div><div class="list" id="homeEntries"></div></div>
+          <div class="panel"><h3>运营广告位</h3><div class="upload-help">用于我的页底部广告、售后页新手下单指南、推广分享素材。关闭后前台自动使用默认内容。</div><div class="list" id="homeAds"></div></div>
           <div class="panel"><h3>首页推荐商品</h3><div class="list" id="homeProducts"></div></div>
         </div>
         <div class="subview" id="subview-helpManager">
@@ -1143,6 +1144,17 @@
           <option value="custom" ${current === "custom" ? "selected" : ""}>自定义链接</option>
         </select></label>`
       }
+      if (key === "linkType") {
+        const current = value || "none"
+        return `<label>${label}<select data-key="${key}">
+          <option value="none" ${current === "none" ? "selected" : ""}>只展示不跳转</option>
+          <option value="page" ${current === "page" ? "selected" : ""}>小程序页面</option>
+          <option value="product" ${current === "product" ? "selected" : ""}>商品页</option>
+          <option value="category" ${current === "category" ? "selected" : ""}>分类页</option>
+          <option value="contact" ${current === "contact" ? "selected" : ""}>客服</option>
+          <option value="web" ${current === "web" ? "selected" : ""}>自定义链接</option>
+        </select></label>`
+      }
       if (key === "targetValue") return renderTargetPicker(value, context)
       if (key === "productId") return `<label>${label}${renderProductPickerValue(value, key, context)}</label>`
       return `<label>${label}${type === "textarea" ? `<textarea data-key="${key}">${v}</textarea>` : `<input data-key="${key}" value="${v}">`}</label>`
@@ -1670,6 +1682,18 @@
         </div>
       `).join("") || `<div class="empty">暂无活动，点击右上角新增。</div>`
     }
+    const homeAdDefaults = {
+      profile_bottom_ad: { key: "profile_bottom_ad", title: "新人专享福利", subtitle: "上传照片，定制专属礼物", imageUrl: "", linkType: "none", linkValue: "", enabled: "true", sort: "1" },
+      after_sales_guide_ad: { key: "after_sales_guide_ad", title: "新手下单指南", subtitle: "了解定制流程、发货时效与售后保障", imageUrl: "", linkType: "none", linkValue: "", enabled: "true", sort: "2" },
+      promotion_share_ad: { key: "promotion_share_ad", title: "非常智造 · 朋友推荐给你", subtitle: "上传照片，定制专属礼物", imageUrl: "/assets/share-promotion.png", linkType: "page", linkValue: "/pages/index/index", enabled: "true", sort: "3" }
+    }
+    function homeAdSlots() {
+      home.ads = home.ads && typeof home.ads === "object" && !Array.isArray(home.ads) ? home.ads : {}
+      return Object.keys(homeAdDefaults).map(key => ({ ...homeAdDefaults[key], ...(home.ads[key] || {}), key }))
+    }
+    function persistHomeAdSlots(list) {
+      home.ads = Object.fromEntries(Object.keys(homeAdDefaults).map((key, index) => [key, { ...(list[index] || homeAdDefaults[key]), key }]))
+    }
     function renderHome() {
       $("promoText").value = home.promoText || ""
       $("contactPhone").value = home.contact?.phone || ""
@@ -1708,6 +1732,16 @@
         { label: "是否显示", key: "visible" },
         { label: "排序", key: "sort" }
       ], "入口")
+      renderEditableList("homeAds", homeAdSlots(), [
+        { label: "广告位标识", key: "key" },
+        { label: "图片", key: "imageUrl" },
+        { label: "标题", key: "title" },
+        { label: "副标题", key: "subtitle", type: "textarea" },
+        { label: "跳转类型", key: "linkType" },
+        { label: "跳转值", key: "linkValue" },
+        { label: "是否启用", key: "enabled" },
+        { label: "排序", key: "sort" }
+      ], "广告位")
       renderEditableList("homeProducts", home.products || [], [
         { label: "商品图地址", key: "imageUrl" },
         { label: "商品名称", key: "name" },
@@ -2408,6 +2442,9 @@
         home.contact = { phone: $("contactPhone").value, wechat: $("contactWechat").value, workWechatUrl: $("workWechatUrl").value }
         collectList("homeBanners", home.banners)
         collectList("homeEntries", home.homeEntries)
+        const ads = homeAdSlots()
+        collectList("homeAds", ads)
+        persistHomeAdSlots(ads)
         collectList("homeProducts", home.products)
         await api("/api/home", "PUT", home)
         collectHelpArticles()

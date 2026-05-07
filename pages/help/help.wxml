@@ -5,6 +5,21 @@
     <view class="subtitle">下单流程、定制说明、发货时效与售后政策</view>
   </view>
 
+  <button wx:if="{{guideAd && guideAd.imageUrl && (guideAd.targetType === 'contact' || guideAd.linkType === 'contact')}}" class="guide-ad" open-type="contact">
+    <image class="guide-ad-image" src="{{guideAd.imageUrl}}" mode="aspectFill" />
+    <view class="guide-ad-copy">
+      <view class="guide-ad-title">{{guideAd.title}}</view>
+      <view class="guide-ad-desc">{{guideAd.desc || guideAd.subtitle}}</view>
+    </view>
+  </button>
+  <view wx:elif="{{guideAd}}" class="guide-ad" bindtap="openGuideAd">
+    <image wx:if="{{guideAd.imageUrl}}" class="guide-ad-image" src="{{guideAd.imageUrl}}" mode="aspectFill" />
+    <view class="guide-ad-copy">
+      <view class="guide-ad-title">{{guideAd.title}}</view>
+      <view class="guide-ad-desc">{{guideAd.desc || guideAd.subtitle}}</view>
+    </view>
+  </view>
+
   <view wx:if="{{articles.length}}" class="article-list">
     <view class="article-card" wx:for="{{articles}}" wx:key="id">
       <view class="article-head" bindtap="toggleArticle" data-index="{{index}}">
@@ -24,7 +39,7 @@
   <view wx:else class="empty-card">
     <view class="empty-title">售后保障内容正在整理中</view>
     <view class="empty-desc">如需确认定制细节，可先联系客服</view>
-    <button class="contact-btn" bindtap="contact">联系客服</button>
+    <button class="contact-btn" open-type="contact">联系客服</button>
   </view>
 
   <view wx:if="{{banner}}" class="help-banner" bindtap="openBanner">

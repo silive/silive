@@ -310,7 +310,7 @@ Page({
   },
 
   contactService() {
-    wx.showToast({ title: "请在我的页联系客服", icon: "none" })
+    wx.showToast({ title: "请点击联系客服按钮", icon: "none" })
   },
 
   showPickupCode(event) {

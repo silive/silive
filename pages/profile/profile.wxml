@@ -38,7 +38,7 @@
           <view class="feature-subtitle" style="{{mutedTextStyle}}">邀请赚佣金</view>
         </button>
       </block>
-      <button class="feature-card" style="{{cardStyle}}" bindtap="contact">
+      <button class="feature-card" style="{{cardStyle}}" open-type="contact">
         <view wx:if="{{contact.showWorkWechat !== 'false'}}" class="online-pill">在线</view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">☎</view>
         <view class="feature-title">联系客服</view>
@@ -59,7 +59,16 @@
       </button>
     </view>
   </view>
-  <view wx:if="{{banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
+  <button wx:if="{{banner && banner.imageUrl && (banner.targetType === 'contact' || banner.linkType === 'contact')}}" class="profile-banner" style="{{bannerStyle}}" open-type="contact">
+    <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
+    <view class="profile-banner-mask"></view>
+    <view class="profile-banner-copy">
+      <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
+      <view class="profile-banner-title">{{banner.title}}</view>
+      <view class="profile-banner-desc">{{banner.desc}}</view>
+    </view>
+  </button>
+  <view wx:elif="{{banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
     <view class="profile-banner-mask"></view>
     <view class="profile-banner-copy">

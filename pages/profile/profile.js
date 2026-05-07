@@ -1,5 +1,6 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
+const { chooseWechatAddress, formatWechatAddress, addressErrorMessage } = require("../../utils/address")
 
 Page({
   data: {
@@ -230,9 +231,15 @@ Page({
   loadContact() {
     request("/api/help-center")
       .then(data => {
+        const profileAd = data.profileBottomAd || data.ads?.profile_bottom_ad || data.profileBanner || null
         this.setData({
           contact: data.contact || this.data.contact,
-          banner: data.profileBanner || null
+          banner: profileAd && String(profileAd.enabled) !== "false" ? {
+            ...profileAd,
+            desc: profileAd.desc || profileAd.subtitle || "",
+            targetType: profileAd.targetType || profileAd.linkType,
+            targetValue: profileAd.targetValue || profileAd.linkValue
+          } : null
         })
       })
       .catch(() => {})
@@ -290,25 +297,18 @@ Page({
 
   chooseAddress() {
     if (!this.requireLogin()) return
-    wx.chooseAddress({
-      success: address => {
-        const fullAddress = [
-          address.provinceName,
-          address.cityName,
-          address.countyName,
-          address.detailInfo
-        ].filter(Boolean).join(" ")
+    chooseWechatAddress()
+      .then(address => {
+        const fullAddress = formatWechatAddress(address)
         wx.showModal({
           title: "收货地址",
           content: `${address.userName || ""} ${address.telNumber || ""}\n${fullAddress || "已选择地址"}`,
           showCancel: false
         })
-      },
-      fail: error => {
-        const msg = String(error.errMsg || "")
-        wx.showToast({ title: msg.includes("cancel") ? "未选择地址，可手动填写" : "无法打开微信地址，请手动填写", icon: "none" })
-      }
-    })
+      })
+      .catch(error => {
+        wx.showToast({ title: addressErrorMessage(error), icon: "none" })
+      })
   },
 
   contact() {
@@ -360,29 +360,31 @@ Page({
 
   handleTarget(entry) {
     if (!entry) return
-    const value = entry.targetValue || ""
-    if (entry.targetType === "service") {
-      this.contact()
+    const type = entry.targetType || entry.linkType || "none"
+    const value = entry.targetValue || entry.linkValue || ""
+    if (type === "none") return
+    if (type === "service" || type === "contact") {
+      wx.showToast({ title: "请点击联系客服按钮", icon: "none" })
       return
     }
-    if (entry.targetType === "secondary") {
+    if (type === "secondary") {
       const parts = value.split("/")
       wx.navigateTo({ url: `/pages/category/list?primary=${encodeURIComponent(parts[0] || "")}&secondary=${encodeURIComponent(parts[1] || "全部")}` })
       return
     }
-    if (entry.targetType === "product") {
+    if (type === "product") {
       wx.navigateTo({ url: `/pages/product/detail?id=${encodeURIComponent(value)}` })
       return
     }
-    if (entry.targetType === "productList") {
+    if (type === "productList") {
       wx.navigateTo({ url: `/pages/category/list?ids=${encodeURIComponent(value)}&primary=${encodeURIComponent(entry.title || "精选商品")}` })
       return
     }
-    if (entry.targetType === "poster") {
+    if (type === "poster") {
       wx.navigateTo({ url: `/pages/poster/poster?title=${encodeURIComponent(entry.title || "活动海报")}&image=${encodeURIComponent(entry.imageUrl || "")}` })
       return
     }
-    if (entry.targetType === "custom") {
+    if (type === "custom" || type === "page" || type === "web") {
       if (value.indexOf("/") === 0) wx.navigateTo({ url: value })
       else wx.showModal({ title: entry.title || "链接", content: value || "暂未配置链接", showCancel: false })
       return

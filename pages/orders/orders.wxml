@@ -67,7 +67,7 @@
         <button wx:if="{{item.canShowPickupCode}}" class="dark-btn" style="{{primaryButtonStyle}}" bindtap="showPickupCode" data-index="{{index}}">查看取货码</button>
         <button wx:if="{{item.canConfirmReceive}}" class="dark-btn" style="{{primaryButtonStyle}}" bindtap="confirmReceive" data-index="{{index}}">确认收货</button>
         <button wx:if="{{item.isRefundingOrder}}" class="light-btn" style="{{secondaryButtonStyle}}" bindtap="viewAfterSale" data-index="{{index}}">查看售后</button>
-        <button wx:if="{{item.canContact || item.isQuoteOrder}}" class="light-btn" style="{{secondaryButtonStyle}}" bindtap="contactService" data-index="{{index}}">联系客服</button>
+        <button wx:if="{{item.canContact || item.isQuoteOrder}}" class="light-btn" style="{{secondaryButtonStyle}}" open-type="contact" data-index="{{index}}">联系客服</button>
         <button wx:if="{{item.isUnpaidOrder || item.displayStatus === '已完成' || item.displayStatus === '已退款' || item.displayStatus === '已自提'}}" class="light-btn" style="{{secondaryButtonStyle}}" bindtap="reorder" data-index="{{index}}">再次下单</button>
         <button wx:if="{{item.canRefund}}" class="light-btn" style="{{secondaryButtonStyle}}" bindtap="openRefund" data-index="{{index}}" data-type="仅退款">申请售后</button>
       </view>

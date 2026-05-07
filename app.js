@@ -45,7 +45,8 @@ App({
     const scene = decodeURIComponent(query.scene || "")
     const storeId = decodeURIComponent(query.store_id || query.storeId || (scene.match(/(?:^|&)store_id=([^&]+)/) || [])[1] || "")
     if (storeId) this.captureStoreReferrer(storeId)
-    const invite = decodeURIComponent(query.invite || query.inviterCode || "")
+    const sceneInvite = (scene.match(/(?:^|&)invite=([^&]+)/) || [])[1] || (scene.match(/(?:^|&)inviterCode=([^&]+)/) || [])[1] || ""
+    const invite = decodeURIComponent(query.invite || query.inviterCode || sceneInvite || "")
     if (!invite) return
     const localUserId = this.ensureLocalUserId()
     const ownInvite = wx.getStorageSync("profileInviteCode") || localUserId

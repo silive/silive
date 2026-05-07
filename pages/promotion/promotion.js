@@ -6,6 +6,7 @@ const SHARE_TITLES = [
   "精选礼物小店 · 朋友觉得你会喜欢"
 ]
 const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.png"
+const ONLINE_SHARE_IMAGE = "https://api.feichangjiandan.xyz/uploads/share-promotion.png"
 
 function pickOne(list) {
   return list[Math.floor(Math.random() * list.length)]
@@ -56,11 +57,12 @@ Page({
         profile: {
           ...this.data.profile,
           inviteCode: localCode,
-          inviteQrUrl: apiUrl(`/api/promotion/qr?code=${encodeURIComponent(localCode)}`),
+          inviteQrUrl: "",
           inviteQrText: `非常智造 邀请码：${localCode}`
         }
       })
       this.refreshInviteLink()
+      this.loadPosterCode(localCode)
     }
   },
 
@@ -75,6 +77,7 @@ Page({
         })
         if (data.profile?.inviteCode) wx.setStorageSync("profileInviteCode", data.profile.inviteCode)
         this.refreshInviteLink(data.profile)
+        this.loadPosterCode(data.profile?.inviteCode)
       })
       .catch(() => wx.showToast({ title: "推广数据加载失败", icon: "none" }))
       .finally(() => this.setData({ loading: false }))
@@ -103,20 +106,25 @@ Page({
 
   createPoster() {
     const code = this.buildInviteCode()
-    const title = "非常智造邀请海报"
-    const image = this.data.profile.inviteQrUrl || apiUrl(`/api/promotion/qr?code=${encodeURIComponent(code)}`)
-    const shareImage = this.data.storeShareImage || DEFAULT_SHARE_IMAGE
-    wx.navigateTo({
-      url: `/pages/poster/poster?title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
+    this.ensurePosterCode(code).then(image => {
+      const title = "非常智造邀请海报"
+      const shareImage = this.data.storeShareImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE
+      wx.navigateTo({
+        url: `/pages/poster/poster?title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
+      })
+    }).catch(error => {
+      wx.showModal({ title: "小程序码生成失败", content: error.message || "请稍后重试", showCancel: false })
     })
   },
 
   loadStoreShareImage() {
     request("/api/home")
       .then(data => {
+        const shareAd = data.ads?.promotion_share_ad
+        const adImage = shareAd && String(shareAd.enabled) !== "false" ? shareAd.imageUrl : ""
         const banner = (data.banners || []).find(item => item.imageUrl)
         const product = (data.products || []).find(item => item.imageUrl)
-        this.setData({ storeShareImage: banner?.imageUrl || product?.imageUrl || "" })
+        this.setData({ storeShareImage: adImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE || banner?.imageUrl || product?.imageUrl || "" })
       })
       .catch(() => {})
     request("/api/products")
@@ -130,6 +138,30 @@ Page({
       .catch(() => {})
   },
 
+  loadPosterCode(code = this.buildInviteCode()) {
+    if (!code) return Promise.resolve("")
+    return request(`/api/promotion/poster-code?invite=${encodeURIComponent(code)}`)
+      .then(data => {
+        const url = data.url || data.data?.url || ""
+        if (url) {
+          this.setData({ profile: { ...this.data.profile, inviteQrUrl: url } })
+        }
+        return url
+      })
+      .catch(error => {
+        console.warn("[promotion] poster code failed", { message: error.message })
+        return ""
+      })
+  },
+
+  ensurePosterCode(code = this.buildInviteCode()) {
+    if (this.data.profile.inviteQrUrl) return Promise.resolve(this.data.profile.inviteQrUrl)
+    return this.loadPosterCode(code).then(url => {
+      if (!url) throw new Error("暂时无法生成真实小程序码")
+      return url
+    })
+  },
+
   openProduct(event) {
     const id = event.currentTarget.dataset.id
     if (!id) return
@@ -140,7 +172,7 @@ Page({
     return {
       title: pickOne(SHARE_TITLES),
       path: this.buildInviteLink(),
-      imageUrl: this.data.storeShareImage || DEFAULT_SHARE_IMAGE
+      imageUrl: this.data.storeShareImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE
     }
   }
 })

@@ -414,6 +414,39 @@ function requestJson(url, options = {}, body = "") {
   })
 }
 
+function requestBuffer(url, options = {}, body = "") {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url)
+    const headers = { "User-Agent": "very-simple-cms/1.0", ...(options.headers || {}) }
+    if (body && !headers["Content-Length"] && !headers["content-length"]) {
+      headers["Content-Length"] = Buffer.byteLength(body)
+    }
+    const req = https.request({
+      hostname: target.hostname,
+      path: `${target.pathname}${target.search}`,
+      method: options.method || "GET",
+      headers,
+      timeout: options.timeout || 12000
+    }, response => {
+      const chunks = []
+      response.on("data", chunk => chunks.push(chunk))
+      response.on("end", () => {
+        resolve({
+          statusCode: response.statusCode,
+          headers: response.headers,
+          data: Buffer.concat(chunks)
+        })
+      })
+    })
+    req.on("timeout", () => {
+      req.destroy(new Error("请求超时，请稍后重试"))
+    })
+    req.on("error", reject)
+    if (body) req.write(body)
+    req.end()
+  })
+}
+
 function sendText(res, status, text, type = "text/plain; charset=utf-8", headers = {}) {
   res.writeHead(status, {
     "Content-Type": type,
@@ -1200,6 +1233,61 @@ async function syncCategoryCatalogFromProducts(products = []) {
   if (changed) await saveSettings({ ...settings, categoryCatalog: catalog })
 }
 
+function defaultAds() {
+  return {
+    profile_bottom_ad: {
+      key: "profile_bottom_ad",
+      title: "新人专享福利",
+      subtitle: "上传照片，定制专属礼物",
+      imageUrl: "",
+      linkType: "none",
+      linkValue: "",
+      enabled: "true",
+      sort: "1"
+    },
+    after_sales_guide_ad: {
+      key: "after_sales_guide_ad",
+      title: "新手下单指南",
+      subtitle: "了解定制流程、发货时效与售后保障",
+      imageUrl: "",
+      linkType: "none",
+      linkValue: "",
+      enabled: "true",
+      sort: "2"
+    },
+    promotion_share_ad: {
+      key: "promotion_share_ad",
+      title: "非常智造 · 朋友推荐给你",
+      subtitle: "上传照片，定制专属礼物",
+      imageUrl: "/assets/share-promotion.png",
+      linkType: "page",
+      linkValue: "/pages/index/index",
+      enabled: "true",
+      sort: "3"
+    }
+  }
+}
+
+function normalizeAdSlot(item, key, fallback) {
+  const source = item && typeof item === "object" ? item : {}
+  return {
+    key,
+    title: source.title || fallback.title || "",
+    subtitle: source.subtitle || source.desc || fallback.subtitle || "",
+    imageUrl: publicAssetUrl(source.imageUrl || fallback.imageUrl || ""),
+    linkType: source.linkType || source.targetType || fallback.linkType || "none",
+    linkValue: source.linkValue || source.targetValue || fallback.linkValue || "",
+    enabled: String(source.enabled == null ? fallback.enabled || "true" : source.enabled),
+    sort: String(source.sort || fallback.sort || "999")
+  }
+}
+
+function normalizeAds(value) {
+  const fallback = defaultAds()
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {}
+  return Object.fromEntries(Object.keys(fallback).map(key => [key, normalizeAdSlot(source[key], key, fallback[key])]))
+}
+
 function normalizeHome(data) {
   const defaultHomeEntries = [
     { name: "激光定制", desc: "上传照片定制礼物", icon: "◆", imageUrl: "", targetType: "primary", targetValue: "激光定制", visible: "true", sort: "1" },
@@ -1236,6 +1324,7 @@ function normalizeHome(data) {
       wechat: data.contact?.wechat || "",
       workWechatUrl: data.contact?.workWechatUrl || ""
     },
+    ads: normalizeAds(data.ads),
     updatedAt: new Date().toISOString()
   }
 }
@@ -2844,6 +2933,31 @@ async function setOrderOpenid(orderId, openid) {
   await query("UPDATE orders SET openid = COALESCE(NULLIF(openid, ''), :openid) WHERE id = :orderId", { orderId, openid })
 }
 
+async function backfillOrderIdentity(orderId, identity = {}) {
+  if (!orderId) return
+  const openid = String(identity.openid || "").trim()
+  const userToken = String(identity.userToken || identity.userSession || "").trim()
+  if (!openid && !userToken) return
+  if (!pool) {
+    const orders = readJsonFile(ordersFile, []).map(normalizeOrder)
+    const index = orders.findIndex(order => order.id === orderId)
+    if (index >= 0) {
+      if (!orders[index].openid && openid) orders[index].openid = openid
+      if (!orders[index].userToken && userToken) orders[index].userToken = userToken
+      writeJsonFile(ordersFile, orders)
+    }
+    return
+  }
+  await query(
+    `UPDATE orders
+     SET
+       openid = CASE WHEN (openid IS NULL OR openid = '') THEN :openid ELSE openid END,
+       user_token = CASE WHEN (user_token IS NULL OR user_token = '') THEN :userToken ELSE user_token END
+     WHERE id = :orderId`,
+    { orderId, openid, userToken }
+  )
+}
+
 async function markOrderPaid(orderId, transactionId = "") {
   if (!pool) {
     const orders = readJsonFile(ordersFile, []).map(normalizeOrder)
@@ -3369,7 +3483,7 @@ async function getPromotionSummary(phone) {
       inviteCount: invited.length,
       inviteOrderCount: inviteOrders.length,
       inviteAmount: inviteAmount.toFixed(2),
-      inviteQrUrl: `${PUBLIC_BASE_URL}/api/promotion/qr?code=${encodeURIComponent(inviteCode)}`,
+      inviteQrUrl: "",
       inviteQrText: `非常智造 邀请码：${inviteCode}`
     },
     invited,
@@ -3805,6 +3919,42 @@ async function getAccessToken() {
   return accessTokenCache.token
 }
 
+async function generatePromotionWxacode(inviteCode) {
+  const safeInvite = String(inviteCode || "").replace(/[^\w-]/g, "").slice(0, 24) || "VSCUSTOM"
+  const outputFile = path.join(uploadsDir, `promotion-code-${safeInvite}.png`)
+  if (fs.existsSync(outputFile)) {
+    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true }
+  }
+  const accessToken = await getAccessToken()
+  const body = JSON.stringify({
+    scene: `invite=${safeInvite}`,
+    page: "pages/index/index",
+    check_path: false,
+    env_version: process.env.WECHAT_WXACODE_ENV_VERSION || "trial"
+  })
+  const result = await requestBuffer(`https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${accessToken}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "image/png,application/json" },
+    timeout: 15000
+  }, body)
+  const contentType = String(result.headers["content-type"] || "")
+  if (contentType.includes("application/json")) {
+    let data = {}
+    try {
+      data = JSON.parse(result.data.toString() || "{}")
+    } catch (error) {
+      data = { errcode: "wxacode_parse_error", errmsg: "微信小程序码接口返回异常" }
+    }
+    throw wechatApiError(data.errcode || "wxacode_error", data.errmsg || "微信小程序码生成失败", "微信小程序码接口")
+  }
+  if (!contentType.includes("image") || !result.data.length) {
+    throw wechatApiError("wxacode_empty", "微信未返回小程序码图片", "微信小程序码接口")
+  }
+  fs.mkdirSync(uploadsDir, { recursive: true })
+  fs.writeFileSync(outputFile, result.data)
+  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false }
+}
+
 async function getWechatPhoneNumber(code) {
   if (canUseMockWechatLogin()) return MOCK_WECHAT_PHONE
   if (!code) throw httpError(400, "缺少手机号授权 code")
@@ -3856,24 +4006,29 @@ async function createWechatPay(orderId, openid, identity = {}) {
   }
   const sessionOpenid = String(openid || identity.openid || "").trim()
   const sessionUserToken = String(identity.userToken || identity.userSession || "").trim()
+  const sessionPhone = String(identity.phone || "").trim()
   const orderOpenid = String(order.openid || "").trim()
   const orderUserToken = String(order.userToken || "").trim()
-  if (!orderOpenid && !orderUserToken) {
-    console.warn(`[pay] reject empty owner order=${order.id} sessionOpenid=${maskSecret(sessionOpenid)} sessionToken=${maskSecret(sessionUserToken)}`)
+  const orderPhone = String(order.phone || "").trim()
+  const phoneMatched = !!(sessionPhone && orderPhone && sessionPhone === orderPhone)
+  const openidMatched = !!(orderOpenid && sessionOpenid && orderOpenid === sessionOpenid)
+  const tokenMatched = !!(orderUserToken && sessionUserToken && orderUserToken === sessionUserToken)
+  if (!orderOpenid && !orderUserToken && !orderPhone) {
+    console.warn(`[pay] reject empty owner order=${order.id} sessionOpenid=${maskSecret(sessionOpenid)} sessionToken=${maskSecret(sessionUserToken)} sessionPhone=${maskPhone(sessionPhone)}`)
     throw httpError(403, "订单缺少用户身份，请联系商家处理")
   }
-  if (orderOpenid && orderOpenid !== sessionOpenid) {
-    console.warn(`[pay] reject openid mismatch order=${order.id} orderOpenid=${maskSecret(orderOpenid)} sessionOpenid=${maskSecret(sessionOpenid)}`)
+  if (!openidMatched && !tokenMatched && !phoneMatched) {
+    console.warn(`[pay] reject owner mismatch order=${order.id} orderOpenid=${maskSecret(orderOpenid)} sessionOpenid=${maskSecret(sessionOpenid)} orderToken=${maskSecret(orderUserToken)} sessionToken=${maskSecret(sessionUserToken)} orderPhone=${maskPhone(orderPhone)} sessionPhone=${maskPhone(sessionPhone)}`)
     throw httpError(403, "无权支付该订单")
   }
-  if (orderUserToken && orderUserToken !== sessionUserToken) {
-    console.warn(`[pay] reject token mismatch order=${order.id} orderToken=${maskSecret(orderUserToken)} sessionToken=${maskSecret(sessionUserToken)}`)
-    throw httpError(403, "无权支付该订单")
+  if (phoneMatched && (orderOpenid && sessionOpenid && orderOpenid !== sessionOpenid || orderUserToken && sessionUserToken && orderUserToken !== sessionUserToken)) {
+    console.warn(`[pay] allow phone matched historical order=${order.id} orderPhone=${maskPhone(orderPhone)} openidChanged=${!!(orderOpenid && sessionOpenid && orderOpenid !== sessionOpenid)} tokenChanged=${!!(orderUserToken && sessionUserToken && orderUserToken !== sessionUserToken)}`)
   }
-  if (!orderOpenid && orderUserToken && orderUserToken === sessionUserToken && sessionOpenid) {
-    await setOrderOpenid(order.id, sessionOpenid)
-    order.openid = sessionOpenid
-    console.log(`[pay] backfilled openid after token match order=${order.id} openid=${maskSecret(sessionOpenid)}`)
+  if ((!orderOpenid || !orderUserToken) && (phoneMatched || tokenMatched || openidMatched)) {
+    await backfillOrderIdentity(order.id, identity)
+    if (!order.openid && sessionOpenid) order.openid = sessionOpenid
+    if (!order.userToken && sessionUserToken) order.userToken = sessionUserToken
+    console.log(`[pay] backfilled missing identity order=${order.id} openid=${maskSecret(order.openid)} token=${maskSecret(order.userToken)} phone=${maskPhone(orderPhone)}`)
   }
   if (PAY_MOCK) {
     console.log("[pay] createWechatPay mock enabled", { orderId })
@@ -4090,6 +4245,9 @@ async function handle(req, res) {
       banner: pickBanner(home.banners, 4),
       profileBanner: pickBanner(home.banners, 3),
       helpBanner: pickBanner(home.banners, 4),
+      ads: home.ads || normalizeAds({}),
+      profileBottomAd: home.ads?.profile_bottom_ad || normalizeAds({}).profile_bottom_ad,
+      afterSalesGuideAd: home.ads?.after_sales_guide_ad || normalizeAds({}).after_sales_guide_ad,
       contact: normalizeContactSettings(settings),
       updatedAt: new Date().toISOString()
     })
@@ -4402,6 +4560,13 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/promotion/summary" && req.method === "GET") {
     sendJson(res, 200, await getPromotionSummary(url.searchParams.get("phone") || ""))
+    return
+  }
+
+  if (url.pathname === "/api/promotion/poster-code" && req.method === "GET") {
+    const invite = url.searchParams.get("invite") || url.searchParams.get("code") || "VSCUSTOM"
+    const result = await generatePromotionWxacode(invite)
+    sendJson(res, 200, { ok: true, data: result })
     return
   }
 
