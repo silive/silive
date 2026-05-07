@@ -12,9 +12,9 @@
   </view>
   <view class="list">
     <view class="order-card" style="{{cardStyle}}" wx:for="{{records}}" wx:key="id">
-      <view class="order-head"><view><view class="order-title">{{item.typeText}}</view><view class="order-sub">{{item.orderId}} · {{item.createdAt}}</view></view><view class="pill">{{item.status === 'settled' ? '已结算' : '未结算'}}</view></view>
+      <view class="order-head"><view><view class="order-title">{{item.typeText}}</view><view class="order-sub">{{item.orderId}} · {{item.createdAtText || item.createdAt}}</view></view><view class="pill">{{item.status === 'settled' ? '已结算' : '未结算'}}</view></view>
       <view class="amount">¥{{item.amount}}</view>
-      <view class="order-sub">结算时间：{{item.settledAt || '-'}}</view>
+      <view class="order-sub">结算时间：{{item.settledAtText || item.settledAt || '-'}}</view>
     </view>
   </view>
 </view>

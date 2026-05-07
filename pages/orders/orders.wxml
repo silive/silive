@@ -49,7 +49,7 @@
             <view class="product-name">{{item.productName}}</view>
             <view class="status" style="{{tagStyle}}">{{item.displayStatus}}</view>
           </view>
-          <view class="muted" style="{{mutedTextStyle}}">{{item.createdAt}}</view>
+          <view class="muted" style="{{mutedTextStyle}}">{{item.createdAtDisplay}}</view>
           <view class="pickup-info" wx:if="{{item.pickupLine}}">
             <view class="pickup-code">{{item.pickupLine}}</view>
             <view class="muted" style="{{mutedTextStyle}}">{{item.pickupTip}}</view>

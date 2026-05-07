@@ -538,7 +538,14 @@ Page({
           ...this.data.form
         }
       })).then(order => {
-      return this.pay(order.id)
+      const orderId = order.id || order.orderId || order.data?.orderId || ""
+      console.log("[pay] create order result", {
+        ok: !!orderId,
+        orderId,
+        message: order.message || ""
+      })
+      if (!orderId) throw new Error(order.message || "订单创建失败")
+      return this.pay(orderId)
     }).catch(error => {
       wx.showToast({ title: error.message || "下单失败", icon: "none" })
     }).finally(() => {
@@ -548,17 +555,41 @@ Page({
 
   pay(orderId) {
     return ensureOpenid().then(openid => {
+      console.log("[pay] request pay params", {
+        orderId,
+        url: "/api/pay/wechat"
+      })
       return request("/api/pay/wechat", {
         method: "POST",
         data: { orderId, openid, userSession: wx.getStorageSync("userSession") || "" }
       })
     }).then(payData => {
       if (payData.mock) return this.mockPaySuccess(orderId)
+      console.log("[pay] pay params result", {
+        ok: !!(payData.timeStamp && payData.nonceStr && payData.package && payData.paySign),
+        hasTimeStamp: !!payData.timeStamp,
+        hasNonceStr: !!payData.nonceStr,
+        hasPackage: !!payData.package,
+        hasPaySign: !!payData.paySign,
+        message: payData.message || ""
+      })
+      if (!payData.timeStamp || !payData.nonceStr || !payData.package || !payData.paySign) {
+        throw new Error(payData.message || "微信支付暂未完成配置，请联系商家确认订单")
+      }
       return new Promise((resolve, reject) => {
         wx.requestPayment({
           ...payData,
-          success: resolve,
-          fail: reject
+          success: res => {
+            console.log("[pay] wx.requestPayment result", { errMsg: res.errMsg })
+            resolve(res)
+          },
+          fail: err => {
+            console.log("[pay] wx.requestPayment result", { errMsg: err.errMsg })
+            reject(new Error(err.errMsg || "支付失败"))
+          },
+          complete: res => {
+            console.log("[pay] wx.requestPayment complete", { errMsg: res.errMsg })
+          }
         })
       })
     }).then(() => {

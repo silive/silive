@@ -271,6 +271,35 @@ function formatDateTime(date) {
   return date.toISOString().slice(0, 16).replace("T", " ")
 }
 
+function formatChinaDatetime(value) {
+  if (!value) return ""
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value.trim())) {
+    return value.trim()
+  }
+  let date
+  if (value instanceof Date) {
+    date = value
+  } else {
+    const text = String(value).trim()
+    if (!text) return ""
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/.test(text) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(text)) {
+      date = new Date(`${text.replace(" ", "T")}Z`)
+    } else {
+      date = new Date(text)
+    }
+  }
+  if (!date || Number.isNaN(date.getTime())) return ""
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(date).replace(/\//g, "-")
+}
+
 function toMysqlDatetime(value, fallback = null) {
   if (value == null || value === "") return fallback
   if (value instanceof Date) {
@@ -1556,6 +1585,10 @@ function normalizeProduct(product, index) {
 }
 
 function normalizeOrder(order, index) {
+  const createdAt = order.createdAt || formatDateTime(new Date())
+  const paidAt = order.paidAt || null
+  const arrivedStoreAt = order.arrivedStoreAt || null
+  const pickedUpAt = order.pickedUpAt || null
   return {
     id: order.id || `DD${Date.now()}${index}`,
     productId: order.productId || "",
@@ -1590,8 +1623,10 @@ function normalizeOrder(order, index) {
     refundImageUrl: order.refundImageUrl || "",
     refundRejectReason: order.refundRejectReason || "",
     refundReviewedAt: order.refundReviewedAt || null,
-    createdAt: order.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
-    paidAt: order.paidAt || null,
+    createdAt,
+    createdAtText: order.createdAtText || formatChinaDatetime(createdAt),
+    paidAt,
+    paidAtText: order.paidAtText || formatChinaDatetime(paidAt),
     completedAt: order.completedAt || null,
     refundAt: order.refundAt || null,
     deliveryType: order.deliveryType || "delivery",
@@ -1599,8 +1634,10 @@ function normalizeOrder(order, index) {
     pickupStore: order.pickupStore || null,
     pickupCode: order.pickupCode || "",
     pickupStatus: order.pickupStatus || "none",
-    arrivedStoreAt: order.arrivedStoreAt || null,
-    pickedUpAt: order.pickedUpAt || null,
+    arrivedStoreAt,
+    arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(arrivedStoreAt),
+    pickedUpAt,
+    pickedUpAtText: order.pickedUpAtText || formatChinaDatetime(pickedUpAt),
     userLatitude: order.userLatitude == null || order.userLatitude === "" ? "" : String(order.userLatitude),
     userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
     pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
@@ -1706,6 +1743,8 @@ function normalizePartnerStore(store = {}, index = 0) {
 }
 
 function normalizeSettlementRecord(record = {}, index = 0) {
+  const createdAt = record.createdAt || record.created_at || formatDateTime(new Date())
+  const settledAt = record.settledAt || record.settled_at || ""
   return {
     id: String(record.id || `SSR${Date.now()}${index}`),
     storeId: record.storeId || record.store_id || "",
@@ -1717,8 +1756,10 @@ function normalizeSettlementRecord(record = {}, index = 0) {
     orderPaidAmount: money(record.orderPaidAmount ?? record.order_paid_amount ?? 0),
     status: record.status === "settled" ? "settled" : "unsettled",
     description: record.description || "",
-    createdAt: record.createdAt || record.created_at || formatDateTime(new Date()),
-    settledAt: record.settledAt || record.settled_at || ""
+    createdAt,
+    createdAtText: record.createdAtText || formatChinaDatetime(createdAt),
+    settledAt,
+    settledAtText: record.settledAtText || formatChinaDatetime(settledAt)
   }
 }
 
@@ -2349,7 +2390,7 @@ async function getOrders(filters = {}) {
     inviterCode: row.inviter_code || "",
     shippingCompany: row.shipping_company || "",
     trackingNumber: row.tracking_number || "",
-    shippedAt: row.shipped_at ? new Date(row.shipped_at).toISOString().slice(0, 16).replace("T", " ") : "",
+    shippedAt: formatChinaDatetime(row.shipped_at),
     refundType: row.refund_type || "",
     refundStatus: row.refund_status || "",
     refundReason: row.refund_reason || "",
@@ -2357,18 +2398,22 @@ async function getOrders(filters = {}) {
     refundRemark: row.refund_remark || "",
     refundImageUrl: row.refund_image_url || "",
     refundRejectReason: row.refund_reject_reason || "",
-    refundReviewedAt: row.refund_reviewed_at ? new Date(row.refund_reviewed_at).toISOString().slice(0, 16).replace("T", " ") : "",
-    createdAt: row.created_at ? new Date(row.created_at).toISOString().slice(0, 16).replace("T", " ") : "",
-    paidAt: row.paid_at ? new Date(row.paid_at).toISOString().slice(0, 16).replace("T", " ") : "",
-    completedAt: row.completed_at ? new Date(row.completed_at).toISOString().slice(0, 16).replace("T", " ") : "",
-    refundAt: row.refund_at ? new Date(row.refund_at).toISOString().slice(0, 16).replace("T", " ") : "",
+    refundReviewedAt: formatChinaDatetime(row.refund_reviewed_at),
+    createdAt: formatChinaDatetime(row.created_at),
+    createdAtText: formatChinaDatetime(row.created_at),
+    paidAt: formatChinaDatetime(row.paid_at),
+    paidAtText: formatChinaDatetime(row.paid_at),
+    completedAt: formatChinaDatetime(row.completed_at),
+    refundAt: formatChinaDatetime(row.refund_at),
     deliveryType: row.delivery_type || "delivery",
     pickupStoreId: row.pickup_store_id || "",
     pickupStore: storePublicView(stores.find(store => store.id === row.pickup_store_id)),
     pickupCode: row.pickup_code || "",
     pickupStatus: row.pickup_status || "none",
-    arrivedStoreAt: row.arrived_store_at ? new Date(row.arrived_store_at).toISOString().slice(0, 16).replace("T", " ") : "",
-    pickedUpAt: row.picked_up_at ? new Date(row.picked_up_at).toISOString().slice(0, 16).replace("T", " ") : "",
+    arrivedStoreAt: formatChinaDatetime(row.arrived_store_at),
+    arrivedStoreAtText: formatChinaDatetime(row.arrived_store_at),
+    pickedUpAt: formatChinaDatetime(row.picked_up_at),
+    pickedUpAtText: formatChinaDatetime(row.picked_up_at),
     userLatitude: row.user_latitude,
     userLongitude: row.user_longitude,
     pickupDistance: row.pickup_distance,
@@ -2607,6 +2652,7 @@ function storeOrderView(order, mode = "referral") {
   return {
     id: order.id,
     createdAt: order.createdAt,
+    createdAtText: order.createdAtText || formatChinaDatetime(order.createdAt),
     productName: order.productName,
     amount: order.amount,
     status: order.status,
@@ -2615,7 +2661,9 @@ function storeOrderView(order, mode = "referral") {
     pickupCode: order.pickupCode,
     pickupStatus: order.pickupStatus,
     arrivedStoreAt: order.arrivedStoreAt,
+    arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(order.arrivedStoreAt),
     pickedUpAt: order.pickedUpAt,
+    pickedUpAtText: order.pickedUpAtText || formatChinaDatetime(order.pickedUpAt),
     referralCommission: mode === "pickup" ? "" : order.referralCommission,
     pickupServiceFee: mode === "referral" ? "" : order.pickupServiceFee,
     storeSettlementStatus: order.storeSettlementStatus
@@ -2757,7 +2805,10 @@ async function markOrderPaid(orderId, transactionId = "") {
     const orders = readJsonFile(ordersFile, []).map(normalizeOrder)
     const index = orders.findIndex(order => order.id === orderId)
     if (index >= 0) {
-      if (orders[index].paymentStatus === "已支付") return false
+      if (orders[index].paymentStatus === "已支付") {
+        console.log("[pay] markOrderPaid skipped already paid", { orderId })
+        return false
+      }
       orders[index].paymentStatus = "已支付"
       orders[index].status = "待发货"
       orders[index].transactionId = transactionId
@@ -2765,15 +2816,19 @@ async function markOrderPaid(orderId, transactionId = "") {
       writeJsonFile(ordersFile, orders)
       await createRewardsForOrder(orders[index])
       await createStoreSettlementRecordsForOrder(orders[index])
+      console.log("[pay] markOrderPaid updated json order", { orderId, hasTransactionId: !!transactionId })
       return true
     }
+    console.warn("[pay] markOrderPaid order missing", { orderId })
     return false
   }
   const result = await query(
     "UPDATE orders SET payment_status = '已支付', status = '待发货', transaction_id = :transactionId, paid_at = NOW() WHERE id = :orderId AND payment_status <> '已支付'",
     { orderId, transactionId }
   )
-  if (!result.affectedRows) return false
+  const affectedRows = Number(result.affectedRows || 0)
+  console.log("[pay] markOrderPaid mysql update", { orderId, affectedRows, hasTransactionId: !!transactionId })
+  if (!affectedRows) return false
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (order) {
     await createRewardsForOrder(order)
@@ -3687,8 +3742,15 @@ async function getWechatPhoneNumber(code) {
 }
 
 async function createWechatPay(orderId, openid, identity = {}) {
+  console.log("[pay] createWechatPay start", { orderId })
   const orders = await getOrders({ keyword: orderId })
   const order = orders.find(item => item.id === orderId)
+  console.log("[pay] createWechatPay order lookup", {
+    orderId,
+    found: !!order,
+    paymentStatus: order?.paymentStatus || "",
+    status: order?.status || ""
+  })
   if (!order) throw httpError(404, "订单不存在")
   const sessionOpenid = String(openid || identity.openid || "").trim()
   const sessionUserToken = String(identity.userToken || identity.userSession || "").trim()
@@ -3712,6 +3774,7 @@ async function createWechatPay(orderId, openid, identity = {}) {
     console.log(`[pay] backfilled openid after token match order=${order.id} openid=${maskSecret(sessionOpenid)}`)
   }
   if (PAY_MOCK) {
+    console.log("[pay] createWechatPay mock enabled", { orderId })
     return { mock: true, orderId, message: "当前为支付模拟模式，调用 /api/pay/mock-success 可完成测试" }
   }
   const notifyUrl = process.env.WECHAT_PAY_NOTIFY_URL || `${PUBLIC_BASE_URL}/api/pay/notify`
@@ -3733,6 +3796,13 @@ async function createWechatPay(orderId, openid, identity = {}) {
       Accept: "application/json"
     }
   }, body)
+  console.log("[pay] createWechatPay prepay result", {
+    orderId,
+    statusCode: result.statusCode,
+    hasPrepayId: !!(result.data && result.data.prepay_id),
+    code: result.data && result.data.code,
+    message: result.data && result.data.message
+  })
   if (!result.data.prepay_id) throw new Error(result.data.message || "微信支付预下单失败")
   return buildClientPayParams(result.data.prepay_id)
 }
@@ -4164,15 +4234,28 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/pay/notify" && req.method === "POST") {
     const rawBody = (await readBody(req, 1024 * 1024)).toString()
+    console.log("[pay] notify received", { hasBody: !!rawBody })
     verifyWechatPayNotify(req, rawBody)
+    console.log("[pay] notify signature verified")
     const body = JSON.parse(rawBody || "{}")
     const resource = decryptWechatResource(body.resource)
+    console.log("[pay] notify decrypted", {
+      orderId: resource.out_trade_no || "",
+      tradeState: resource.trade_state || "",
+      hasTransactionId: !!resource.transaction_id
+    })
     if (resource.trade_state === "SUCCESS") {
       const confirmed = await queryWechatPayOrder(resource.out_trade_no)
+      console.log("[pay] notify query confirmed", {
+        orderId: resource.out_trade_no || "",
+        tradeState: confirmed.trade_state || "",
+        hasTransactionId: !!confirmed.transaction_id
+      })
       if (confirmed.trade_state !== "SUCCESS") throw new Error("微信支付订单未确认成功")
       await assertConfirmedPaymentMatchesOrder(confirmed)
       const transactionId = confirmed.transaction_id || resource.transaction_id || ""
-      await markOrderPaid(resource.out_trade_no, transactionId)
+      const updated = await markOrderPaid(resource.out_trade_no, transactionId)
+      console.log("[pay] notify mark paid result", { orderId: resource.out_trade_no || "", updated })
     }
     sendJson(res, 200, { code: "SUCCESS", message: "成功" })
     return

@@ -44,6 +44,10 @@ function normalizeOrder(order, products = []) {
     productIntro: product.intro || "",
     product,
     categories: Array.isArray(product.categories) ? product.categories : [],
+    createdAtDisplay: order.createdAtText || order.createdAt || "",
+    paidAtDisplay: order.paidAtText || order.paidAt || "",
+    arrivedStoreAtDisplay: order.arrivedStoreAtText || order.arrivedStoreAt || "",
+    pickedUpAtDisplay: order.pickedUpAtText || order.pickedUpAt || "",
     displayStatus: displayStatus(order),
     pickupLine: order.deliveryType === "pickup" && order.pickupStore ? `${order.pickupStore.name} · 取货码 ${order.pickupCode || "-"}` : "",
     pickupTip: order.deliveryType === "pickup"

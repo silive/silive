@@ -1973,7 +1973,7 @@
           <label>发货状态<select data-order-key="status">
             ${["待支付", "待发货", "制作中", "已发货", "已完成", "退款中", "已退款"].map(status => `<option ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}
           </select></label>
-          <label>下单时间<input data-order-key="createdAt" value="${escapeHtml(order.createdAt)}"></label>
+          <label>下单时间<input data-order-key="createdAt" value="${escapeHtml(order.createdAtText || order.createdAt)}"></label>
         </div></div>
         <div class="drawer-section"><h4>客户与地址</h4><div class="form-grid">
           <label>客户<input data-order-key="customerName" value="${escapeHtml(order.customerName)}"></label>
@@ -2103,7 +2103,7 @@
           <td><span class="pill">${escapeHtml(order.paymentStatus || "待支付")}</span></td>
           <td><span class="pill">${escapeHtml(order.status || "待发货")}</span></td>
           <td><span class="pill">${escapeHtml(order.refundStatus || "无售后")}</span></td>
-          <td>${escapeHtml(order.createdAt || "")}</td>
+          <td>${escapeHtml(order.createdAtText || order.createdAt || "")}</td>
           <td><div class="table-actions"><button class="secondary" data-action="view-order" data-index="${index}">查看详情</button></div></td>
         </tr>`).join("")}</tbody></table></div>`
     }
@@ -2151,7 +2151,7 @@
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
           <td><strong>¥${record.amount}</strong></td>
           <td><span class="pill">${record.status === "settled" ? "已结算" : "未结算"}</span></td>
-          <td>${escapeHtml(record.createdAt || "")}<div class="muted">${record.settledAt ? `结算：${escapeHtml(record.settledAt)}` : ""}</div></td>
+          <td>${escapeHtml(record.createdAtText || record.createdAt || "")}<div class="muted">${record.settledAtText || record.settledAt ? `结算：${escapeHtml(record.settledAtText || record.settledAt)}` : ""}</div></td>
         </tr>`
       }).join("")}</tbody></table></div>`
     }

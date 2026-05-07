@@ -11,7 +11,7 @@
     <view class="order-card" style="{{cardStyle}}" wx:for="{{visibleOrders}}" wx:key="id">
       <view class="order-head"><view><view class="order-title">{{item.productName}}</view><view class="order-sub">{{item.id}}</view></view><view class="pill">{{item.pickupText}}</view></view>
       <view class="order-sub">客户：{{item.phone}} · 取货码：{{item.pickupCode}}</view>
-      <view class="order-sub">到店：{{item.arrivedStoreAt || '-'}} · 自提：{{item.pickedUpAt || '-'}}</view>
+      <view class="order-sub">到店：{{item.arrivedStoreAtText || item.arrivedStoreAt || '-'}} · 自提：{{item.pickedUpAtText || item.pickedUpAt || '-'}}</view>
       <view class="amount">自提服务费 ¥{{item.pickupServiceFee || '0.00'}}</view>
     </view>
   </view>
