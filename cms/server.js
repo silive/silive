@@ -1671,12 +1671,13 @@ function requestIdentity(query = {}) {
     userId: String(query.userId || "").trim(),
     userToken: String(query.userToken || query.token || "").trim(),
     openid: String(query.openid || "").trim(),
-    userSession: String(query.userSession || "").trim()
+    userSession: String(query.userSession || "").trim(),
+    phone: String(query.phone || query.phoneNumber || "").trim()
   }
 }
 
 function hasRequestIdentity(identity = {}) {
-  return !!(identity.userId || identity.userToken || identity.openid)
+  return !!(identity.userId || identity.userToken || identity.openid || identity.phone)
 }
 
 function orderBelongsToIdentity(order = {}, identity = {}) {
@@ -1685,6 +1686,7 @@ function orderBelongsToIdentity(order = {}, identity = {}) {
   if (current.userId && order.userId === current.userId) return true
   if (current.userToken && order.userToken === current.userToken) return true
   if (current.openid && order.openid === current.openid) return true
+  if (current.phone && order.phone === current.phone) return true
   return false
 }
 
@@ -2333,9 +2335,15 @@ async function getOrders(filters = {}) {
       return { ...normalized, pickupStore: storePublicView(stores.find(store => store.id === normalized.pickupStoreId)) }
     })
     if (filters.publicOnly && !hasIdentity) return []
-    if (identity.userId) orders = orders.filter(order => order.userId === identity.userId)
-    else if (identity.userToken) orders = orders.filter(order => order.userToken === identity.userToken)
-    else if (identity.openid) orders = orders.filter(order => order.openid === identity.openid)
+    if (filters.publicOnly) {
+      orders = orders.filter(order => {
+        if (identity.userId && order.userId === identity.userId) return true
+        if (identity.userToken && order.userToken === identity.userToken) return true
+        if (identity.openid && order.openid === identity.openid) return true
+        if (identity.phone && order.phone === identity.phone) return true
+        return false
+      })
+    }
     if (filters.status) orders = orders.filter(order => order.status === filters.status)
     if (filters.keyword) {
       const keyword = String(filters.keyword).toLowerCase()
@@ -2346,15 +2354,41 @@ async function getOrders(filters = {}) {
   const where = []
   const params = {}
   if (filters.publicOnly && !hasIdentity) return []
-  if (identity.userId) {
-    where.push("user_id = :userId")
-    params.userId = identity.userId
-  } else if (identity.userToken) {
-    where.push("user_token = :userToken")
-    params.userToken = identity.userToken
-  } else if (identity.openid) {
-    where.push("openid = :openid")
-    params.openid = identity.openid
+  if (filters.publicOnly && identity.phone && (identity.openid || identity.userToken)) {
+    await query(
+      `UPDATE orders
+       SET
+         openid = CASE WHEN (openid IS NULL OR openid = '') THEN :openid ELSE openid END,
+         user_token = CASE WHEN (user_token IS NULL OR user_token = '') THEN :userToken ELSE user_token END
+       WHERE phone = :phone
+         AND (:openid = '' OR openid IS NULL OR openid = '' OR openid = :openid)
+         AND (:userToken = '' OR user_token IS NULL OR user_token = '' OR user_token = :userToken)`,
+      {
+        phone: identity.phone,
+        openid: identity.openid || "",
+        userToken: identity.userToken || ""
+      }
+    )
+  }
+  if (filters.publicOnly) {
+    const identityWhere = []
+    if (identity.userId) {
+      identityWhere.push("user_id = :userId")
+      params.userId = identity.userId
+    }
+    if (identity.userToken) {
+      identityWhere.push("user_token = :userToken")
+      params.userToken = identity.userToken
+    }
+    if (identity.openid) {
+      identityWhere.push("openid = :openid")
+      params.openid = identity.openid
+    }
+    if (identity.phone) {
+      identityWhere.push("phone = :phone")
+      params.phone = identity.phone
+    }
+    where.push(`(${identityWhere.join(" OR ")})`)
   }
   if (filters.status) {
     where.push("status = :status")
@@ -4117,6 +4151,7 @@ async function handle(req, res) {
     }
     const order = await createOrder({
       ...body,
+      phone: body.phone || identity.phone || "",
       openid: identity.openid,
       userId: "",
       userToken: identity.userToken,
@@ -4138,6 +4173,7 @@ async function handle(req, res) {
       openid: identity.openid,
       userId: identity.userId,
       userToken: identity.userToken,
+      phone: identity.phone,
       publicOnly: true
     }))
     return
