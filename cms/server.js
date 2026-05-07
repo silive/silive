@@ -1940,7 +1940,7 @@ async function getHome() {
   if (!pool) return normalizeHome(readJsonFile(homeFile, {}))
   const rows = await query("SELECT data, updated_at FROM home_config WHERE id = 1")
   if (!rows.length) return normalizeHome({})
-  return { ...parseJsonValue(rows[0].data, {}), updatedAt: rows[0].updated_at }
+  return { ...normalizeHome(parseJsonValue(rows[0].data, {})), updatedAt: rows[0].updated_at }
 }
 
 async function saveHome(data) {
