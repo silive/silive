@@ -3858,11 +3858,25 @@ async function assertConfirmedPaymentMatchesOrder(confirmed) {
 function decryptWechatResource(resource) {
   const apiV3Key = process.env.WECHAT_API_V3_KEY
   if (!apiV3Key) throw new Error("缺少 WECHAT_API_V3_KEY")
+  if (!resource || typeof resource !== "object") throw new Error("微信支付回调缺少 resource")
+  if (!resource.nonce || !resource.ciphertext) {
+    console.warn("[pay] notify resource invalid", {
+      resourceKeys: objectKeys(resource),
+      hasNonce: !!resource.nonce,
+      hasCiphertext: !!resource.ciphertext,
+      hasTag: !!resource.tag
+    })
+    throw new Error("微信支付回调 resource 字段不完整")
+  }
+  const encrypted = Buffer.from(resource.ciphertext, "base64")
+  if (encrypted.length <= 16 && !resource.tag) throw new Error("微信支付回调密文长度异常")
+  const authTag = resource.tag ? Buffer.from(resource.tag, "base64") : encrypted.subarray(encrypted.length - 16)
+  const ciphertext = resource.tag ? encrypted : encrypted.subarray(0, encrypted.length - 16)
   const decipher = crypto.createDecipheriv("aes-256-gcm", Buffer.from(apiV3Key), Buffer.from(resource.nonce))
-  decipher.setAuthTag(Buffer.from(resource.tag, "base64"))
+  decipher.setAuthTag(authTag)
   decipher.setAAD(Buffer.from(resource.associated_data || ""))
   const decoded = Buffer.concat([
-    decipher.update(Buffer.from(resource.ciphertext, "base64")),
+    decipher.update(ciphertext),
     decipher.final()
   ])
   return JSON.parse(decoded.toString())
