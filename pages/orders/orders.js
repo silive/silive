@@ -18,14 +18,36 @@ const STATUS_TABS = [
 ]
 
 function displayStatus(order) {
-  if (order.refundStatus === "待审核" || order.status === "退款中") return "退款中"
-  if (order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功") return "已退款"
-  if (order.paymentStatus === "待支付" || order.status === "待支付") return "未支付"
-  if (order.deliveryType === "pickup" && order.pickupStatus === "arrived_store") return "已到店，待自提"
-  if (order.deliveryType === "pickup" && order.pickupStatus === "picked_up") return "已自提"
-  if (order.deliveryType === "pickup" && order.pickupStatus === "preparing") return "备货中"
-  if (order.status === "待发货") return "待确认设计"
-  return order.status || "待发货"
+  const status = order.status || "待发货"
+  if (isRefunded(order)) return "已退款"
+  if (isRefunding(order)) return "退款中"
+  if (isUnpaid(order)) return "未支付"
+  if (status === "制作中") return "制作中"
+  if (status === "已完成" || order.pickupStatus === "picked_up") return order.deliveryType === "pickup" ? "已自提" : "已完成"
+  if (order.deliveryType === "pickup") {
+    if (status === "已发货" || order.pickupStatus === "arrived_store") return "待自提"
+    if (status === "待发货" || order.pickupStatus === "preparing") return "待确认"
+    return status
+  }
+  if (status === "待发货") return "待发货"
+  if (status === "已发货") return "待收货"
+  return status
+}
+
+function isUnpaid(order) {
+  return order.paymentStatus === "待支付" || order.paymentStatus === "未支付" || order.status === "待支付"
+}
+
+function isPaid(order) {
+  return !isUnpaid(order) && (order.paymentStatus === "已支付" || !!order.paidAt || !!order.transactionId || !order.paymentStatus)
+}
+
+function isRefunding(order) {
+  return order.refundStatus === "待审核" || order.status === "退款中"
+}
+
+function isRefunded(order) {
+  return order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
 }
 
 function normalizeProduct(product) {
@@ -54,16 +76,21 @@ function normalizeOrder(order, products = []) {
       ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
       : "",
     refundLine: order.refundStatus ? `${order.refundStatus}${order.refundAmount ? ` · ¥${order.refundAmount}` : ""}` : "",
-    canRefund: ["待确认设计", "待发货", "已发货", "已完成"].includes(displayStatus(order))
+    canRefund: ["待确认", "待发货", "制作中", "待收货", "待自提", "已完成", "已自提"].includes(displayStatus(order))
   }
 }
 
 function statusMatches(order, key) {
   if (key === "all") return true
-  if (key === "unpaid") return order.displayStatus === "未支付"
-  if (key === "receiving") return order.displayStatus === "已发货"
-  if (key === "design") return ["待确认设计", "待发货", "制作中"].includes(order.displayStatus)
-  if (key === "afterSale") return ["退款中", "已退款"].includes(order.displayStatus) || !!order.refundStatus
+  if (key === "unpaid") return isUnpaid(order)
+  if (key === "afterSale") return isRefunding(order) || isRefunded(order) || !!order.refundStatus
+  if (key === "design") {
+    return isPaid(order) && ["待发货", "制作中"].includes(order.status || "")
+  }
+  if (key === "receiving") {
+    if (order.deliveryType === "pickup") return order.status === "已发货" || order.pickupStatus === "arrived_store"
+    return order.status === "已发货"
+  }
   return true
 }
 
