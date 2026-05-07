@@ -1,4 +1,4 @@
-const { checkApiConnectivity, request } = require("./api")
+const { checkApiConnectivity, request, getActiveApiHost, apiUrl, authHeader } = require("./api")
 
 function getLoginState() {
   const userSession = wx.getStorageSync("userSession") || ""
@@ -83,21 +83,82 @@ function wxLoginCode() {
   return new Promise((resolve, reject) => {
     wx.login({
       success: loginRes => {
+        console.log("[login] wx.login", {
+          errMsg: loginRes.errMsg,
+          hasLoginCode: !!loginRes.code
+        })
         if (!loginRes.code) {
-          reject(new Error("微信登录失败，请重试"))
+          reject(new Error("微信登录失败：未返回 loginCode"))
           return
         }
         resolve(loginRes.code)
       },
-      fail: () => reject(new Error("微信登录失败，请重试"))
+      fail: error => {
+        console.log("[login] wx.login", {
+          errMsg: error && error.errMsg,
+          hasLoginCode: false
+        })
+        reject(new Error("微信登录失败：未返回 loginCode"))
+      }
     })
   })
 }
 
-function unauthorizedPhoneError() {
-  const error = new Error("未授权手机号")
-  error.isAuthDenied = true
+function phoneCodeMissingError(detail = {}) {
+  const error = new Error(`手机号授权失败：微信未返回手机号 code\nerrMsg: ${detail.errMsg || ""}\nerrno: ${detail.errno || ""}`)
+  error.isPhoneCodeMissing = true
   return error
+}
+
+function requestPhoneLogin(phoneCode, loginCode) {
+  const url = apiUrl("/api/wechat/phone", getActiveApiHost())
+  console.log("[login] request phone login", {
+    url,
+    hasPhoneCode: !!phoneCode,
+    hasLoginCode: !!loginCode
+  })
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url,
+      method: "POST",
+      data: {
+        code: phoneCode,
+        loginCode
+      },
+      header: authHeader(),
+      timeout: 12000,
+      success: res => {
+        const data = res.data || {}
+        console.log("[login] phone login response", {
+          statusCode: res.statusCode,
+          ok: data && data.ok,
+          message: data && data.message,
+          errcode: data && data.errcode,
+          hasPhoneNumber: !!(data && data.phoneNumber),
+          hasOpenid: !!(data && data.openid),
+          hasUserSession: !!(data && data.userSession),
+          hasUserToken: !!(data && data.userToken)
+        })
+        if (res.statusCode >= 200 && res.statusCode < 300 && data.ok !== false) {
+          resolve(data.data !== undefined ? data.data : data)
+          return
+        }
+        reject(new Error(`登录失败：${data.message || `HTTP ${res.statusCode}`}`))
+      },
+      fail: error => {
+        console.log("[login] phone login response", {
+          statusCode: 0,
+          ok: false,
+          message: error && error.errMsg,
+          hasPhoneNumber: false,
+          hasOpenid: false,
+          hasUserSession: false,
+          hasUserToken: false
+        })
+        reject(new Error(`登录失败：${(error && error.errMsg) || "接口连接失败"}`))
+      }
+    })
+  })
 }
 
 function bindStoredPromotionRelation(name = "微信用户") {
@@ -118,21 +179,15 @@ function bindStoredPromotionRelation(name = "微信用户") {
 function loginWithPhoneDetail(detail = {}) {
   logLoginDebug("before phone login")
   const errMsg = String(detail.errMsg || "")
-  if (errMsg && !/ok/i.test(errMsg)) return Promise.reject(unauthorizedPhoneError())
-  if (!detail.code) return Promise.reject(unauthorizedPhoneError())
+  if (errMsg && !/ok/i.test(errMsg)) return Promise.reject(phoneCodeMissingError(detail))
+  if (!detail.code) return Promise.reject(phoneCodeMissingError(detail))
 
   return checkApiConnectivity().then(status => {
     if (!status.ok) {
       throw new Error(`${status.message} 当前检测：${status.results.map(item => `${item.host}=${item.message}`).join("；")}`)
     }
     return wxLoginCode()
-  }).then(loginCode => request("/api/wechat/phone", {
-      method: "POST",
-      data: {
-        code: detail.code,
-        loginCode
-      }
-    })).then(res => {
+  }).then(loginCode => requestPhoneLogin(detail.code, loginCode)).then(res => {
     const phone = res.phoneNumber || ""
     if (!phone) throw new Error("获取手机号失败")
     const openid = res.openid || ""
@@ -168,7 +223,7 @@ function loginWithPhoneDetail(detail = {}) {
       })
       .then(() => state)
   }).catch(error => {
-    if (!error.isAuthDenied) {
+    if (!error.isAuthDenied && !error.isPhoneCodeMissing) {
       console.warn("[auth] phone login failed:", error.message || error)
       clearIncompleteLoginState()
       logLoginDebug("after phone login failed")

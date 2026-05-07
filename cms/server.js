@@ -320,6 +320,14 @@ function httpError(status, message) {
   return error
 }
 
+function wechatApiError(errcode, errmsg) {
+  const code = errcode === undefined || errcode === null || errcode === "" ? "unknown" : errcode
+  const message = errmsg || "微信接口返回异常"
+  const error = httpError(400, `微信接口失败：${code} ${message}`)
+  error.errcode = code
+  return error
+}
+
 function uploadInputError(status, message) {
   const error = httpError(status, message)
   error.isUploadInputError = true
@@ -3616,7 +3624,7 @@ async function getOpenid(code) {
   if (!hasRealWechatConfig()) throw new Error("缺少真实 WECHAT_APPID 或 WECHAT_SECRET")
   const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}&js_code=${code}&grant_type=authorization_code`
   const result = await requestJson(url)
-  if (result.data.errcode) throw httpError(400, `微信登录失败：${result.data.errmsg || result.data.errcode}`)
+  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg)
   if (!result.data.openid) throw httpError(400, result.data.errmsg || "获取 openid 失败")
   return result.data.openid
 }
@@ -3628,7 +3636,7 @@ async function getAccessToken() {
   if (!hasRealWechatConfig()) throw new Error("缺少真实 WECHAT_APPID 或 WECHAT_SECRET")
   const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}`
   const result = await requestJson(url)
-  if (result.data.errcode) throw httpError(400, `微信 access_token 获取失败：${result.data.errmsg || result.data.errcode}`)
+  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg)
   if (!result.data.access_token) throw new Error(result.data.errmsg || "获取 access_token 失败")
   accessTokenCache = {
     token: result.data.access_token,
@@ -3646,7 +3654,7 @@ async function getWechatPhoneNumber(code) {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   }, body)
-  if (result.data.errcode) throw httpError(400, `微信手机号授权失败：${result.data.errmsg || result.data.errcode}`)
+  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg)
   const phoneNumber = result.data.phone_info && result.data.phone_info.phoneNumber
   if (!phoneNumber) throw httpError(400, result.data.errmsg || "获取手机号失败")
   return phoneNumber
@@ -4558,7 +4566,9 @@ initDb().then(() => {
     handle(req, res).catch(error => {
       console.error(error)
       const status = Number(error.statusCode || error.status || 500)
-      sendJson(res, status >= 400 && status < 600 ? status : 500, { ok: false, message: publicErrorMessage(error) })
+      const body = { ok: false, message: publicErrorMessage(error) }
+      if (error.errcode !== undefined) body.errcode = error.errcode
+      sendJson(res, status >= 400 && status < 600 ? status : 500, body)
     })
   }
   http.createServer(serverHandler).listen(PORT, () => {

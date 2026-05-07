@@ -49,6 +49,12 @@ Component({
     noop() {},
 
     handlePhoneNumber(event) {
+      const detail = event.detail || {}
+      console.log("[login] getPhoneNumber detail", {
+        errMsg: detail.errMsg,
+        errno: detail.errno,
+        hasPhoneCode: !!detail.code
+      })
       this.triggerEvent("getphonenumber", event.detail || {})
     },
 
