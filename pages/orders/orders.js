@@ -1,5 +1,5 @@
 const { request, uploadFileWithFallback } = require("../../utils/api")
-const { getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
+const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 
 const BADGE_TEXT = {
@@ -19,6 +19,7 @@ const STATUS_TABS = [
 
 function displayStatus(order) {
   const status = order.status || "待发货"
+  if (isQuoteOrder(order)) return "待报价"
   if (isRefunded(order)) return "已退款"
   if (isRefunding(order)) return "退款中"
   if (isUnpaid(order)) return "未支付"
@@ -36,6 +37,10 @@ function displayStatus(order) {
 
 function isUnpaid(order) {
   return order.paymentStatus === "待支付" || order.paymentStatus === "未支付" || order.status === "待支付"
+}
+
+function isQuoteOrder(order) {
+  return order.paymentStatus === "待报价" || order.status === "待客服确认" || order.priceMode === "quote"
 }
 
 function isPaid(order) {
@@ -60,6 +65,8 @@ function normalizeProduct(product) {
 
 function normalizeOrder(order, products = []) {
   const product = products.find(item => item.id === order.productId || item.name === order.productName) || {}
+  const display = displayStatus(order)
+  const quote = isQuoteOrder(order)
   return {
     ...order,
     productImage: product.imageUrl || order.originalImageUrl || "",
@@ -70,13 +77,23 @@ function normalizeOrder(order, products = []) {
     paidAtDisplay: order.paidAtText || order.paidAt || "",
     arrivedStoreAtDisplay: order.arrivedStoreAtText || order.arrivedStoreAt || "",
     pickedUpAtDisplay: order.pickedUpAtText || order.pickedUpAt || "",
-    displayStatus: displayStatus(order),
+    displayStatus: display,
+    isQuoteOrder: quote,
+    isUnpaidOrder: isUnpaid(order),
+    isRefundingOrder: isRefunding(order),
+    isRefundedOrder: isRefunded(order),
+    canPay: isUnpaid(order) && !quote,
+    canContact: ["待报价", "待确认", "制作中", "待自提"].includes(display),
+    canViewDetail: display === "待收货",
+    canShowPickupCode: display === "待自提",
+    canConfirmReceive: display === "待收货",
+    canAfterSale: ["已完成", "已自提"].includes(display),
     pickupLine: order.deliveryType === "pickup" && order.pickupStore ? `${order.pickupStore.name} · 取货码 ${order.pickupCode || "-"}` : "",
     pickupTip: order.deliveryType === "pickup"
       ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
       : "",
     refundLine: order.refundStatus ? `${order.refundStatus}${order.refundAmount ? ` · ¥${order.refundAmount}` : ""}` : "",
-    canRefund: ["待确认", "待发货", "制作中", "待收货", "待自提", "已完成", "已自提"].includes(displayStatus(order))
+    canRefund: ["已完成", "已自提"].includes(display)
   }
 }
 
@@ -153,7 +170,8 @@ Page({
       refundRemark: "",
       refundImageUrl: ""
     },
-    submittingRefund: false
+    submittingRefund: false,
+    payLoadingOrderId: ""
   },
 
   onShow() {
@@ -229,7 +247,7 @@ Page({
   refreshRecentOrders(nextStatus) {
     const activeStatus = nextStatus || this.data.activeStatus
     this.setData({
-      recentOrders: this.data.orders.filter(order => statusMatches(order, activeStatus)).slice(0, 3)
+      recentOrders: this.data.orders.filter(order => statusMatches(order, activeStatus))
     })
   },
 
@@ -253,6 +271,69 @@ Page({
     wx.navigateTo({
       url: `/pages/checkout/checkout?product=${encodeURIComponent(JSON.stringify(product))}`
     })
+  },
+
+  payOrder(event) {
+    const order = this.data.recentOrders[event.currentTarget.dataset.index]
+    if (!order || isQuoteOrder(order)) return
+    this.setData({ payLoadingOrderId: order.id })
+    ensureOpenid().then(openid => request("/api/pay/wechat", {
+      method: "POST",
+      data: {
+        orderId: order.id,
+        openid,
+        userSession: wx.getStorageSync("userSession") || "",
+        userToken: wx.getStorageSync("userToken") || ""
+      }
+    })).then(payData => {
+      if (!payData.timeStamp || !payData.nonceStr || !payData.package || !payData.paySign) {
+        throw new Error(payData.message || "微信支付暂未完成配置，请联系商家确认订单")
+      }
+      return new Promise((resolve, reject) => {
+        wx.requestPayment({
+          ...payData,
+          success: resolve,
+          fail: err => {
+            const msg = String(err.errMsg || "")
+            reject(new Error(msg.includes("cancel") ? "已取消支付，订单已保留，可稍后继续支付" : "支付失败，请稍后重试"))
+          }
+        })
+      })
+    }).then(() => {
+      wx.showToast({ title: "支付成功", icon: "success" })
+      this.loadPage()
+    }).catch(error => {
+      wx.showToast({ title: error.message || "支付失败，请稍后重试", icon: "none" })
+    }).finally(() => {
+      this.setData({ payLoadingOrderId: "" })
+    })
+  },
+
+  contactService() {
+    wx.showToast({ title: "请在我的页联系客服", icon: "none" })
+  },
+
+  showPickupCode(event) {
+    const order = this.data.recentOrders[event.currentTarget.dataset.index]
+    if (!order) return
+    wx.showModal({
+      title: "取货码",
+      content: `${order.pickupCode || "-"}\n${order.pickupStore?.name || order.pickupLine || ""}`,
+      showCancel: false
+    })
+  },
+
+  confirmReceive(event) {
+    const order = this.data.recentOrders[event.currentTarget.dataset.index]
+    wx.showModal({
+      title: "确认收货",
+      content: order ? "如需确认收货，请先联系商家处理。" : "订单不存在",
+      showCancel: false
+    })
+  },
+
+  viewAfterSale() {
+    wx.showToast({ title: "售后处理中", icon: "none" })
   },
 
   openRecommendProduct(event) {

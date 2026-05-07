@@ -17,6 +17,8 @@ function buildCustomProduct(category = "图片定制") {
     intro: "待客服确认报价",
     price: "0",
     priceText: "待客服确认报价",
+    priceMode: "quote",
+    needQuote: true,
     badge: "new",
     cover: "keyring",
     categories: [category],
@@ -70,7 +72,8 @@ Page({
     userLocation: null,
     themeStyle: "",
     themeClass: "theme-skin01",
-    paying: false
+    paying: false,
+    quoteMode: false
   },
 
   onLoad(options) {
@@ -101,6 +104,7 @@ Page({
     const storedName = wx.getStorageSync("memberName") || ""
     this.setData({
       product,
+      quoteMode: this.isQuoteProduct(product, mode),
       mode,
       category: category || (Array.isArray(product.categories) ? product.categories[0] : "") || product.name || "",
       source: options.source || "",
@@ -119,6 +123,14 @@ Page({
     if (options.autoAddress === "1") {
       setTimeout(() => this.chooseAddress({ silent: true }), 350)
     }
+  },
+
+  isQuoteProduct(product = this.data.product || {}, mode = this.data.mode) {
+    return mode === "custom" ||
+      product.needQuote === true ||
+      String(product.needQuote || "").toLowerCase() === "true" ||
+      String(product.priceMode || "").toLowerCase() === "quote" ||
+      /待客服确认报价|待报价/.test(String(product.priceText || product.intro || ""))
   },
 
   onInput(event) {
@@ -335,8 +347,10 @@ Page({
         }
         apply()
       },
-      fail: () => {
-        if (!options.silent) wx.showToast({ title: "未选择地址，可手动填写", icon: "none" })
+      fail: error => {
+        if (options.silent) return
+        const msg = String(error.errMsg || "")
+        wx.showToast({ title: msg.includes("cancel") ? "未选择地址，可手动填写" : "无法打开微信地址，请手动填写", icon: "none" })
       }
     })
   },
@@ -355,6 +369,10 @@ Page({
 
   shouldGeneratePreview() {
     return this.data.mode === "custom" || String(this.data.product?.aiPreviewEnabled) === "true" || !!this.data.uploadedImages.length
+  },
+
+  isQuoteOrder() {
+    return this.isQuoteProduct(this.data.product || {}, this.data.mode)
   },
 
   generatePreview() {
@@ -535,6 +553,8 @@ Page({
           userLongitude: this.data.userLocation?.longitude || "",
           pickupDistance: this.data.selectedPickupStore?.distance == null ? "" : Number(this.data.selectedPickupStore.distance).toFixed(2),
           referrerStoreId,
+          priceMode: this.isQuoteOrder() ? "quote" : "fixed",
+          needQuote: this.isQuoteOrder() ? "true" : "false",
           ...this.data.form
         }
       })).then(order => {
@@ -545,6 +565,15 @@ Page({
         message: order.message || ""
       })
       if (!orderId) throw new Error(order.message || "订单创建失败")
+      if (this.isQuoteOrder() || order.paymentStatus === "待报价" || order.status === "待客服确认") {
+        wx.showModal({
+          title: "需求已提交",
+          content: "已提交需求，客服确认报价后会联系你。",
+          showCancel: false,
+          success: () => wx.switchTab({ url: "/pages/orders/orders" })
+        })
+        return null
+      }
       return this.pay(orderId)
     }).catch(error => {
       wx.showToast({ title: error.message || "下单失败", icon: "none" })
@@ -585,7 +614,8 @@ Page({
           },
           fail: err => {
             console.log("[pay] wx.requestPayment result", { errMsg: err.errMsg })
-            reject(new Error(err.errMsg || "支付失败"))
+            const msg = String(err.errMsg || "")
+            reject(new Error(msg.includes("cancel") ? "已取消支付，订单已保留，可稍后继续支付" : "支付失败，请稍后重试"))
           },
           complete: res => {
             console.log("[pay] wx.requestPayment complete", { errMsg: res.errMsg })

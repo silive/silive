@@ -14,7 +14,7 @@
         </view>
         <view class="article-arrow">{{item.expanded ? '−' : '+'}}</view>
       </view>
-      <view class="article-body">
+      <view class="article-body" wx:if="{{item.expanded}}">
         <image wx:if="{{item.imageUrl}}" class="article-image" src="{{item.imageUrl}}" mode="widthFix" />
         <rich-text wx:if="{{item.content}}" class="article-content" nodes="{{item.content}}"></rich-text>
       </view>

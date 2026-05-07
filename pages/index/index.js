@@ -188,8 +188,8 @@ Page({
         const fileName = filePath.split("/").pop() || ""
         const dotIndex = fileName.lastIndexOf(".")
         const ext = dotIndex > -1 ? fileName.slice(dotIndex + 1).toLowerCase() : ""
-        if (ext && !["jpg", "jpeg", "png", "webp"].includes(ext)) {
-          wx.showToast({ title: "图片格式不支持，请选择jpg/png/webp", icon: "none" })
+        if (ext && !["jpg", "jpeg", "png", "webp", "heic"].includes(ext)) {
+          wx.showToast({ title: "图片格式不支持，请选择jpg/png/webp/heic", icon: "none" })
           return
         }
         if (file.size && file.size > 10 * 1024 * 1024) {
@@ -209,8 +209,11 @@ Page({
             const product = {
               id: "CUSTOM_UPLOAD",
               name: "上传照片定制",
-              intro: "根据已选照片一对一确认设计",
-              price: "99",
+              intro: "待客服确认报价",
+              price: "0",
+              priceText: "待客服确认报价",
+              priceMode: "quote",
+              needQuote: true,
               badge: "new",
               badgeText: "新品推荐",
               cover: "keyring",

@@ -1981,7 +1981,10 @@ function normalizeCustomer(customer, index) {
   return {
     id: customer.id || `C${Date.now()}${index}`,
     name: customer.name || "",
+    nickname: customer.nickname || customer.nickName || customer.name || "",
     phone,
+    openid: customer.openid || "",
+    avatarUrl: customer.avatarUrl || customer.avatar_url || "",
     wechat: customer.wechat || "",
     orders: Number(customer.orders || 0),
     totalAmount: String(customer.totalAmount || "0"),
@@ -2744,10 +2747,16 @@ async function createOrder(data) {
     product = {
       id: "CUSTOM_UPLOAD",
       name: "上传照片定制",
-      price: "99"
+      price: "0",
+      priceMode: "quote",
+      needQuote: "true"
     }
   }
   if (!product) throw new Error("商品不存在")
+  const isQuoteOrder = String(data.needQuote || product.needQuote || product.need_quote || "").toLowerCase() === "true" ||
+    String(data.priceMode || product.priceMode || product.price_mode || "").toLowerCase() === "quote" ||
+    (String(data.isCustomOrder || "false") === "true" && Number(product.price || 0) <= 0)
+  const orderAmount = isQuoteOrder ? "0.00" : money(product.price)
   const deliveryType = data.deliveryType === "pickup" ? "pickup" : "delivery"
   let pickupStore = null
   if (deliveryType === "pickup") {
@@ -2755,16 +2764,16 @@ async function createOrder(data) {
     if (!pickupStore || pickupStore.status !== "enabled" || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
   }
   const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.storeId || data.referrer_store_id || "")
-  const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, product.price)
+  const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
   const order = normalizeOrder({
     id: `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     productId: product.id,
     customerName: data.customerName,
     phone: data.phone,
     productName: product.name,
-    amount: product.price,
-    status: "待支付",
-    paymentStatus: "待支付",
+    amount: orderAmount,
+    status: isQuoteOrder ? "待客服确认" : "待支付",
+    paymentStatus: isQuoteOrder ? "待报价" : "待支付",
     address: data.address,
     customRequest: data.customRequest,
     originalImageUrl: data.originalImageUrl || "",
@@ -2998,7 +3007,10 @@ async function getCustomers() {
   return rows.map(row => ({
     id: row.id,
     name: row.name,
+    nickname: row.nickname || row.name || "",
     phone: row.phone || "",
+    openid: row.openid || "",
+    avatarUrl: row.avatar_url || "",
     wechat: row.wechat || "",
     orders: Number(row.orders || 0),
     totalAmount: String(row.total_amount || "0"),
@@ -3016,13 +3028,56 @@ async function saveCustomers(customers) {
   }
   for (const customer of list) {
     await query(
-      `INSERT INTO customers (id, name, phone, wechat, orders, total_amount, last_contact, invite_code, shopping_money)
-       VALUES (:id, :name, :phone, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), wechat = VALUES(wechat), orders = VALUES(orders), total_amount = VALUES(total_amount), last_contact = VALUES(last_contact), invite_code = VALUES(invite_code), shopping_money = VALUES(shopping_money)`,
+      `INSERT INTO customers (id, name, nickname, phone, openid, avatar_url, wechat, orders, total_amount, last_contact, invite_code, shopping_money)
+       VALUES (:id, :name, :nickname, :phone, :openid, :avatarUrl, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), nickname = VALUES(nickname), openid = VALUES(openid), avatar_url = VALUES(avatar_url), wechat = VALUES(wechat), orders = VALUES(orders), total_amount = VALUES(total_amount), last_contact = VALUES(last_contact), invite_code = VALUES(invite_code), shopping_money = VALUES(shopping_money)`,
       customer
     )
   }
   return list
+}
+
+async function getUserProfile(identity = {}) {
+  const current = requestIdentity(identity)
+  if (!current.phone && !current.openid) throw httpError(401, "请先完成微信登录")
+  const customers = await getCustomers()
+  const customer = customers.find(item => (current.phone && item.phone === current.phone) || (current.openid && item.openid === current.openid))
+  return {
+    phone: current.phone || customer?.phone || "",
+    openid: current.openid || customer?.openid || "",
+    avatarUrl: customer?.avatarUrl || "",
+    nickname: customer?.nickname || customer?.name || ""
+  }
+}
+
+async function saveUserProfile(identity = {}, data = {}) {
+  const current = requestIdentity(identity)
+  if (!current.phone && !current.openid) throw httpError(401, "请先完成微信登录")
+  const customers = await getCustomers()
+  const index = customers.findIndex(item => (current.phone && item.phone === current.phone) || (current.openid && item.openid === current.openid))
+  const existing = index >= 0 ? customers[index] : normalizeCustomer({
+    id: `C${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    phone: current.phone,
+    openid: current.openid,
+    name: data.nickname || "微信用户"
+  }, customers.length)
+  const next = normalizeCustomer({
+    ...existing,
+    phone: existing.phone || current.phone,
+    openid: existing.openid || current.openid,
+    name: data.nickname || existing.name || existing.nickname || "微信用户",
+    nickname: data.nickname || existing.nickname || existing.name || "微信用户",
+    avatarUrl: data.avatarUrl || existing.avatarUrl || ""
+  }, index >= 0 ? index : customers.length)
+  if (index >= 0) customers[index] = next
+  else customers.push(next)
+  await saveCustomers(customers)
+  return {
+    phone: next.phone,
+    openid: next.openid,
+    avatarUrl: next.avatarUrl,
+    nickname: next.nickname || next.name
+  }
 }
 
 async function ensureCustomerFromOrder(order) {
@@ -3570,7 +3625,10 @@ async function initDb() {
   await query(`CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
+    nickname VARCHAR(80),
     phone VARCHAR(30),
+    openid VARCHAR(80),
+    avatar_url VARCHAR(500),
     wechat VARCHAR(80),
     orders INT DEFAULT 0,
     total_amount DECIMAL(10,2) DEFAULT 0,
@@ -3578,6 +3636,9 @@ async function initDb() {
     invite_code VARCHAR(32),
     shopping_money DECIMAL(10,2) DEFAULT 0
   )`)
+  await ensureColumn("customers", "nickname", "VARCHAR(80)")
+  await ensureColumn("customers", "openid", "VARCHAR(80)")
+  await ensureColumn("customers", "avatar_url", "VARCHAR(500)")
   await ensureColumn("customers", "invite_code", "VARCHAR(32)")
   await ensureColumn("customers", "shopping_money", "DECIMAL(10,2) DEFAULT 0")
   await query(`CREATE TABLE IF NOT EXISTS promotion_relations (
@@ -3636,7 +3697,7 @@ async function initDb() {
   if (!customerRows.length) {
     for (const customer of readSeed("customers.json", []).map(normalizeCustomer)) {
       await query(
-        "INSERT INTO customers (id, name, phone, wechat, orders, total_amount, last_contact, invite_code, shopping_money) VALUES (:id, :name, :phone, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)",
+        "INSERT INTO customers (id, name, nickname, phone, openid, avatar_url, wechat, orders, total_amount, last_contact, invite_code, shopping_money) VALUES (:id, :name, :nickname, :phone, :openid, :avatarUrl, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)",
         customer
       )
     }
@@ -3787,6 +3848,12 @@ async function createWechatPay(orderId, openid, identity = {}) {
     status: order?.status || ""
   })
   if (!order) throw httpError(404, "订单不存在")
+  if (order.paymentStatus === "待报价" || order.status === "待客服确认" || Number(order.amount || 0) <= 0) {
+    throw httpError(400, "该订单正在等待客服报价，暂不能支付")
+  }
+  if (order.paymentStatus === "已支付") {
+    throw httpError(400, "订单已支付，无需重复付款")
+  }
   const sessionOpenid = String(openid || identity.openid || "").trim()
   const sessionUserToken = String(identity.userToken || identity.userSession || "").trim()
   const orderOpenid = String(order.openid || "").trim()
@@ -4250,6 +4317,27 @@ async function handle(req, res) {
       userToken: userSession,
       token: userSession
     })
+    return
+  }
+
+  if (url.pathname === "/api/user/profile" && req.method === "GET") {
+    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    if (!hasRequestIdentity(identity)) {
+      sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
+      return
+    }
+    sendJson(res, 200, { ok: true, data: await getUserProfile(identity) })
+    return
+  }
+
+  if (url.pathname === "/api/user/profile" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const identity = identityFromRequest(req, body)
+    if (!hasRequestIdentity(identity)) {
+      sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
+      return
+    }
+    sendJson(res, 200, { ok: true, data: await saveUserProfile(identity, body) })
     return
   }
 

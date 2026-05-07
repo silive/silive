@@ -80,5 +80,5 @@
     <view class="field">定制要求<textarea value="{{form.customRequest}}" data-field="customRequest" bindinput="onInput" placeholder="例如刻字内容、纪念日期、想要的风格"></textarea></view>
   </view>
 
-  <button class="pay-btn" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">提交订单并支付</button>
+  <button class="pay-btn" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">{{quoteMode ? '提交需求，等待报价' : '提交订单并支付'}}</button>
 </view>

@@ -5,6 +5,7 @@ const SHARE_TITLES = [
   "高颜值定制礼物店 · 邀你来逛逛",
   "精选礼物小店 · 朋友觉得你会喜欢"
 ]
+const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.png"
 
 function pickOne(list) {
   return list[Math.floor(Math.random() * list.length)]
@@ -104,8 +105,9 @@ Page({
     const code = this.buildInviteCode()
     const title = "非常智造邀请海报"
     const image = this.data.profile.inviteQrUrl || apiUrl(`/api/promotion/qr?code=${encodeURIComponent(code)}`)
+    const shareImage = this.data.storeShareImage || DEFAULT_SHARE_IMAGE
     wx.navigateTo({
-      url: `/pages/poster/poster?title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}`
+      url: `/pages/poster/poster?title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
     })
   },
 
@@ -138,7 +140,7 @@ Page({
     return {
       title: pickOne(SHARE_TITLES),
       path: this.buildInviteLink(),
-      imageUrl: this.data.storeShareImage || ""
+      imageUrl: this.data.storeShareImage || DEFAULT_SHARE_IMAGE
     }
   }
 })

@@ -1,3 +1,4 @@
+const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
 
 Page({
@@ -37,6 +38,7 @@ Page({
     this.loadPromotionSummary()
     this.loadOrderSummary()
     this.loadStoreMe()
+    this.loadUserProfile()
   },
 
   refreshLoginState() {
@@ -79,6 +81,45 @@ Page({
     })
   },
 
+  loadUserProfile() {
+    if (!this.data.loggedIn) return
+    request("/api/user/profile")
+      .then(profile => {
+        const avatarUrl = profile.avatarUrl || wx.getStorageSync("memberAvatar") || ""
+        const nickName = profile.nickname || wx.getStorageSync("memberName") || this.data.userInfo.nickName || ""
+        if (profile.avatarUrl) wx.setStorageSync("memberAvatar", profile.avatarUrl)
+        if (profile.nickname) wx.setStorageSync("memberName", profile.nickname)
+        this.setData({
+          userInfo: {
+            ...(this.data.userInfo || {}),
+            avatarUrl,
+            nickName
+          }
+        })
+      })
+      .catch(error => console.warn("[profile] load user profile failed:", error.message || error))
+  },
+
+  saveUserProfile(profile = {}) {
+    return request("/api/user/profile", {
+      method: "POST",
+      data: {
+        avatarUrl: profile.avatarUrl || "",
+        nickname: profile.nickName || profile.nickname || wx.getStorageSync("memberName") || "微信用户"
+      }
+    })
+  },
+
+  uploadAvatarIfNeeded(avatarUrl) {
+    if (/^https?:\/\//.test(avatarUrl)) return Promise.resolve(avatarUrl)
+    return uploadFileWithFallback("/api/upload/public", {
+      filePath: avatarUrl,
+      name: "file",
+      header: authHeader(),
+      formData: { type: "avatar" }
+    }).then(data => data.url || data.data?.url || "")
+  },
+
   onChooseAvatar(event) {
     const avatarUrl = event.detail && event.detail.avatarUrl
     if (!avatarUrl) {
@@ -97,6 +138,19 @@ Page({
       ...(app.globalData.userInfo || {}),
       avatarUrl
     }
+    wx.showLoading({ title: "保存头像" })
+    this.uploadAvatarIfNeeded(avatarUrl)
+      .then(remoteUrl => {
+        if (!remoteUrl) throw new Error("头像上传失败")
+        wx.setStorageSync("memberAvatar", remoteUrl)
+        const nextUserInfo = { ...(this.data.userInfo || {}), avatarUrl: remoteUrl }
+        this.setData({ userInfo: nextUserInfo })
+        app.globalData.userInfo = { ...(app.globalData.userInfo || {}), avatarUrl: remoteUrl }
+        return this.saveUserProfile({ avatarUrl: remoteUrl, nickName: nextUserInfo.nickName })
+      })
+      .then(() => wx.showToast({ title: "头像已保存", icon: "success" }))
+      .catch(error => wx.showToast({ title: error.message || "头像保存失败", icon: "none" }))
+      .finally(() => wx.hideLoading())
   },
 
   showLoginSheet() {
@@ -125,6 +179,7 @@ Page({
       this.loadPromotionSummary()
       this.loadOrderSummary()
       this.loadStoreMe()
+      this.loadUserProfile()
     }).catch(error => {
       if (error.isAuthDenied) {
         wx.showToast({ title: "未授权手机号", icon: "none" })
@@ -162,7 +217,6 @@ Page({
       this.setData({ shoppingMoney: "0.00", pendingReward: "0.00" })
       return
     }
-    const { request } = require("../../utils/api")
     request(`/api/promotion/summary?phone=${encodeURIComponent(phone)}`)
       .then(data => {
         this.setData({
@@ -174,7 +228,6 @@ Page({
   },
 
   loadContact() {
-    const { request } = require("../../utils/api")
     request("/api/help-center")
       .then(data => {
         this.setData({
@@ -186,7 +239,6 @@ Page({
   },
 
   loadOrderSummary() {
-    const { request } = require("../../utils/api")
     const { getLoginState } = require("../../utils/auth")
     const loginState = getLoginState()
     const userId = wx.getStorageSync("localUserId") || ""
@@ -239,7 +291,23 @@ Page({
   chooseAddress() {
     if (!this.requireLogin()) return
     wx.chooseAddress({
-      fail: () => wx.showToast({ title: "未选择地址", icon: "none" })
+      success: address => {
+        const fullAddress = [
+          address.provinceName,
+          address.cityName,
+          address.countyName,
+          address.detailInfo
+        ].filter(Boolean).join(" ")
+        wx.showModal({
+          title: "收货地址",
+          content: `${address.userName || ""} ${address.telNumber || ""}\n${fullAddress || "已选择地址"}`,
+          showCancel: false
+        })
+      },
+      fail: error => {
+        const msg = String(error.errMsg || "")
+        wx.showToast({ title: msg.includes("cancel") ? "未选择地址，可手动填写" : "无法打开微信地址，请手动填写", icon: "none" })
+      }
     })
   },
 

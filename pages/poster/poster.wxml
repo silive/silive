@@ -1,5 +1,15 @@
 <view class="page {{themeClass}}" style="{{themeStyle}}">
   <view class="title">{{title}}</view>
-  <image wx:if="{{image}}" class="poster" src="{{image}}" mode="widthFix" />
-  <view wx:else class="empty">活动海报暂未配置</view>
+  <view class="poster-card">
+    <image wx:if="{{posterImage}}" class="poster" src="{{posterImage}}" mode="widthFix" />
+    <view wx:else class="poster-loading">{{generating ? '正在生成邀请海报...' : '海报暂未生成'}}</view>
+    <canvas class="poster-canvas" canvas-id="posterCanvas"></canvas>
+  </view>
+  <view class="poster-info">
+    <view class="poster-brand">非常智造</view>
+    <view class="poster-copy">上传照片，定制专属礼物</view>
+    <view class="poster-copy">3D打印 · 激光雕刻 · 到店自提</view>
+    <view class="poster-code">邀请码：{{code || 'VSCUSTOM'}}</view>
+  </view>
+  <button class="save-btn" bindtap="savePoster">保存到相册</button>
 </view>
