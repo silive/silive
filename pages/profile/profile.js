@@ -104,8 +104,8 @@ Page({
         return
       }
       wx.showModal({
-        title: "登录接口异常",
-        content: error.message || "登录失败，请检查API域名和网络",
+        title: error.visibleDebugMessage ? "登录调试信息" : "登录接口异常",
+        content: error.visibleDebugMessage || error.message || "登录失败，请检查API域名和网络",
         showCancel: false
       })
     }).finally(() => {

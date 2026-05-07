@@ -41,6 +41,32 @@ function logLoginDebug(label) {
   console.log(`[auth] ${label}`, readLoginDebugState())
 }
 
+function stringifyDebugValue(value) {
+  if (value === undefined || value === null || value === "") return "-"
+  if (typeof value === "boolean") return value ? "true" : "false"
+  return String(value)
+}
+
+function buildVisibleLoginDebug(debugInfo = {}) {
+  const lines = [
+    ["step", debugInfo.step],
+    ["getPhoneNumber errMsg", debugInfo.errMsg],
+    ["errno", debugInfo.errno],
+    ["hasPhoneCode", debugInfo.hasPhoneCode],
+    ["wx.login errMsg", debugInfo.wxLoginErrMsg],
+    ["hasLoginCode", debugInfo.hasLoginCode],
+    ["requestUrl", debugInfo.requestUrl],
+    ["statusCode", debugInfo.statusCode],
+    ["message", debugInfo.message],
+    ["errcode", debugInfo.errcode],
+    ["hasPhoneNumber", debugInfo.hasPhoneNumber],
+    ["hasOpenid", debugInfo.hasOpenid],
+    ["hasUserSession", debugInfo.hasUserSession],
+    ["hasUserToken", debugInfo.hasUserToken]
+  ]
+  return lines.map(([label, value]) => `${label}: ${stringifyDebugValue(value)}`).join("\n")
+}
+
 function clearIncompleteLoginState() {
   const userSession = wx.getStorageSync("userSession") || ""
   const openid = wx.getStorageSync("openid") || ""
@@ -79,39 +105,58 @@ function ensureOpenid() {
   })
 }
 
-function wxLoginCode() {
+function wxLoginCode(debugInfo = {}) {
   return new Promise((resolve, reject) => {
     wx.login({
       success: loginRes => {
+        debugInfo.step = "wx.login"
+        debugInfo.wxLoginErrMsg = loginRes.errMsg || ""
+        debugInfo.hasLoginCode = !!loginRes.code
         console.log("[login] wx.login", {
           errMsg: loginRes.errMsg,
           hasLoginCode: !!loginRes.code
         })
         if (!loginRes.code) {
-          reject(new Error("微信登录失败：未返回 loginCode"))
+          const error = new Error("微信登录失败：未返回 loginCode")
+          error.loginDebugInfo = debugInfo
+          reject(error)
           return
         }
         resolve(loginRes.code)
       },
       fail: error => {
+        debugInfo.step = "wx.login"
+        debugInfo.wxLoginErrMsg = error && error.errMsg || ""
+        debugInfo.hasLoginCode = false
         console.log("[login] wx.login", {
           errMsg: error && error.errMsg,
           hasLoginCode: false
         })
-        reject(new Error("微信登录失败：未返回 loginCode"))
+        const nextError = new Error("微信登录失败：未返回 loginCode")
+        nextError.loginDebugInfo = debugInfo
+        reject(nextError)
       }
     })
   })
 }
 
-function phoneCodeMissingError(detail = {}) {
+function phoneCodeMissingError(detail = {}, debugInfo = {}) {
+  debugInfo.step = "getPhoneNumber"
+  debugInfo.errMsg = detail.errMsg || ""
+  debugInfo.errno = detail.errno
+  debugInfo.hasPhoneCode = !!detail.code
   const error = new Error(`手机号授权失败：微信未返回手机号 code\nerrMsg: ${detail.errMsg || ""}\nerrno: ${detail.errno || ""}`)
   error.isPhoneCodeMissing = true
+  error.loginDebugInfo = debugInfo
   return error
 }
 
-function requestPhoneLogin(phoneCode, loginCode) {
+function requestPhoneLogin(phoneCode, loginCode, debugInfo = {}) {
   const url = apiUrl("/api/wechat/phone", getActiveApiHost())
+  debugInfo.step = "requestPhoneLogin"
+  debugInfo.requestUrl = url
+  debugInfo.hasPhoneCode = !!phoneCode
+  debugInfo.hasLoginCode = !!loginCode
   console.log("[login] request phone login", {
     url,
     hasPhoneCode: !!phoneCode,
@@ -129,6 +174,15 @@ function requestPhoneLogin(phoneCode, loginCode) {
       timeout: 12000,
       success: res => {
         const data = res.data || {}
+        debugInfo.step = "phoneLoginResponse"
+        debugInfo.statusCode = res.statusCode
+        debugInfo.ok = data && data.ok
+        debugInfo.message = data && data.message
+        debugInfo.errcode = data && data.errcode
+        debugInfo.hasPhoneNumber = !!(data && data.phoneNumber)
+        debugInfo.hasOpenid = !!(data && data.openid)
+        debugInfo.hasUserSession = !!(data && data.userSession)
+        debugInfo.hasUserToken = !!(data && data.userToken)
         console.log("[login] phone login response", {
           statusCode: res.statusCode,
           ok: data && data.ok,
@@ -143,9 +197,19 @@ function requestPhoneLogin(phoneCode, loginCode) {
           resolve(data.data !== undefined ? data.data : data)
           return
         }
-        reject(new Error(`登录失败：${data.message || `HTTP ${res.statusCode}`}`))
+        const error = new Error(`登录失败：${data.message || `HTTP ${res.statusCode}`}`)
+        error.loginDebugInfo = debugInfo
+        reject(error)
       },
       fail: error => {
+        debugInfo.step = "phoneLoginResponse"
+        debugInfo.statusCode = 0
+        debugInfo.ok = false
+        debugInfo.message = error && error.errMsg || "接口连接失败"
+        debugInfo.hasPhoneNumber = false
+        debugInfo.hasOpenid = false
+        debugInfo.hasUserSession = false
+        debugInfo.hasUserToken = false
         console.log("[login] phone login response", {
           statusCode: 0,
           ok: false,
@@ -155,7 +219,9 @@ function requestPhoneLogin(phoneCode, loginCode) {
           hasUserSession: false,
           hasUserToken: false
         })
-        reject(new Error(`登录失败：${(error && error.errMsg) || "接口连接失败"}`))
+        const nextError = new Error(`登录失败：${(error && error.errMsg) || "接口连接失败"}`)
+        nextError.loginDebugInfo = debugInfo
+        reject(nextError)
       }
     })
   })
@@ -178,23 +244,41 @@ function bindStoredPromotionRelation(name = "微信用户") {
 
 function loginWithPhoneDetail(detail = {}) {
   logLoginDebug("before phone login")
+  const debugInfo = {
+    step: "getPhoneNumber",
+    errMsg: detail.errMsg || "",
+    errno: detail.errno,
+    hasPhoneCode: !!detail.code
+  }
   const errMsg = String(detail.errMsg || "")
-  if (errMsg && !/ok/i.test(errMsg)) return Promise.reject(phoneCodeMissingError(detail))
-  if (!detail.code) return Promise.reject(phoneCodeMissingError(detail))
+  if (errMsg && !/ok/i.test(errMsg)) return Promise.reject(phoneCodeMissingError(detail, debugInfo))
+  if (!detail.code) return Promise.reject(phoneCodeMissingError(detail, debugInfo))
 
   return checkApiConnectivity().then(status => {
     if (!status.ok) {
-      throw new Error(`${status.message} 当前检测：${status.results.map(item => `${item.host}=${item.message}`).join("；")}`)
+      debugInfo.step = "apiConnectivity"
+      debugInfo.message = `${status.message} 当前检测：${status.results.map(item => `${item.host}=${item.message}`).join("；")}`
+      const error = new Error(debugInfo.message)
+      error.loginDebugInfo = debugInfo
+      throw error
     }
-    return wxLoginCode()
-  }).then(loginCode => requestPhoneLogin(detail.code, loginCode)).then(res => {
+    return wxLoginCode(debugInfo)
+  }).then(loginCode => requestPhoneLogin(detail.code, loginCode, debugInfo)).then(res => {
     const phone = res.phoneNumber || ""
-    if (!phone) throw new Error("获取手机号失败")
+    if (!phone) {
+      const error = new Error("获取手机号失败")
+      debugInfo.message = error.message
+      error.loginDebugInfo = debugInfo
+      throw error
+    }
     const openid = res.openid || ""
     const token = res.token || res.userSession || ""
     if (!openid || !token) {
       clearIncompleteLoginState()
-      throw new Error("登录信息不完整，请重新授权")
+      const error = new Error("登录信息不完整，请重新授权")
+      debugInfo.message = error.message
+      error.loginDebugInfo = debugInfo
+      throw error
     }
     wx.setStorageSync("memberPhone", phone)
     wx.setStorageSync("openid", openid)
@@ -228,6 +312,9 @@ function loginWithPhoneDetail(detail = {}) {
       clearIncompleteLoginState()
       logLoginDebug("after phone login failed")
     }
+    if (error.loginDebugInfo) {
+      error.visibleDebugMessage = buildVisibleLoginDebug(error.loginDebugInfo)
+    }
     throw error
   })
 }
@@ -247,6 +334,7 @@ module.exports = {
   ensureOpenid,
   loginWithPhoneDetail,
   clearIncompleteLoginState,
+  buildVisibleLoginDebug,
   bindStoredPromotionRelation,
   logout
 }
