@@ -84,7 +84,8 @@ const dbConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   namedPlaceholders: true,
-  charset: "utf8mb4"
+  charset: "utf8mb4",
+  dateStrings: true
 }
 
 let pool
