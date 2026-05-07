@@ -73,7 +73,11 @@ function authHeader(extra = {}) {
   } catch (error) {
     userSession = ""
   }
-  return userSession ? { "X-User-Session": userSession, ...extra } : extra
+  const base = {
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  }
+  return userSession ? { ...base, "X-User-Session": userSession, ...extra } : { ...base, ...extra }
 }
 
 function request(path, options = {}) {
@@ -128,6 +132,10 @@ function checkApiConnectivity() {
   const checks = hosts.map(host => new Promise(resolve => {
     wx.request({
       url: `${host}/api/health?t=${Date.now()}`,
+      header: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
       timeout: 6000,
       success: res => {
         const ok = res.statusCode >= 200 && res.statusCode < 300
@@ -157,11 +165,14 @@ function uploadFileWithFallback(path, options = {}) {
       reject(new Error("上传接口不可访问，请检查API域名或切换备用API"))
       return
     }
+    const header = authHeader(options.header || options.headers || {})
+    delete header["Content-Type"]
+    delete header["content-type"]
     wx.uploadFile({
       url: apiUrl(path, host),
       filePath: options.filePath,
       name: options.name || "file",
-      header: authHeader(options.header || options.headers || {}),
+      header,
       formData: options.formData || {},
       success: res => {
         let data = {}

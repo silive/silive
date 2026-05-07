@@ -42,8 +42,15 @@ Page({
   refreshLoginState() {
     const { getLoginState } = require("../../utils/auth")
     const state = getLoginState()
+    const memberAvatar = wx.getStorageSync("memberAvatar") || ""
+    const userInfo = {
+      ...(this.data.userInfo || {}),
+      avatarUrl: memberAvatar || this.data.userInfo.avatarUrl || "",
+      nickName: wx.getStorageSync("memberName") || this.data.userInfo.nickName || ""
+    }
     this.setData({
       loggedIn: state.loggedIn,
+      userInfo,
       memberPhone: state.phone,
       maskedPhone: this.maskPhone(state.phone),
       storeChecked: !state.loggedIn,
@@ -70,6 +77,26 @@ Page({
         wx.showToast({ title: "未授权，可继续浏览", icon: "none" })
       }
     })
+  },
+
+  onChooseAvatar(event) {
+    const avatarUrl = event.detail && event.detail.avatarUrl
+    if (!avatarUrl) {
+      wx.showToast({ title: "未选择头像", icon: "none" })
+      return
+    }
+    const userInfo = {
+      ...(this.data.userInfo || {}),
+      avatarUrl
+    }
+    this.setData({ userInfo })
+    wx.setStorageSync("memberAvatar", avatarUrl)
+    const app = getApp()
+    app.globalData = app.globalData || {}
+    app.globalData.userInfo = {
+      ...(app.globalData.userInfo || {}),
+      avatarUrl
+    }
   },
 
   showLoginSheet() {
@@ -104,8 +131,8 @@ Page({
         return
       }
       wx.showModal({
-        title: error.visibleDebugMessage ? "登录调试信息" : "登录接口异常",
-        content: error.visibleDebugMessage || error.message || "登录失败，请检查API域名和网络",
+        title: "登录失败",
+        content: error.message || "登录失败，请稍后重试",
         showCancel: false
       })
     }).finally(() => {

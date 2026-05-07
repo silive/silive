@@ -145,7 +145,7 @@ function phoneCodeMissingError(detail = {}, debugInfo = {}) {
   debugInfo.errMsg = detail.errMsg || ""
   debugInfo.errno = detail.errno
   debugInfo.hasPhoneCode = !!detail.code
-  const error = new Error(`手机号授权失败：微信未返回手机号 code\nerrMsg: ${detail.errMsg || ""}\nerrno: ${detail.errno || ""}`)
+  const error = new Error("手机号授权失败，请重新尝试")
   error.isPhoneCodeMissing = true
   error.loginDebugInfo = debugInfo
   return error
@@ -311,9 +311,6 @@ function loginWithPhoneDetail(detail = {}) {
       console.warn("[auth] phone login failed:", error.message || error)
       clearIncompleteLoginState()
       logLoginDebug("after phone login failed")
-    }
-    if (error.loginDebugInfo) {
-      error.visibleDebugMessage = buildVisibleLoginDebug(error.loginDebugInfo)
     }
     throw error
   })

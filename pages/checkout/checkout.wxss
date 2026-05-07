@@ -378,12 +378,29 @@ input {
 }
 
 .pickup-select {
-  width: 188rpx;
-  height: 60rpx;
-  margin: 14rpx 0 0;
+  width: 100%;
+  min-height: 72rpx;
+  margin: 18rpx 0 0;
+  padding: 0 28rpx;
   border-radius: 999rpx;
-  font-size: 21rpx;
+  background: #ffffff;
+  border: 1rpx solid #9dccff;
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: 24rpx;
   font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.pickup-store.selected .pickup-select {
+  border: none;
+  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  color: #ffffff;
+  box-shadow: 0 14rpx 30rpx rgba(22,119,255,.13);
 }
 
 .upload-field {

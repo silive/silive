@@ -6,7 +6,7 @@
       <view class="user-name">{{loggedIn ? (userInfo.nickName || '微信用户') : '欢迎来到非常智造'}}</view>
       <view class="user-desc" style="{{mutedTextStyle}}">{{loggedIn ? ('手机号 ' + maskedPhone) : '登录后同步订单、地址与会员权益'}}</view>
     </view>
-    <button wx:if="{{loggedIn}}" class="auth-btn" style="{{secondaryButtonStyle}}" bindtap="getUserProfile">头像</button>
+    <button wx:if="{{loggedIn}}" class="auth-btn" style="{{secondaryButtonStyle}}" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">头像</button>
     <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">微信快捷登录</button>
   </view>
 

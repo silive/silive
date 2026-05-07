@@ -115,7 +115,6 @@ Page({
       this.setData({
         "form.customRequest": "我已上传照片，请根据照片沟通定制方案。"
       })
-      this.generatePreview()
     }
     if (options.autoAddress === "1") {
       setTimeout(() => this.chooseAddress({ silent: true }), 350)
@@ -168,8 +167,16 @@ Page({
 
   validate() {
     const { customerName, phone, address, customRequest } = this.data.form
-    if (!customerName || !phone || !address || !customRequest) {
-      wx.showToast({ title: "请补全下单信息", icon: "none" })
+    if (!customerName) {
+      wx.showToast({ title: "请填写姓名", icon: "none" })
+      return false
+    }
+    if (!phone) {
+      wx.showToast({ title: "请填写联系电话", icon: "none" })
+      return false
+    }
+    if (!customRequest) {
+      wx.showToast({ title: "请填写定制要求", icon: "none" })
       return false
     }
     if (!this.isValidPhone(phone)) {
@@ -181,8 +188,15 @@ Page({
       wx.showToast({ title: "请输入正确的11位手机号", icon: "none" })
       return false
     }
-    if (this.data.deliveryType === "pickup" && !this.data.selectedPickupStoreId) {
-      wx.showToast({ title: "请选择自提门店", icon: "none" })
+    if (this.data.deliveryType === "pickup") {
+      if (!this.data.selectedPickupStoreId) {
+        wx.showToast({ title: "请选择自提点", icon: "none" })
+        return false
+      }
+      return true
+    }
+    if (!address) {
+      wx.showToast({ title: "请填写收货地址", icon: "none" })
       return false
     }
     return true
@@ -437,7 +451,6 @@ Page({
         customImage: next[0]?.url || "",
         "form.customRequest": this.data.form.customRequest || "我已上传参考图片，请根据图片沟通定制方案。"
       })
-      if (this.shouldGeneratePreview()) this.generatePreview()
       return
     }
     const filePath = files[index].tempFilePath || files[index].path || ""
@@ -480,7 +493,6 @@ Page({
       customImage: next[0]?.url || "",
       aiPreview: next.length ? this.data.aiPreview : { status: "", imageUrl: "", provider: "", message: "" }
     })
-    if (next.length && this.shouldGeneratePreview()) this.generatePreview()
   },
 
   submitOrder() {
@@ -495,10 +507,6 @@ Page({
       return
     }
     if (!this.validate()) return
-    if (this.data.uploadedImages.length && this.data.aiPreview.status === "loading") {
-      wx.showToast({ title: "预览图生成中，请稍候", icon: "none" })
-      return
-    }
     this.setData({ paying: true })
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
@@ -516,8 +524,8 @@ Page({
           remark: this.data.uploadedImages.length ? `上传图片：${this.data.uploadedImages.map(item => item.url).join("，")}` : "",
           originalImageUrl: this.data.uploadedImages[0]?.url || "",
           originalImageUrls: this.data.uploadedImages.map(item => item.url),
-          aiPreviewUrl: this.data.aiPreview.imageUrl || "",
-          finalDesignUrl: this.data.aiPreview.imageUrl || "",
+          aiPreviewUrl: "",
+          finalDesignUrl: "",
           category: this.data.category,
           isCustomOrder: this.data.mode === "custom" ? "true" : "false",
           source: this.data.source || "",

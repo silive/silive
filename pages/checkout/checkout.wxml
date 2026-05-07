@@ -19,32 +19,6 @@
         <view class="upload-preview-subtitle" style="{{mutedTextStyle}}">请补充定制要求，设计师会先确认方案</view>
       </view>
     </view>
-    <view wx:if="{{customImage}}" class="ai-preview-card {{aiPreview.status}}" style="{{cardStyle}}">
-      <view wx:if="{{aiPreview.status === 'loading'}}" class="ai-loading">
-        <view class="ai-shimmer"></view>
-        <view>
-          <view class="ai-title">正在生成专属定制效果图...</view>
-          <view class="ai-subtitle" style="{{mutedTextStyle}}">通常需要 3-8 秒，请稍候</view>
-        </view>
-      </view>
-      <view wx:elif="{{aiPreview.status === 'done'}}">
-        <view class="ai-title">你的专属定制预览</view>
-        <image class="ai-preview-image" src="{{aiPreview.imageUrl}}" mode="aspectFill" />
-        <view class="ai-subtitle" style="{{mutedTextStyle}}">下单前可继续微调，成品以最终确认稿为准</view>
-        <view class="ai-actions">
-          <button class="ai-btn" style="{{secondaryButtonStyle}}" bindtap="generatePreview">重新生成</button>
-          <button class="ai-btn" style="{{secondaryButtonStyle}}" bindtap="contactAdjust">联系客服微调</button>
-          <button class="ai-btn dark" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">立即定制</button>
-        </view>
-      </view>
-      <view wx:elif="{{aiPreview.status === 'error'}}">
-        <view class="ai-title">{{aiPreview.message}}</view>
-        <view class="ai-actions">
-          <button class="ai-btn" style="{{secondaryButtonStyle}}" bindtap="generatePreview">换一种风格</button>
-          <button class="ai-btn dark" style="{{primaryButtonStyle}}" bindtap="contactAdjust">联系客服调整</button>
-        </view>
-      </view>
-    </view>
     <view class="field">姓名<input value="{{form.customerName}}" data-field="customerName" bindinput="onInput" placeholder="请输入收货人姓名" /></view>
     <view class="field">电话
       <view class="inline-control">
@@ -78,7 +52,7 @@
               <view class="pickup-line" style="{{mutedTextStyle}}">电话：{{item.phone || '到店咨询'}} · {{item.businessHours || '营业时间请咨询门店'}}</view>
               <view wx:if="{{item.distanceText}}" class="pickup-distance">距离 {{item.distanceText}}</view>
             </view>
-            <button class="pickup-select" style="{{selectedPickupStoreId === item.id ? primaryButtonStyle : secondaryButtonStyle}}" data-id="{{item.id}}" bindtap="selectPickupStore">{{selectedPickupStoreId === item.id ? '已选择' : '选择该门店'}}</button>
+            <button class="pickup-select" data-id="{{item.id}}" bindtap="selectPickupStore">{{selectedPickupStoreId === item.id ? '已选择' : '选择该门店'}}</button>
           </view>
         </view>
       </view>

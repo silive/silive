@@ -353,7 +353,7 @@ function objectKeys(value) {
 function requestJson(url, options = {}, body = "") {
   return new Promise((resolve, reject) => {
     const target = new URL(url)
-    const headers = { ...(options.headers || {}) }
+    const headers = { "User-Agent": "very-simple-cms/1.0", ...(options.headers || {}) }
     if (body && !headers["Content-Length"] && !headers["content-length"]) {
       headers["Content-Length"] = Buffer.byteLength(body)
     }
