@@ -13,6 +13,47 @@ function getLoginState() {
   }
 }
 
+function maskValue(value) {
+  const text = String(value || "")
+  if (!text) return "empty"
+  if (text.length <= 7) return `${text.slice(0, 2)}***`
+  return `${text.slice(0, 3)}***${text.slice(-4)}`
+}
+
+function readLoginDebugState() {
+  const app = getApp()
+  const userInfo = app.globalData && app.globalData.userInfo
+  return {
+    memberPhone: maskValue(wx.getStorageSync("memberPhone") || ""),
+    openid: maskValue(wx.getStorageSync("openid") || ""),
+    userSession: maskValue(wx.getStorageSync("userSession") || ""),
+    userToken: maskValue(wx.getStorageSync("userToken") || ""),
+    globalDataUserInfo: userInfo ? {
+      phone: maskValue(userInfo.phone || ""),
+      openid: maskValue(userInfo.openid || ""),
+      userSession: maskValue(userInfo.userSession || "")
+    } : null,
+    storeInfo: wx.getStorageSync("storeInfo") ? "exists" : "empty"
+  }
+}
+
+function logLoginDebug(label) {
+  console.log(`[auth] ${label}`, readLoginDebugState())
+}
+
+function clearIncompleteLoginState() {
+  const userSession = wx.getStorageSync("userSession") || ""
+  const openid = wx.getStorageSync("openid") || ""
+  const phone = wx.getStorageSync("memberPhone") || ""
+  if (userSession && openid && phone) return
+  wx.removeStorageSync("memberPhone")
+  wx.removeStorageSync("openid")
+  wx.removeStorageSync("userSession")
+  wx.removeStorageSync("userToken")
+  const app = getApp()
+  if (app.globalData) app.globalData.userInfo = null
+}
+
 function ensureOpenid() {
   const cachedOpenid = wx.getStorageSync("openid") || ""
   const cachedSession = wx.getStorageSync("userSession") || ""
@@ -75,6 +116,7 @@ function bindStoredPromotionRelation(name = "微信用户") {
 }
 
 function loginWithPhoneDetail(detail = {}) {
+  logLoginDebug("before phone login")
   const errMsg = String(detail.errMsg || "")
   if (errMsg && !/ok/i.test(errMsg)) return Promise.reject(unauthorizedPhoneError())
   if (!detail.code) return Promise.reject(unauthorizedPhoneError())
@@ -93,19 +135,22 @@ function loginWithPhoneDetail(detail = {}) {
     })).then(res => {
     const phone = res.phoneNumber || ""
     if (!phone) throw new Error("获取手机号失败")
-    wx.setStorageSync("memberPhone", phone)
-    if (res.openid) wx.setStorageSync("openid", res.openid)
+    const openid = res.openid || ""
     const token = res.token || res.userSession || ""
-    if (token) {
-      wx.setStorageSync("userSession", token)
-      wx.setStorageSync("userToken", token)
+    if (!openid || !token) {
+      clearIncompleteLoginState()
+      throw new Error("登录信息不完整，请重新授权")
     }
+    wx.setStorageSync("memberPhone", phone)
+    wx.setStorageSync("openid", openid)
+    wx.setStorageSync("userSession", token)
+    wx.setStorageSync("userToken", token)
     const state = {
       ...getLoginState(),
       loggedIn: true,
       phone,
-      openid: res.openid || wx.getStorageSync("openid") || "",
-      userSession: token || wx.getStorageSync("userSession") || ""
+      openid,
+      userSession: token
     }
     const app = getApp()
     app.globalData = app.globalData || {}
@@ -115,14 +160,20 @@ function loginWithPhoneDetail(detail = {}) {
       openid: state.openid,
       userSession: state.userSession
     }
-    const readyState = state.openid && state.userSession
-      ? Promise.resolve(state)
-      : ensureOpenid().then(() => ({
-          ...getLoginState(),
-          loggedIn: true,
-          phone
-        }))
-    return readyState.then(nextState => bindStoredPromotionRelation(wx.getStorageSync("memberName") || "微信用户").then(() => nextState))
+    logLoginDebug("after phone login saved")
+    return bindStoredPromotionRelation(wx.getStorageSync("memberName") || "微信用户")
+      .catch(error => {
+        console.warn("[auth] post-login promotion sync failed:", error.message || error)
+        return null
+      })
+      .then(() => state)
+  }).catch(error => {
+    if (!error.isAuthDenied) {
+      console.warn("[auth] phone login failed:", error.message || error)
+      clearIncompleteLoginState()
+      logLoginDebug("after phone login failed")
+    }
+    throw error
   })
 }
 
@@ -140,6 +191,7 @@ module.exports = {
   getLoginState,
   ensureOpenid,
   loginWithPhoneDetail,
+  clearIncompleteLoginState,
   bindStoredPromotionRelation,
   logout
 }

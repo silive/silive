@@ -4084,10 +4084,8 @@ async function handle(req, res) {
       sendJson(res, 400, { ok: false, message: "缺少 wx.login code" })
       return
     }
-    const [phoneNumber, openid] = await Promise.all([
-      getWechatPhoneNumber(body.code),
-      getOpenid(body.loginCode)
-    ])
+    const openid = await getOpenid(body.loginCode)
+    const phoneNumber = await getWechatPhoneNumber(body.code)
     const userSession = openid ? createWechatUserSession(openid, phoneNumber) : ""
     sendJson(res, 200, {
       ok: true,
