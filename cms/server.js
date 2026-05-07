@@ -346,14 +346,22 @@ function maskSecret(value) {
   return `${text.slice(0, 4)}***${text.slice(-4)}`
 }
 
+function objectKeys(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value) : []
+}
+
 function requestJson(url, options = {}, body = "") {
   return new Promise((resolve, reject) => {
     const target = new URL(url)
+    const headers = { ...(options.headers || {}) }
+    if (body && !headers["Content-Length"] && !headers["content-length"]) {
+      headers["Content-Length"] = Buffer.byteLength(body)
+    }
     const req = https.request({
       hostname: target.hostname,
       path: `${target.pathname}${target.search}`,
       method: options.method || "GET",
-      headers: options.headers || {},
+      headers,
       timeout: options.timeout || 8000
     }, response => {
       const chunks = []
@@ -3655,10 +3663,25 @@ async function getWechatPhoneNumber(code) {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   }, body)
-  if (result.data.errcode) throw wechatApiError(result.data.errcode, result.data.errmsg, "微信手机号接口")
-  const phoneNumber = result.data.phone_info && result.data.phone_info.phoneNumber
+  const data = result.data && typeof result.data === "object" ? result.data : {}
+  const phoneInfo = data.phone_info && typeof data.phone_info === "object" ? data.phone_info : null
+  console.warn("[wechat-phone] safe response summary", {
+    errcode: data.errcode,
+    errmsg: data.errmsg,
+    keys: objectKeys(data),
+    hasPhoneInfo: !!phoneInfo,
+    phoneInfoKeys: objectKeys(phoneInfo),
+    hasPhoneNumber: !!(phoneInfo && phoneInfo.phoneNumber),
+    hasPurePhoneNumber: !!(phoneInfo && phoneInfo.purePhoneNumber),
+    hasCountryCode: !!(phoneInfo && phoneInfo.countryCode)
+  })
+  if (data.errcode) throw wechatApiError(data.errcode, data.errmsg, "微信手机号接口")
+  if (!phoneInfo) {
+    throw wechatApiError("phone_info_missing", data.errmsg || "缺少 phone_info", "微信手机号接口返回异常")
+  }
+  const phoneNumber = phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || ""
   if (!phoneNumber) {
-    throw wechatApiError("phone_info_missing", result.data.errmsg || "微信未返回 phone_info.phoneNumber", "微信手机号接口")
+    throw wechatApiError("phone_number_missing", data.errmsg || "缺少手机号字段", "微信手机号接口返回异常")
   }
   return phoneNumber
 }
