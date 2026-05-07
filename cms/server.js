@@ -3616,7 +3616,8 @@ async function getOpenid(code) {
   if (!hasRealWechatConfig()) throw new Error("缺少真实 WECHAT_APPID 或 WECHAT_SECRET")
   const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}&js_code=${code}&grant_type=authorization_code`
   const result = await requestJson(url)
-  if (!result.data.openid) throw new Error(result.data.errmsg || "获取 openid 失败")
+  if (result.data.errcode) throw httpError(400, `微信登录失败：${result.data.errmsg || result.data.errcode}`)
+  if (!result.data.openid) throw httpError(400, result.data.errmsg || "获取 openid 失败")
   return result.data.openid
 }
 
@@ -3627,6 +3628,7 @@ async function getAccessToken() {
   if (!hasRealWechatConfig()) throw new Error("缺少真实 WECHAT_APPID 或 WECHAT_SECRET")
   const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}`
   const result = await requestJson(url)
+  if (result.data.errcode) throw httpError(400, `微信 access_token 获取失败：${result.data.errmsg || result.data.errcode}`)
   if (!result.data.access_token) throw new Error(result.data.errmsg || "获取 access_token 失败")
   accessTokenCache = {
     token: result.data.access_token,
@@ -3637,15 +3639,16 @@ async function getAccessToken() {
 
 async function getWechatPhoneNumber(code) {
   if (canUseMockWechatLogin()) return MOCK_WECHAT_PHONE
-  if (!code) throw new Error("缺少手机号授权 code")
+  if (!code) throw httpError(400, "缺少手机号授权 code")
   const accessToken = await getAccessToken()
   const body = JSON.stringify({ code })
   const result = await requestJson(`https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${accessToken}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   }, body)
+  if (result.data.errcode) throw httpError(400, `微信手机号授权失败：${result.data.errmsg || result.data.errcode}`)
   const phoneNumber = result.data.phone_info && result.data.phone_info.phoneNumber
-  if (!phoneNumber) throw new Error(result.data.errmsg || "获取手机号失败")
+  if (!phoneNumber) throw httpError(400, result.data.errmsg || "获取手机号失败")
   return phoneNumber
 }
 
@@ -4073,9 +4076,17 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/wechat/phone" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
+    if (!body.code) {
+      sendJson(res, 400, { ok: false, message: "缺少手机号授权 code" })
+      return
+    }
+    if (!body.loginCode) {
+      sendJson(res, 400, { ok: false, message: "缺少 wx.login code" })
+      return
+    }
     const [phoneNumber, openid] = await Promise.all([
       getWechatPhoneNumber(body.code),
-      body.loginCode ? getOpenid(body.loginCode) : Promise.resolve("")
+      getOpenid(body.loginCode)
     ])
     const userSession = openid ? createWechatUserSession(openid, phoneNumber) : ""
     sendJson(res, 200, {
