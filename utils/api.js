@@ -11,9 +11,9 @@ function uniqueHosts(hosts) {
 function getStoredBackupHost() {
   try {
     const host = wx.getStorageSync("BACKUP_API_HOST")
-    return /^https:\/\//.test(host) ? host : PROD_BACKUP_API_HOST
+    return /^https:\/\//.test(host) ? host : ""
   } catch (error) {
-    return PROD_BACKUP_API_HOST
+    return ""
   }
 }
 
@@ -37,13 +37,17 @@ function getDevApiHost() {
 }
 
 const DEV_API_HOSTS = uniqueHosts([getDevApiHost()])
-const API_HOSTS = getEnvVersion() === "release" ? PROD_API_HOSTS : DEV_API_HOSTS
+function isDevelopEnv() {
+  return getEnvVersion() === "develop"
+}
+
+const API_HOSTS = isDevelopEnv() ? DEV_API_HOSTS : PROD_API_HOSTS
 const BASE_URL = API_HOSTS[0]
 console.log("[api] baseURL=", BASE_URL)
 
 function getActiveApiHost() {
   try {
-    if (getEnvVersion() !== "release") return BASE_URL
+    if (isDevelopEnv()) return BASE_URL
     const active = wx.getStorageSync("ACTIVE_API_HOST")
     return API_HOSTS.includes(active) ? active : BASE_URL
   } catch (error) {

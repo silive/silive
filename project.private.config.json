@@ -67,6 +67,10 @@
       {
         "value": "themes",
         "type": "folder"
+      },
+      {
+        "type": "folder",
+        "value": "node_modules"
       }
     ],
     "include": []
