@@ -175,7 +175,9 @@ Page({
     searchKeyword: "",
     themeStyle: "",
     themeClass: "theme-skin01",
-    loading: true
+    loading: true,
+    showCartEntry: false,
+    cartCount: 0
   },
 
   onLoad(options) {
@@ -190,6 +192,18 @@ Page({
 
   onShow() {
     applyTheme(this)
+    this.loadCartCount()
+  },
+
+  loadCartCount() {
+    const cart = wx.getStorageSync("cartItems") || []
+    const cartCount = (Array.isArray(cart) ? cart : []).reduce((sum, item) => sum + Number(item.quantity || 1), 0)
+    this.setData({ cartCount })
+  },
+
+  shouldShowCartEntry(products, primary) {
+    const normalCategory = ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(primary || "").includes(keyword))
+    return normalCategory || (products || []).some(product => product.isNormalProduct && matchZone(product, primary, "全部"))
   },
 
   loadProducts(primary, secondary = "全部", ids = "") {
@@ -214,8 +228,10 @@ Page({
         secondaryItems: buildSecondaryItems(allProducts, primary, secondaryNav, categoryCatalog),
         secondary: nextSecondary,
         products: filterProducts(allProducts, primary, nextSecondary, ids, normalizeKeyword(this.data.searchKeyword)),
+        showCartEntry: this.shouldShowCartEntry(allProducts, primary),
         loading: false
       })
+      this.loadCartCount()
     }).catch(() => {
       request(`/api/products?t=${Date.now()}`, { timeout: 8000 }).then(products => {
         const allProducts = (Array.isArray(products) && products.length ? products : defaultData.products).filter(product => product.status !== "off").map(normalize)
@@ -227,8 +243,10 @@ Page({
           secondaryNav,
           secondaryItems: buildSecondaryItems(allProducts, primary, secondaryNav, categoryCatalog),
           products: filterProducts(allProducts, primary, secondaryNav.includes(secondary) ? secondary : "全部", ids, normalizeKeyword(this.data.searchKeyword)),
+          showCartEntry: this.shouldShowCartEntry(allProducts, primary),
           loading: false
         })
+        this.loadCartCount()
       }).catch(() => {
         const allProducts = fallbackProducts()
         const categoryCatalog = fallbackCatalog()
@@ -239,8 +257,10 @@ Page({
           secondaryNav,
           secondaryItems: buildSecondaryItems(allProducts, primary, secondaryNav, categoryCatalog),
           products: filterProducts(allProducts, primary, secondaryNav.includes(secondary) ? secondary : "全部", ids, normalizeKeyword(this.data.searchKeyword)),
+          showCartEntry: this.shouldShowCartEntry(allProducts, primary),
           loading: false
         })
+        this.loadCartCount()
       })
     })
   },
@@ -310,7 +330,12 @@ Page({
       })
     }
     wx.setStorageSync("cartItems", cart)
+    this.loadCartCount()
     wx.showToast({ title: "已加入购物车", icon: "success" })
+  },
+
+  goCart() {
+    wx.navigateTo({ url: "/pages/cart/cart" })
   },
 
   showContact() {

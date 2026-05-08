@@ -1802,6 +1802,27 @@ function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "")
 }
 
+function normalizeStatusText(value) {
+  return String(value == null ? "" : value).trim().toLowerCase()
+}
+
+function isEnabledLike(value, defaultValue = false) {
+  const text = normalizeStatusText(value)
+  if (!text) return defaultValue
+  return ["enabled", "active", "on", "1", "true", "启用", "已启用", "正常"].includes(text)
+}
+
+function isDisabledLike(value) {
+  return ["disabled", "inactive", "off", "0", "false", "停用", "禁用", "已停用"].includes(normalizeStatusText(value))
+}
+
+function isStoreEnabled(store = {}) {
+  const statusOk = !isDisabledLike(store.status) && isEnabledLike(store.status, true)
+  const storeStatusOk = !isDisabledLike(store.storeStatus || store.store_status) && isEnabledLike(store.storeStatus || store.store_status, true)
+  const enabledOk = store.enabled == null ? true : isEnabledLike(store.enabled, true)
+  return statusOk && storeStatusOk && enabledOk
+}
+
 function defaultStoreRules(level) {
   if (level === "pickup") return { referralType: "percent", referralValue: "3", pickupType: "fixed", pickupValue: "2" }
   if (level === "supplier") return { referralType: "percent", referralValue: "1", pickupType: "fixed", pickupValue: "1" }
@@ -2226,7 +2247,9 @@ async function getProduct(id) {
 async function getPartnerStores(filters = {}) {
   if (!pool) {
     let list = readJsonFile(partnerStoresFile, []).map(normalizePartnerStore)
-    if (filters.status) list = list.filter(store => store.status === filters.status)
+    if (filters.status === "enabled") list = list.filter(isStoreEnabled)
+    else if (filters.status === "disabled") list = list.filter(store => !isStoreEnabled(store))
+    else if (filters.status) list = list.filter(store => normalizeStatusText(store.status) === normalizeStatusText(filters.status))
     if (filters.pickupOnly) list = list.filter(store => store.isPickupEnabled === "true")
     if (filters.keyword) {
       const keyword = String(filters.keyword).toLowerCase()
@@ -2237,8 +2260,14 @@ async function getPartnerStores(filters = {}) {
   const where = []
   const params = {}
   if (filters.status) {
-    where.push("status = :status")
-    params.status = filters.status
+    if (filters.status === "enabled") {
+      where.push("(status IS NULL OR status = '' OR status IN ('enabled','active','on','1','true','启用','已启用','正常'))")
+    } else if (filters.status === "disabled") {
+      where.push("status IN ('disabled','inactive','off','0','false','停用','禁用','已停用')")
+    } else {
+      where.push("status = :status")
+      params.status = filters.status
+    }
   }
   if (filters.pickupOnly) where.push("is_pickup_enabled = 'true'")
   if (filters.keyword) {
@@ -2255,7 +2284,7 @@ async function getPartnerStore(id) {
 }
 
 function isActiveStoreManagerBinding(store) {
-  return !!store.managerPhone && store.status === "enabled" && store.storeStatus !== "disabled"
+  return !!store.managerPhone && isStoreEnabled(store)
 }
 
 function managerPhoneDuplicateMap(stores = []) {
@@ -2668,7 +2697,7 @@ async function calculateOrderStoreIncome(data, amount) {
 }
 
 function isValidReferrerStore(store) {
-  return !!store && store.status === "enabled" && store.isDisplayEnabled === "true" && store.referralCommissionType !== "none"
+  return !!store && isStoreEnabled(store) && store.isDisplayEnabled === "true" && store.referralCommissionType !== "none"
 }
 
 async function resolveValidReferrerStoreId(storeId) {
@@ -2773,7 +2802,8 @@ async function getStoreSession(req) {
     })
     return null
   }
-  const stores = await getPartnerStores({ status: "enabled" })
+  const stores = await getPartnerStores()
+  const activeStores = stores.filter(isStoreEnabled)
   const sessionPhone = normalizePhone(session.phone)
   const managerPhones = stores
     .filter(item => item.managerPhone)
@@ -2782,13 +2812,16 @@ async function getStoreSession(req) {
       managerPhoneTail: maskTail(normalizePhone(item.managerPhone)),
       status: item.status,
       storeStatus: item.storeStatus,
+      enabled: isStoreEnabled(item),
       phoneMatched: normalizePhone(item.managerPhone) === sessionPhone
     }))
-  const matches = stores.filter(item => item.managerPhone && normalizePhone(item.managerPhone) === sessionPhone && item.storeStatus !== "disabled")
+  const matches = activeStores.filter(item => item.managerPhone && normalizePhone(item.managerPhone) === sessionPhone)
   console.log("[store-me]", {
     hasSession: true,
     sessionPhoneTail: maskTail(sessionPhone),
     hasOpenid: !!session.openid,
+    storeCount: stores.length,
+    activeStoreCount: activeStores.length,
     managerPhones: managerPhones.slice(0, 8),
     matchCount: matches.length,
     bound: matches.length === 1,
@@ -2904,15 +2937,16 @@ async function createOrder(data) {
   }
   if (!product) throw new Error("商品不存在")
   const productType = String(data.productType || data.orderType || product.productType || "").toLowerCase() === "normal" ? "normal" : "custom"
+  const quantity = Math.max(1, Math.floor(Number(data.quantity || 1)))
   const isQuoteOrder = String(data.needQuote || product.needQuote || product.need_quote || "").toLowerCase() === "true" ||
     String(data.priceMode || product.priceMode || product.price_mode || "").toLowerCase() === "quote" ||
     (String(data.isCustomOrder || "false") === "true" && Number(product.price || 0) <= 0)
-  const orderAmount = isQuoteOrder ? "0.00" : money(product.price)
+  const orderAmount = isQuoteOrder ? "0.00" : money(Number(product.price || 0) * (cartItems.length ? 1 : quantity))
   const deliveryType = data.deliveryType === "pickup" ? "pickup" : "delivery"
   let pickupStore = null
   if (deliveryType === "pickup") {
     pickupStore = await getPartnerStore(data.pickupStoreId)
-    if (!pickupStore || pickupStore.status !== "enabled" || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
+    if (!pickupStore || !isStoreEnabled(pickupStore) || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
   }
   const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.storeId || data.referrer_store_id || "")
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
@@ -2936,7 +2970,12 @@ async function createOrder(data) {
     openid: data.openid || "",
     userId: data.userId || "",
     userToken: data.userToken || "",
-    remark: [data.remark || "", cartItems.length ? `购物车：${cartItems.map(item => `${item.product.name}x${item.quantity}`).join("，")}` : "", data.newcomerBenefitText ? `新人福利：${data.newcomerBenefitText}` : ""].filter(Boolean).join("\n"),
+    remark: [
+      data.remark || "",
+      cartItems.length ? `购物车：${cartItems.map(item => `${item.product.name}x${item.quantity}`).join("，")}` : "",
+      !cartItems.length && productType === "normal" ? `普通商品：${product.name}x${quantity}` : "",
+      data.newcomerBenefitText ? `新人福利：${data.newcomerBenefitText}` : ""
+    ].filter(Boolean).join("\n"),
     inviterCode: data.inviterCode || "",
     deliveryType,
     pickupStoreId: pickupStore?.id || "",

@@ -78,6 +78,9 @@ Page({
     normalMode: false,
     cartMode: false,
     cartItems: [],
+    quantity: 1,
+    unitPrice: "0.00",
+    totalPrice: "0.00",
     loginVisible: false,
     loginLoading: false
   },
@@ -121,14 +124,26 @@ Page({
     const uploadedImages = customImage ? [{ url: customImage }] : []
     const storedPhone = wx.getStorageSync("memberPhone") || ""
     const storedName = wx.getStorageSync("memberName") || ""
-    const cartItems = Array.isArray(options.cartItems) ? options.cartItems : []
+    const cartItems = (Array.isArray(options.cartItems) ? options.cartItems : []).map(item => {
+      const quantity = Math.max(1, Number(item.quantity || 1))
+      const price = Number(item.price || 0)
+      return { ...item, quantity, price: price.toFixed(2), amount: (price * quantity).toFixed(2) }
+    })
     const normalMode = this.isNormalProduct(product) || cartItems.length > 0
+    const quantity = Math.max(1, Number(options.quantity || 1))
+    const unitPrice = Number(product.price || 0)
+    const totalPrice = cartItems.length
+      ? cartItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0)
+      : unitPrice * quantity
     this.setData({
       product,
       quoteMode: this.isQuoteProduct(product, mode),
       normalMode,
       cartMode: cartItems.length > 0,
       cartItems,
+      quantity,
+      unitPrice: unitPrice.toFixed(2),
+      totalPrice: totalPrice.toFixed(2),
       mode,
       category: category || (Array.isArray(product.categories) ? product.categories[0] : "") || product.name || "",
       source: options.source || "",
@@ -195,6 +210,20 @@ Page({
       String(product.needQuote || "").toLowerCase() === "true" ||
       String(product.priceMode || "").toLowerCase() === "quote" ||
       /待客服确认报价|待报价/.test(String(product.priceText || product.intro || ""))
+  },
+
+  changeQuantity(event) {
+    const delta = Number(event.currentTarget.dataset.delta || 0)
+    const quantity = Math.max(1, Number(this.data.quantity || 1) + delta)
+    const stock = Number(this.data.product?.stock || 0)
+    if (stock > 0 && quantity > stock) {
+      wx.showToast({ title: "已达到库存上限", icon: "none" })
+      return
+    }
+    this.setData({
+      quantity,
+      totalPrice: (Number(this.data.unitPrice || this.data.product?.price || 0) * quantity).toFixed(2)
+    })
   },
 
   onInput(event) {
@@ -608,6 +637,7 @@ Page({
           productType: this.data.normalMode ? "normal" : "custom",
           orderType: this.data.normalMode ? "normal" : "custom",
           cartItems: this.data.cartItems,
+          quantity: this.data.cartMode ? 1 : this.data.quantity,
           priceMode: this.isQuoteOrder() ? "quote" : "fixed",
           needQuote: this.isQuoteOrder() ? "true" : "false",
           ...this.data.form

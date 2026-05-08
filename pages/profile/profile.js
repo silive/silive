@@ -283,14 +283,18 @@ Page({
       this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null })
       return
     }
+    this.setData({ storeChecked: false, storeConflictMessage: "" })
     const { request } = require("../../utils/api")
     request("/api/store/me")
       .then(data => {
         console.log("[store-me] profile response", {
           hasUserSession: !!wx.getStorageSync("userSession"),
+          ok: data.ok !== false,
           bound: !!data.bound,
           error: data.error || "",
+          message: data.message || "",
           storeName: data.storeInfo && data.storeInfo.name || "",
+          debugStatus: data.debugStatus || "",
           managerPhone: data.storeInfo && data.storeInfo.managerPhone || ""
         })
         const levelMap = { display: "展示点", pickup: "自提点", supplier: "供货点", partner: "合伙点" }

@@ -1,8 +1,16 @@
 <view class="page {{themeClass}}" style="{{themeStyle}}">
   <view class="title-block">
-    <view class="eyebrow">CATEGORY</view>
-    <view class="title">{{category}}</view>
-    <view class="subtitle">挑选喜欢的商品，进入详情后即可定制</view>
+    <view class="title-row">
+      <view class="title-copy">
+        <view class="eyebrow">CATEGORY</view>
+        <view class="title">{{category}}</view>
+        <view class="subtitle">挑选喜欢的商品，进入详情后即可{{showCartEntry ? '购买' : '定制'}}</view>
+      </view>
+      <button wx:if="{{showCartEntry}}" class="cart-entry" bindtap="goCart">
+        <text>购物车</text>
+        <text wx:if="{{cartCount > 0}}" class="cart-entry-badge">{{cartCount}}</text>
+      </button>
+    </view>
   </view>
 
   <view class="search-box">

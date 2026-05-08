@@ -26,6 +26,34 @@
       </view>
     </view>
     <view wx:if="{{phoneTip}}" class="field-tip {{phoneTipType}}">{{phoneTip}}</view>
+    <view wx:if="{{normalMode}}" class="normal-order-panel">
+      <view class="normal-order-title">商品清单</view>
+      <view wx:if="{{cartMode}}" class="cart-summary-list">
+        <view class="cart-summary-item" wx:for="{{cartItems}}" wx:key="id">
+          <image wx:if="{{item.imageUrl}}" class="cart-summary-image" src="{{item.imageUrl}}" mode="aspectFill" />
+          <view class="cart-summary-info">
+            <view class="cart-summary-name">{{item.name}}</view>
+            <view class="cart-summary-meta">¥{{item.price}} × {{item.quantity}}</view>
+          </view>
+          <view class="cart-summary-subtotal">¥{{item.amount}}</view>
+        </view>
+      </view>
+      <view wx:else class="quantity-row">
+        <view>
+          <view class="quantity-label">购买数量</view>
+          <view class="quantity-price">单价 ¥{{unitPrice}}</view>
+        </view>
+        <view class="quantity-stepper">
+          <button class="quantity-btn" data-delta="-1" bindtap="changeQuantity">−</button>
+          <view class="quantity-num">{{quantity}}</view>
+          <button class="quantity-btn" data-delta="1" bindtap="changeQuantity">+</button>
+        </view>
+      </view>
+      <view class="normal-total">
+        <text>合计</text>
+        <text class="normal-total-price">¥{{totalPrice}}</text>
+      </view>
+    </view>
     <view class="address-action">
       <button class="light-btn" style="{{secondaryButtonStyle}}" bindtap="chooseAddress">一键选择收货地址</button>
     </view>
