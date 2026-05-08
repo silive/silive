@@ -1935,6 +1935,11 @@ function maskPhone(phone) {
   return text.length === 11 ? `${text.slice(0, 3)}****${text.slice(7)}` : text
 }
 
+function maskNormalizedPhone(phone) {
+  const text = normalizePhone(phone)
+  return text.length === 11 ? `${text.slice(0, 3)}****${text.slice(7)}` : (text ? `***${text.slice(-4)}` : "")
+}
+
 function maskTail(value) {
   const text = String(value || "")
   return text ? `***${text.slice(-4)}` : "empty"
@@ -2305,6 +2310,35 @@ function withStoreManagerWarnings(stores = []) {
       ? { ...store, managerPhoneDuplicated: true, managerPhoneWarning: "该手机号已绑定多个启用门店，请联系管理员处理" }
       : store
   })
+}
+
+function storeManagerDebugView(stores = [], inputPhone = "") {
+  const normalizedInput = normalizePhone(inputPhone)
+  const allStores = (Array.isArray(stores) ? stores : []).map(normalizePartnerStore)
+  const matched = allStores.filter(store => normalizePhone(store.managerPhone) === normalizedInput)
+  const activeMatched = matched.filter(isStoreEnabled)
+  let reason = "not_found"
+  if (!normalizedInput) reason = "empty_phone"
+  else if (!matched.length) reason = "manager_phone_not_saved_or_not_matched"
+  else if (matched.length && !activeMatched.length) reason = "matched_but_store_disabled"
+  else if (activeMatched.length > 1) reason = "multiple_active_stores_matched"
+  else reason = "matched_active_store"
+  return {
+    ok: true,
+    inputPhoneMasked: maskNormalizedPhone(normalizedInput),
+    normalizedInput: normalizedInput ? `***${normalizedInput.slice(-4)}` : "",
+    matchedCount: activeMatched.length,
+    rawMatchedCount: matched.length,
+    stores: matched.map(store => ({
+      name: store.name,
+      managerPhoneMasked: maskNormalizedPhone(store.managerPhone),
+      status: store.status,
+      storeStatus: store.storeStatus,
+      enabled: isStoreEnabled(store),
+      role: store.storeRole
+    })),
+    reason
+  }
 }
 
 function assertUniqueManagerPhone(stores = [], candidate = {}) {
@@ -4885,6 +4919,12 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/stores" && req.method === "GET") {
     sendJson(res, 200, withStoreManagerWarnings(await getPartnerStores({ keyword: url.searchParams.get("keyword") || "" })))
+    return
+  }
+
+  if (url.pathname === "/api/admin/debug/store-manager" && req.method === "GET") {
+    const phone = url.searchParams.get("phone") || ""
+    sendJson(res, 200, storeManagerDebugView(await getPartnerStores(), phone))
     return
   }
 

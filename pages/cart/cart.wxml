@@ -19,16 +19,23 @@
           <button class="qty" bindtap="changeQty" data-index="{{index}}" data-delta="-1">−</button>
           <view class="qty-num">{{item.quantity}}</view>
           <button class="qty" bindtap="changeQty" data-index="{{index}}" data-delta="1">+</button>
-          <button class="remove" bindtap="removeItem" data-index="{{index}}">删除</button>
         </view>
+      </view>
+      <view class="card-foot">
+        <view class="subtotal">小计 ¥{{item.amount}}</view>
+        <button class="remove" bindtap="removeItem" data-index="{{index}}">删除</button>
       </view>
     </view>
   </view>
-  <view wx:else class="empty">购物车还是空的，先去看看日用好货吧</view>
+  <view wx:else class="empty">
+    <view class="empty-title">购物车为空</view>
+    <view class="empty-desc">去逛逛日用好货，喜欢的可以先加入购物车。</view>
+    <button class="empty-btn" bindtap="goShopping">去逛逛</button>
+  </view>
 
   <view class="bottom-bar">
     <view>
-      <view class="total-label">合计</view>
+      <view class="total-label">已选 {{selectedCount}} 件</view>
       <view class="total">¥{{total}}</view>
     </view>
     <button class="checkout" bindtap="checkout">去结算</button>

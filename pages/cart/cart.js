@@ -14,6 +14,7 @@ Page({
     items: [],
     total: "0.00",
     selectedCount: 0,
+    selectedKinds: 0,
     themeStyle: "",
     themeClass: "theme-skin01"
   },
@@ -32,6 +33,7 @@ Page({
     const selected = items.filter(item => item.selected !== false)
     this.setData({
       items,
+      selectedKinds: selected.length,
       selectedCount: selected.reduce((sum, item) => sum + Number(item.quantity || 1), 0),
       total: selected.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0).toFixed(2)
     })
@@ -70,5 +72,9 @@ Page({
       return
     }
     wx.navigateTo({ url: `/pages/checkout/checkout?cartItems=${encodeURIComponent(JSON.stringify(selected))}` })
+  },
+
+  goShopping() {
+    wx.navigateTo({ url: "/pages/category/list?primary=%E6%97%A5%E7%94%A8%E5%A5%BD%E8%B4%A7" })
   }
 })
