@@ -1,8 +1,8 @@
 <view class="help-page {{themeClass}}" style="{{themeStyle}}">
   <view class="hero">
     <view class="eyebrow">AFTER-SALES SERVICE</view>
-    <view class="title">售后保障</view>
-    <view class="subtitle">下单流程、定制说明、发货时效与售后政策</view>
+    <view class="title">{{pageTitle}}</view>
+    <view class="subtitle">{{pageSubtitle}}</view>
   </view>
 
   <button wx:if="{{guideAd && guideAd.imageUrl && (guideAd.targetType === 'contact' || guideAd.linkType === 'contact')}}" class="guide-ad" open-type="contact">
@@ -40,14 +40,5 @@
     <view class="empty-title">售后保障内容正在整理中</view>
     <view class="empty-desc">如需确认定制细节，可先联系客服</view>
     <button class="contact-btn" open-type="contact">联系客服</button>
-  </view>
-
-  <view wx:if="{{banner}}" class="help-banner" bindtap="openBanner">
-    <image wx:if="{{banner.imageUrl}}" class="banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
-    <view class="banner-copy">
-      <view wx:if="{{banner.tag}}" class="banner-tag">{{banner.tag}}</view>
-      <view class="banner-title">{{banner.title}}</view>
-      <view class="banner-desc">{{banner.desc}}</view>
-    </view>
   </view>
 </view>

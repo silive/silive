@@ -14,7 +14,7 @@ Page({
     pendingReward: "0.00",
     themeStyle: "",
     themeClass: "theme-skin01",
-    pendingPayCount: 0,
+    orderCount: 0,
     afterSaleDot: true,
     contact: {
       phone: "",
@@ -253,16 +253,15 @@ Page({
     const openid = wx.getStorageSync("openid") || ""
     const userSession = wx.getStorageSync("userSession") || ""
     if (!loginState.loggedIn || (!userId && !userToken && !openid && !userSession)) {
-      this.setData({ pendingPayCount: 0 })
+      this.setData({ orderCount: 0 })
       return
     }
     request(`/api/orders?userSession=${encodeURIComponent(userSession)}&openid=${encodeURIComponent(openid)}&userId=${encodeURIComponent(userId)}&userToken=${encodeURIComponent(userToken)}`)
       .then(orders => {
-        const pendingPayCount = (orders || []).filter(order => order.paymentStatus === "待支付" || order.status === "待支付").length
-        this.setData({ pendingPayCount })
+        this.setData({ orderCount: Array.isArray(orders) ? orders.length : 0 })
       })
       .catch(() => {
-        this.setData({ pendingPayCount: 0 })
+        this.setData({ orderCount: 0 })
       })
   },
 

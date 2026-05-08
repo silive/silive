@@ -67,7 +67,11 @@
 }
 
 .hero-mask {
-  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(22,119,255,.20));
+  left: 0;
+  right: auto;
+  width: 58%;
+  background: linear-gradient(90deg, rgba(15, 23, 42, .28), rgba(15, 23, 42, .10), transparent);
+  pointer-events: none;
 }
 
 .hero-print {
@@ -841,9 +845,11 @@
 }
 
 .hero-mask {
-  background:
-    linear-gradient(90deg, rgba(34, 28, 34, .76), rgba(22,119,255,.14)),
-    linear-gradient(180deg, transparent, rgba(0, 0, 0, .22));
+  left: 0;
+  right: auto;
+  width: 58%;
+  background: linear-gradient(90deg, rgba(15, 23, 42, .26), rgba(15, 23, 42, .08), transparent);
+  pointer-events: none;
 }
 
 .hero-print,

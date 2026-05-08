@@ -4241,6 +4241,8 @@ async function handle(req, res) {
   if (url.pathname === "/api/help-center" && req.method === "GET") {
     const [home, settings] = await Promise.all([getHome(), getSettings()])
     sendJson(res, 200, {
+      pageTitle: settings.helpPageTitle || "售后保障",
+      pageSubtitle: settings.helpPageSubtitle || "下单流程、定制说明、发货时效与售后政策",
       articles: normalizeHelpArticles(settings.helpArticles).filter(item => item.status !== "off"),
       banner: pickBanner(home.banners, 4),
       profileBanner: pickBanner(home.banners, 3),

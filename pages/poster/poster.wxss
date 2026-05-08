@@ -39,7 +39,7 @@
   left: -9999rpx;
   top: -9999rpx;
   width: 750px;
-  height: 960px;
+  height: 1200px;
 }
 
 .poster-info {

@@ -10,7 +10,7 @@
   <swiper class="hero-swiper" autoplay circular interval="3600" duration="650" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
     <swiper-item wx:for="{{banners}}" wx:key="title">
       <view class="hero hero-{{item.theme}}" style="{{bannerStyle}}" bindtap="openBanner" data-index="{{index}}">
-        <image wx:if="{{item.imageUrl}}" class="hero-image" style="{{bannerImageStyle}}" src="{{item.imageUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.imageUrl}}" class="hero-image" style="{{bannerImageStyle}}" src="{{item.imageUrl}}" mode="aspectFill" lazy-load="{{index > 0}}" />
         <view wx:if="{{item.imageUrl}}" class="hero-mask" style="{{bannerOverlayStyle}}"></view>
         <view class="hero-copy">
           <view class="hero-tag">{{item.tag}}</view>

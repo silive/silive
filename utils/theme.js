@@ -156,7 +156,7 @@ function buildThemeStyles(theme = DEFAULT_THEME) {
     primaryButtonStyle: `background:${gradient};border-radius:${next.radius.buttonRadius}rpx;color:#fff`,
     secondaryButtonStyle: `background:${c.cardColor};border:1rpx solid ${c.borderColor || c.lightBg};border-radius:${next.radius.buttonRadius}rpx;color:${c.primaryColor}`,
     bannerStyle: `background:${bannerGradient};border-radius:${next.radius.cardRadius}rpx;box-shadow:0 12rpx 32rpx ${c.shadowColor}`,
-    bannerOverlayStyle: `background:linear-gradient(90deg, ${hexToRgba(c.primaryColor, .72)}, ${hexToRgba(c.accentColor, .22)})`,
+    bannerOverlayStyle: `left:0;right:auto;width:58%;background:linear-gradient(90deg, rgba(15,23,42,.26), rgba(15,23,42,.08), transparent);pointer-events:none`,
     bannerImageStyle: "",
     priceStyle: `color:${c.priceColor}`,
     mutedTextStyle: `color:${c.mutedTextColor}`,

@@ -21,7 +21,7 @@
   <view class="feature-panel">
     <view class="feature-row top-row">
       <button class="feature-card" style="{{cardStyle}}" bindtap="goOrders">
-        <view wx:if="{{pendingPayCount > 0}}" class="feature-badge">{{pendingPayCount}}</view>
+        <view wx:if="{{orderCount > 0}}" class="feature-badge">{{orderCount}}</view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">≡</view>
         <view class="feature-title">我的订单</view>
         <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>

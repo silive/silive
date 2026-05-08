@@ -487,7 +487,11 @@
               <h3>帮助中心文章</h3>
               <button class="secondary" data-action="add-help-article">新增文章</button>
             </div>
-            <div class="upload-help">支持标题、文字、图片、富文本图文文章；排序越小越靠前，关闭后前台不展示。</div>
+            <div class="form-grid">
+              <label>售后保障页标题<input id="helpPageTitle" placeholder="售后保障"></label>
+              <label>售后保障页副标题<input id="helpPageSubtitle" placeholder="下单流程、定制说明、发货时效与售后政策"></label>
+            </div>
+            <div class="upload-help">支持标题、摘要、图片、富文本图文文章；排序越小越靠前，关闭后前台不展示。修改后保存当前页，小程序售后保障页实时读取。</div>
             <div class="list" id="helpArticles"></div>
           </div>
         </div>
@@ -721,6 +725,7 @@
             <label>发货承诺<input id="deliveryPromise"></label>
             <label>存储模式<input id="storageMode" value="MySQL 数据库" disabled></label>
           </div>
+          <div class="upload-help" style="margin-top:14px">微信客服查看说明：小程序客服消息请在微信公众平台查看：微信公众平台 → 客服消息 / 小程序客服。也可绑定客服人员微信，用户点击“联系客服”后消息会进入微信官方客服系统；这里的企业微信号/微信号仅用于展示或复制，不等同于 open-type="contact" 官方客服入口。</div>
           <div style="margin-top:18px">
             <h3>新人福利</h3>
             <div class="form-grid">
@@ -1036,7 +1041,7 @@
             <input data-key="${key}" value="${v}">
             <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-upload-key="${key}">
           </div>
-          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB</div>
+          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}</div>
           <img class="image-preview ${v ? "show" : ""}" src="${v}" alt="图片预览">
         </label>`
       }
@@ -1765,6 +1770,8 @@
     function renderHelpArticles() {
       const articles = normalizeHelpArticles(settings.helpArticles)
       settings.helpArticles = articles
+      $("helpPageTitle").value = settings.helpPageTitle || "售后保障"
+      $("helpPageSubtitle").value = settings.helpPageSubtitle || "下单流程、定制说明、发货时效与售后政策"
       $("helpArticles").innerHTML = articles.map((item, index) => `
         <div class="item" data-help-index="${index}">
           <div class="item-head">
@@ -1795,6 +1802,8 @@
       `).join("") || `<div class="empty">暂无帮助文章，点击右上角新增。</div>`
     }
     function collectHelpArticles() {
+      settings.helpPageTitle = $("helpPageTitle")?.value || "售后保障"
+      settings.helpPageSubtitle = $("helpPageSubtitle")?.value || "下单流程、定制说明、发货时效与售后政策"
       const next = []
       document.querySelectorAll("[data-help-index]").forEach(row => {
         const index = Number(row.dataset.helpIndex)
@@ -2448,7 +2457,7 @@
         collectList("homeProducts", home.products)
         await api("/api/home", "PUT", home)
         collectHelpArticles()
-        await api("/api/admin/settings", "PUT", { ...settings, helpArticles: settings.helpArticles })
+        await api("/api/admin/settings", "PUT", { ...settings, helpArticles: settings.helpArticles, helpPageTitle: settings.helpPageTitle, helpPageSubtitle: settings.helpPageSubtitle })
       }
       if (currentView === "products") {
         collectCategoryManager()
@@ -2508,6 +2517,8 @@
           deliveryPromise: $("deliveryPromise").value,
           newcomerBenefitsEnabled: $("newcomerBenefitsEnabled").value,
           newcomerBenefits: collectSettingsBenefits(),
+          helpPageTitle: settings.helpPageTitle,
+          helpPageSubtitle: settings.helpPageSubtitle,
           helpArticles: settings.helpArticles,
           categoryCatalog,
           activities
@@ -2993,7 +3004,7 @@
             preview.src = url
             preview.classList.add("show")
           }
-          setStatus("图片上传成功")
+          setStatus(file.size > 2 * 1024 * 1024 ? "图片上传成功。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "图片上传成功")
         }).catch(error => setStatus(error.message))
         return
       }
@@ -3094,24 +3105,26 @@
       }
       if (event.target.dataset.themeUpload && event.target.files?.[0]) {
         const key = event.target.dataset.themeUpload
-        uploadImage(event.target.files[0]).then(url => {
+        const file = event.target.files[0]
+        uploadImage(file).then(url => {
           const theme = currentEditingTheme()
           theme[key] = url
           if (key === "banner" && !theme.thumbnail) theme.thumbnail = url
           renderThemes()
-          setStatus("皮肤图片已上传，保存后生效")
+          setStatus(file.size > 2 * 1024 * 1024 ? "皮肤图片已上传。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "皮肤图片已上传，保存后生效")
         }).catch(error => setStatus(error.message))
         return
       }
       if (!event.target.dataset.uploadKey || !event.target.files?.[0]) return
+      const file = event.target.files[0]
       const inputEl = event.target.closest("label").querySelector(`[data-key='${event.target.dataset.uploadKey}']`)
       const previewEl = event.target.closest("label").querySelector(".image-preview")
       setStatus("图片上传中...")
-      uploadImage(event.target.files[0]).then(url => {
+      uploadImage(file).then(url => {
         inputEl.value = url
         previewEl.src = url
         previewEl.classList.add("show")
-        setStatus("图片已上传，记得保存当前页")
+        setStatus(file.size > 2 * 1024 * 1024 ? "图片已上传，记得保存当前页。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "图片已上传，记得保存当前页")
       }).catch(error => setStatus(error.message))
     })
     document.body.addEventListener("change", event => {
