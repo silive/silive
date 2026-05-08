@@ -68,6 +68,13 @@ App({
         data: { invite, visitorId: localUserId },
         timeout: 5000
       }).catch(() => {})
+      if (wx.getStorageSync("memberPhone") && wx.getStorageSync("userSession")) {
+        request("/api/promotion/bind", {
+          method: "POST",
+          data: { inviterCode: invite, name: wx.getStorageSync("memberName") || "微信用户" },
+          timeout: 5000
+        }).catch(() => {})
+      }
     }
   },
 

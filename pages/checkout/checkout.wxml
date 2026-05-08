@@ -11,7 +11,7 @@
   </view>
 
   <view class="form-panel" style="{{cardStyle}}">
-    <view class="panel-title">定制信息</view>
+    <view class="panel-title">{{normalMode ? '订单信息' : '定制信息'}}</view>
     <view wx:if="{{customImage}}" class="upload-preview">
       <image class="upload-preview-image" src="{{customImage}}" mode="aspectFill" />
       <view>
@@ -57,7 +57,7 @@
         </view>
       </view>
     </view>
-    <view class="field upload-field">
+    <view class="field upload-field" wx:if="{{!normalMode}}">
       <view class="upload-head">
         <view>
           <view class="upload-label">上传参考图片</view>
@@ -77,8 +77,20 @@
         <view>点击上传参考图片</view>
       </view>
     </view>
-    <view class="field">定制要求<textarea value="{{form.customRequest}}" data-field="customRequest" bindinput="onInput" placeholder="例如刻字内容、纪念日期、想要的风格"></textarea></view>
+    <view class="field" wx:if="{{!normalMode}}">定制要求<textarea value="{{form.customRequest}}" data-field="customRequest" bindinput="onInput" placeholder="例如刻字内容、纪念日期、想要的风格"></textarea></view>
+    <view class="normal-tip" wx:else style="{{mutedTextStyle}}">普通商品无需上传图片和备注，确认配送方式后即可提交支付。</view>
   </view>
 
   <button class="pay-btn" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">{{quoteMode ? '提交需求，等待报价' : '提交订单并支付'}}</button>
+
+  <login-sheet
+    visible="{{loginVisible}}"
+    loading="{{loginLoading}}"
+    title="请先完成登录"
+    desc="登录后可同步订单、手机号和售后服务"
+    confirm-text="微信快捷登录"
+    cancel-text="暂不登录"
+    bind:getphonenumber="onLoginPhone"
+    bind:close="closeLoginSheet"
+  />
 </view>

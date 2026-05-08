@@ -1,5 +1,5 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
-const { ensureOpenid, getLoginState } = require("../../utils/auth")
+const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { chooseWechatAddress, formatWechatAddress, addressErrorMessage } = require("../../utils/address")
 
@@ -74,13 +74,30 @@ Page({
     themeStyle: "",
     themeClass: "theme-skin01",
     paying: false,
-    quoteMode: false
+    quoteMode: false,
+    normalMode: false,
+    cartMode: false,
+    cartItems: [],
+    loginVisible: false,
+    loginLoading: false
   },
 
   onLoad(options) {
     applyTheme(this)
     const mode = options.mode || ""
     const category = decodeURIComponent(options.category || "")
+    const cartItems = safeJson(options.cartItems, [])
+    if (Array.isArray(cartItems) && cartItems.length) {
+      this.initCheckout({
+        id: "CART_ORDER",
+        name: `购物车商品（${cartItems.length}件）`,
+        intro: "普通商品直接购买",
+        price: cartItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0).toFixed(2),
+        productType: "normal",
+        categories: ["日用好货"]
+      }, mode, category || "日用好货", { ...options, cartItems })
+      return
+    }
     let product = null
     if (options.product) product = safeJson(options.product)
     if (!product && options.productId) {
@@ -96,6 +113,7 @@ Page({
 
   onShow() {
     applyTheme(this)
+    if (this.data.product && !getLoginState().loggedIn && !this.data.loginVisible) this.promptLogin()
   },
 
   initCheckout(product, mode, category, options = {}) {
@@ -103,9 +121,14 @@ Page({
     const uploadedImages = customImage ? [{ url: customImage }] : []
     const storedPhone = wx.getStorageSync("memberPhone") || ""
     const storedName = wx.getStorageSync("memberName") || ""
+    const cartItems = Array.isArray(options.cartItems) ? options.cartItems : []
+    const normalMode = this.isNormalProduct(product) || cartItems.length > 0
     this.setData({
       product,
       quoteMode: this.isQuoteProduct(product, mode),
+      normalMode,
+      cartMode: cartItems.length > 0,
+      cartItems,
       mode,
       category: category || (Array.isArray(product.categories) ? product.categories[0] : "") || product.name || "",
       source: options.source || "",
@@ -124,6 +147,44 @@ Page({
     if (options.autoAddress === "1") {
       setTimeout(() => this.chooseAddress({ silent: true }), 350)
     }
+    if (!getLoginState().loggedIn) setTimeout(() => this.promptLogin(), 120)
+  },
+
+  promptLogin() {
+    this.setData({ loginVisible: true })
+  },
+
+  closeLoginSheet() {
+    this.setData({ loginVisible: false })
+  },
+
+  onLoginPhone(event) {
+    this.setData({ loginLoading: true })
+    loginWithPhoneDetail(event.detail || {}).then(() => {
+      const phone = wx.getStorageSync("memberPhone") || ""
+      const name = wx.getStorageSync("memberName") || this.data.form.customerName
+      this.setData({
+        loginVisible: false,
+        "form.phone": phone || this.data.form.phone,
+        "form.customerName": name || this.data.form.customerName
+      })
+      this.setPhone(phone)
+      wx.showToast({ title: "登录成功", icon: "success" })
+    }).catch(error => {
+      if (error.isAuthDenied) {
+        wx.showToast({ title: "未授权手机号，可稍后再登录", icon: "none" })
+        return
+      }
+      wx.showModal({ title: "登录失败", content: error.message || "登录失败，请稍后重试", showCancel: false })
+    }).finally(() => {
+      this.setData({ loginLoading: false })
+    })
+  },
+
+  isNormalProduct(product = this.data.product || {}) {
+    const categories = Array.isArray(product.categories) ? product.categories : []
+    const type = String(product.productType || product.orderType || "").toLowerCase()
+    return type === "normal" || String(product.needCustom || "").toLowerCase() === "false" || categories.some(item => String(item).includes("日用好货"))
   },
 
   isQuoteProduct(product = this.data.product || {}, mode = this.data.mode) {
@@ -188,7 +249,7 @@ Page({
       wx.showToast({ title: "请填写联系电话", icon: "none" })
       return false
     }
-    if (!customRequest) {
+    if (!this.data.normalMode && !customRequest) {
       wx.showToast({ title: "请填写定制要求", icon: "none" })
       return false
     }
@@ -510,12 +571,7 @@ Page({
   submitOrder() {
     if (this.data.paying) return
     if (!getLoginState().loggedIn) {
-      wx.showModal({
-        title: "请先完成登录",
-        content: "为保护订单信息，请先在商品详情页完成微信快捷登录后再下单。",
-        confirmText: "知道了",
-        showCancel: false
-      })
+      this.promptLogin()
       return
     }
     if (!this.validate()) return
@@ -547,6 +603,9 @@ Page({
           userLongitude: this.data.userLocation?.longitude || "",
           pickupDistance: this.data.selectedPickupStore?.distance == null ? "" : Number(this.data.selectedPickupStore.distance).toFixed(2),
           referrerStoreId,
+          productType: this.data.normalMode ? "normal" : "custom",
+          orderType: this.data.normalMode ? "normal" : "custom",
+          cartItems: this.data.cartItems,
           priceMode: this.isQuoteOrder() ? "quote" : "fixed",
           needQuote: this.isQuoteOrder() ? "true" : "false",
           ...this.data.form

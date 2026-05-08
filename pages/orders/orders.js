@@ -55,6 +55,13 @@ function isRefunded(order) {
   return order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
 }
 
+function isCompletedWithinAfterSaleWindow(order) {
+  if (!["已完成", "已自提"].includes(displayStatus(order))) return false
+  const source = order.completedAt || order.pickedUpAt || order.paidAt || order.createdAt
+  const time = source ? new Date(String(source).replace(/-/g, "/")).getTime() : 0
+  return !!time && Date.now() - time <= 7 * 24 * 60 * 60 * 1000
+}
+
 function normalizeProduct(product) {
   return {
     ...product,
@@ -100,7 +107,7 @@ function normalizeOrder(order, products = []) {
 function statusMatches(order, key) {
   if (key === "all") return true
   if (key === "unpaid") return isUnpaid(order)
-  if (key === "afterSale") return isRefunding(order) || isRefunded(order) || !!order.refundStatus
+  if (key === "afterSale") return isRefunding(order) || isRefunded(order) || isCompletedWithinAfterSaleWindow(order)
   if (key === "design") {
     return isPaid(order) && ["待发货", "制作中"].includes(order.status || "")
   }
@@ -133,7 +140,7 @@ function buildRecommendations(products, orders) {
 function buildStatusTabs(orders) {
   return STATUS_TABS.map(tab => ({
     ...tab,
-    count: orders.filter(order => statusMatches(order, tab.key)).length
+    count: tab.key === "afterSale" ? "" : orders.filter(order => statusMatches(order, tab.key)).length
   }))
 }
 

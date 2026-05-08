@@ -29,7 +29,9 @@
   </view>
 
   <view class="top-actions">
-    <button class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
+    <button wx:if="{{product.isNormalProduct}}" class="primary-btn compact" style="{{secondaryButtonStyle}}" bindtap="addToCart">加入购物车</button>
+    <button wx:else class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
+    <button wx:if="{{product.isNormalProduct}}" class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即购买</button>
     <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
   </view>
 
@@ -46,7 +48,7 @@
     <view class="detail-text" style="{{mutedTextStyle}}">定制商品会在制作前确认方案；图片越清晰，成品效果越稳定。如需加急或特殊尺寸，可先联系客服确认。</view>
   </view>
 
-  <button class="primary-btn" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
+  <button class="primary-btn" style="{{primaryButtonStyle}}" bindtap="goCheckout">{{product.isNormalProduct ? '立即购买' : '立即定制'}}</button>
 
   <login-sheet
     visible="{{loginVisible}}"

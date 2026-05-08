@@ -1,0 +1,36 @@
+<view class="cart-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="page-head">
+    <view>
+      <view class="eyebrow">SHOPPING CART</view>
+      <view class="title">购物车</view>
+    </view>
+    <view class="count">{{selectedCount}} 件</view>
+  </view>
+
+  <view wx:if="{{items.length}}" class="cart-list">
+    <view class="cart-card" wx:for="{{items}}" wx:key="id">
+      <button class="check {{item.selected !== false ? 'checked' : ''}}" bindtap="toggleItem" data-index="{{index}}">{{item.selected !== false ? '✓' : ''}}</button>
+      <image wx:if="{{item.imageUrl}}" class="cover" src="{{item.imageUrl}}" mode="aspectFill" />
+      <view wx:else class="cover placeholder">非常智造</view>
+      <view class="info">
+        <view class="name">{{item.name}}</view>
+        <view class="price">¥{{item.price}}</view>
+        <view class="qty-row">
+          <button class="qty" bindtap="changeQty" data-index="{{index}}" data-delta="-1">−</button>
+          <view class="qty-num">{{item.quantity}}</view>
+          <button class="qty" bindtap="changeQty" data-index="{{index}}" data-delta="1">+</button>
+          <button class="remove" bindtap="removeItem" data-index="{{index}}">删除</button>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="empty">购物车还是空的，先去看看日用好货吧</view>
+
+  <view class="bottom-bar">
+    <view>
+      <view class="total-label">合计</view>
+      <view class="total">¥{{total}}</view>
+    </view>
+    <button class="checkout" bindtap="checkout">去结算</button>
+  </view>
+</view>

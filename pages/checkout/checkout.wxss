@@ -621,6 +621,15 @@ textarea {
   background: rgba(255, 250, 251, .82);
 }
 
+.normal-tip {
+  margin-top: 20rpx;
+  padding: 22rpx;
+  border-radius: 20rpx;
+  background: #eef6ff;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
 /* Runtime theme variables */
 .page {
   background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);

@@ -28,7 +28,10 @@ function normalizeProduct(product) {
     mediaImages,
     recommendTip: pickOne(RECOMMEND_TIPS),
     categoryText: categories.join(" / "),
-    badgeText: BADGE_TEXT[product.badge] || product.badge || ""
+    badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    isNormalProduct: String(product.productType || product.orderType || "").toLowerCase() === "normal" ||
+      String(product.needCustom || "").toLowerCase() === "false" ||
+      categories.some(item => String(item).includes("日用好货"))
   }
 }
 
@@ -112,6 +115,28 @@ Page({
       return
     }
     this.openCheckout()
+  },
+
+  addToCart() {
+    const product = this.data.product
+    if (!product) return
+    const cart = wx.getStorageSync("cartItems") || []
+    const index = cart.findIndex(item => item.id === product.id)
+    if (index >= 0) cart[index].quantity = Number(cart[index].quantity || 1) + 1
+    else cart.push({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      imageUrl: product.imageUrl || product.mediaImages?.[0] || "",
+      quantity: 1,
+      productType: "normal"
+    })
+    wx.setStorageSync("cartItems", cart)
+    wx.showToast({ title: "已加入购物车", icon: "success" })
+  },
+
+  openCart() {
+    wx.navigateTo({ url: "/pages/cart/cart" })
   },
 
   openCheckout() {

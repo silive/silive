@@ -124,7 +124,7 @@ Page({
         const adImage = shareAd && String(shareAd.enabled) !== "false" ? shareAd.imageUrl : ""
         const banner = (data.banners || []).find(item => item.imageUrl)
         const product = (data.products || []).find(item => item.imageUrl)
-        this.setData({ storeShareImage: adImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE || banner?.imageUrl || product?.imageUrl || "" })
+        this.setData({ storeShareImage: adImage || DEFAULT_SHARE_IMAGE || banner?.imageUrl || product?.imageUrl || ONLINE_SHARE_IMAGE || "" })
       })
       .catch(() => {})
     request("/api/products")

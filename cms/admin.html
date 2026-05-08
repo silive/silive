@@ -832,9 +832,10 @@
     const defaultCategoryTree = {
       "激光定制": ["亚克力夜灯", "木牌雕刻", "叶雕纪念"],
       "3D打印": ["零件加工", "工业打样", "手办打印"],
-      "潮玩手办": ["解压玩具", "热门手办", "创意摆件"]
+      "潮玩手办": ["解压玩具", "热门手办", "创意摆件"],
+      "日用好货": ["食品饮料", "日用百货", "本地好物"]
     }
-    const legacyCategories = ["3D打印", "激光雕刻", "叶雕定制", "名字礼物"]
+    const legacyCategories = ["3D打印", "激光雕刻", "叶雕定制", "名字礼物", "日用好货"]
     let categoryCatalog = []
     let activities = []
     let categoryTree = { ...defaultCategoryTree }
@@ -1082,6 +1083,13 @@
         return `<label>${label}<select data-key="${key}">
           <option value="on" ${current === "on" ? "selected" : ""}>已上架</option>
           <option value="off" ${current === "off" ? "selected" : ""}>已下架</option>
+        </select></label>`
+      }
+      if (key === "productType") {
+        const current = value === "normal" ? "normal" : "custom"
+        return `<label>${label}<select data-key="${key}">
+          <option value="custom" ${current === "custom" ? "selected" : ""}>定制商品</option>
+          <option value="normal" ${current === "normal" ? "selected" : ""}>普通商品</option>
         </select></label>`
       }
       if (key === "type") {
@@ -1938,6 +1946,7 @@
             ${field("商品名称", item.name, "name")}
             ${field("商品说明", item.intro, "intro", "textarea")}
             ${field("上架状态", item.status, "status")}
+            ${field("商品类型", item.productType || "custom", "productType", "select")}
             ${field("标签", item.badge, "badge")}
             ${field("所属分类", item.categories, "categories")}
           </div></div>

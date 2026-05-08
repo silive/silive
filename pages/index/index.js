@@ -38,6 +38,14 @@ function buildHomeState(data) {
   const hotProducts = products.filter(product => String(product.isHot) === "true" || ["best", "hot"].includes(product.badge)).slice(0, 6)
   const banners = (data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc)
   const homeEntries = (data.homeEntries || defaultData.homeEntries || [])
+    .map(item => item.name === "联系客服" || item.targetType === "service" ? {
+      ...item,
+      name: "日用好货",
+      desc: item.desc && item.name !== "联系客服" ? item.desc : "食品饮料 · 日用百货",
+      icon: item.icon === "聊" ? "货" : (item.icon || "货"),
+      targetType: "primary",
+      targetValue: "日用好货"
+    } : item)
     .filter(item => String(item.visible) !== "false")
     .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0))
   return {
@@ -47,6 +55,10 @@ function buildHomeState(data) {
     products,
     hotProducts: hotProducts.length ? hotProducts : products.slice(0, 4),
     homeEntries,
+    trustTags: (data.trustTags || defaultData.trustTags || []).map(item => ({
+      ...item,
+      text: item.text === "48小时发货" ? "急速生产" : item.text
+    })),
     reviews: data.reviews || defaultData.reviews,
     contact: {
       ...defaultData.contact,

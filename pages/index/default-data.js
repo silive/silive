@@ -37,7 +37,7 @@ module.exports = {
     { name: "激光定制", desc: "照片刻成心意礼物", icon: "光", imageUrl: "", targetType: "primary", targetValue: "激光定制", visible: "true", sort: "1" },
     { name: "3D打印", desc: "模型文件直接生产", icon: "模", imageUrl: "", targetType: "primary", targetValue: "3D打印", visible: "true", sort: "2" },
     { name: "潮玩手办", desc: "高颜值现货小物", icon: "潮", imageUrl: "", targetType: "primary", targetValue: "潮玩手办", visible: "true", sort: "3" },
-    { name: "联系客服", desc: "1对1确认灵感方案", icon: "聊", imageUrl: "", targetType: "service", targetValue: "", visible: "true", sort: "4" }
+    { name: "日用好货", desc: "食品饮料 · 日用百货", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
   ],
   trustTags: [
     { icon: "人", text: "已服务客户 1286+" },

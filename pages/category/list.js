@@ -33,7 +33,8 @@ function matchesCategory(product, category) {
 const FALLBACK_SECONDARY = {
   "激光定制": ["亚克力夜灯", "木牌雕刻", "叶雕纪念"],
   "3D打印": ["零件加工", "工业打样", "手办打印"],
-  "潮玩手办": ["解压玩具", "热门手办", "创意摆件"]
+  "潮玩手办": ["解压玩具", "热门手办", "创意摆件"],
+  "日用好货": ["食品饮料", "日用百货", "本地好物"]
 }
 
 function normalizeCategoryCatalog(value) {

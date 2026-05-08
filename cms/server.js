@@ -1293,7 +1293,7 @@ function normalizeHome(data) {
     { name: "激光定制", desc: "上传照片定制礼物", icon: "◆", imageUrl: "", targetType: "primary", targetValue: "激光定制", visible: "true", sort: "1" },
     { name: "3D打印", desc: "模型文件直接生产", icon: "✦", imageUrl: "", targetType: "primary", targetValue: "3D打印", visible: "true", sort: "2" },
     { name: "潮玩手办", desc: "热门现货直接购买", icon: "＋", imageUrl: "", targetType: "primary", targetValue: "潮玩手办", visible: "true", sort: "3" },
-    { name: "联系客服", desc: "先沟通再下单", icon: "☎", imageUrl: "", targetType: "service", targetValue: "", visible: "true", sort: "4" }
+    { name: "日用好货", desc: "食品饮料 · 日用百货", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
   ]
   return {
     banners: (Array.isArray(data.banners) ? data.banners : []).map(item => ({
@@ -1303,7 +1303,9 @@ function normalizeHome(data) {
       targetValue: item.targetValue || ""
     })),
     categories: Array.isArray(data.categories) ? data.categories : [],
-    homeEntries: (Array.isArray(data.homeEntries) && data.homeEntries.length ? data.homeEntries : defaultHomeEntries).slice(0, 4).map((item, index) => ({
+    homeEntries: (Array.isArray(data.homeEntries) && data.homeEntries.length ? data.homeEntries : defaultHomeEntries).slice(0, 4).map((rawItem, index) => {
+      const item = rawItem.name === "联系客服" || rawItem.targetType === "service" ? { ...rawItem, name: "日用好货", desc: rawItem.desc && rawItem.name !== "联系客服" ? rawItem.desc : "食品饮料 · 日用百货", icon: rawItem.icon === "☎" || rawItem.icon === "聊" ? "货" : (rawItem.icon || "货"), targetType: "primary", targetValue: "日用好货" } : rawItem
+      return {
       name: item.name || defaultHomeEntries[index]?.name || `入口${index + 1}`,
       desc: item.desc || "",
       icon: item.icon || defaultHomeEntries[index]?.icon || "＋",
@@ -1312,8 +1314,8 @@ function normalizeHome(data) {
       targetValue: item.targetValue || "",
       visible: String(item.visible == null ? "true" : item.visible),
       sort: String(item.sort || index + 1)
-    })),
-    trustTags: Array.isArray(data.trustTags) ? data.trustTags : [],
+    }}),
+    trustTags: (Array.isArray(data.trustTags) ? data.trustTags : []).map(item => ({ ...item, text: item.text === "48小时发货" ? "急速生产" : item.text })),
     products: (Array.isArray(data.products) ? data.products : []).map(normalizeProduct),
     reviews: Array.isArray(data.reviews) ? data.reviews : [],
     promoText: data.promoText || "",
@@ -1639,6 +1641,8 @@ function normalizeProduct(product, index) {
   const imageUrl = publicAssetUrl(product.mainImage || product.imageUrl || product.image || product.coverImage)
   const categories = normalizeProductCategories(product.categories, product)
   const levels = productCategoryLevels(categories)
+  const productType = String(product.productType || product.product_type || "").toLowerCase() === "normal" ||
+    categories.some(category => String(category).includes("日用好货")) ? "normal" : "custom"
   const isHot = normalizeBooleanText(product.isHot ?? product.is_hot ?? product.hot ?? product.hotRecommend, false)
   const promotionHot = normalizeBooleanText(product.promotionHot ?? product.isPromotionHot ?? product.promotion_hot, false)
   const sortOrder = product.sortOrder ?? product.sort ?? product.sort_order ?? index ?? 0
@@ -1656,6 +1660,8 @@ function normalizeProduct(product, index) {
     videoUrl: publicAssetUrl(product.videoUrl),
     detailImages: normalizeAssetUrls(normalizeMediaList(product.detailImages)),
     detailText: product.detailText || "",
+    productType,
+    needCustom: productType === "normal" ? "false" : "true",
     categories,
     categoryLevel1: product.categoryLevel1 || levels.categoryLevel1,
     categoryLevel2: product.categoryLevel2 || levels.categoryLevel2,
@@ -2179,6 +2185,7 @@ async function getProducts() {
     videoUrl: publicAssetUrl(row.video_url),
     detailImages: normalizeAssetUrls(normalizeMediaList(parseJsonValue(row.detail_images, []))),
     detailText: row.detail_text || "",
+    productType: row.product_type || "",
     categories: normalizeProductCategories(parseJsonValue(row.categories, []), row),
     status: row.status || "on",
     stock: String(row.stock || "0"),
@@ -2406,7 +2413,7 @@ async function saveProducts(products) {
   for (let index = 0; index < list.length; index += 1) {
     const product = list[index]
     await query(
-      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, categories, status, stock, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :categoriesJson, :status, :stock, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder)",
+      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, product_type, categories, status, stock, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder)",
       { ...product, galleryImagesJson: JSON.stringify(product.galleryImages || []), detailImagesJson: JSON.stringify(product.detailImages || []), categoriesJson: JSON.stringify(product.categories || []), sortOrder: Number(product.sortOrder || index) }
     )
   }
@@ -2832,6 +2839,23 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
 
 async function createOrder(data) {
   let product = await getProduct(data.productId)
+  let cartItems = []
+  if (!product && data.productId === "CART_ORDER" && Array.isArray(data.cartItems) && data.cartItems.length) {
+    const products = await getProducts()
+    cartItems = data.cartItems.map(item => {
+      const found = products.find(productItem => productItem.id === item.id)
+      if (!found) throw new Error(`购物车商品不存在：${item.name || item.id}`)
+      return { product: found, quantity: Math.max(1, Number(item.quantity || 1)) }
+    })
+    const amount = cartItems.reduce((sum, item) => sum + Number(item.product.price || 0) * item.quantity, 0)
+    product = {
+      id: "CART_ORDER",
+      name: cartItems.length > 1 ? `${cartItems[0].product.name}等${cartItems.length}件` : cartItems[0].product.name,
+      price: amount.toFixed(2),
+      productType: "normal",
+      categories: ["日用好货"]
+    }
+  }
   if (!product && data.productId === "CUSTOM_UPLOAD") {
     product = {
       id: "CUSTOM_UPLOAD",
@@ -2842,6 +2866,7 @@ async function createOrder(data) {
     }
   }
   if (!product) throw new Error("商品不存在")
+  const productType = String(data.productType || data.orderType || product.productType || "").toLowerCase() === "normal" ? "normal" : "custom"
   const isQuoteOrder = String(data.needQuote || product.needQuote || product.need_quote || "").toLowerCase() === "true" ||
     String(data.priceMode || product.priceMode || product.price_mode || "").toLowerCase() === "quote" ||
     (String(data.isCustomOrder || "false") === "true" && Number(product.price || 0) <= 0)
@@ -2864,17 +2889,17 @@ async function createOrder(data) {
     status: isQuoteOrder ? "待客服确认" : "待支付",
     paymentStatus: isQuoteOrder ? "待报价" : "待支付",
     address: data.address,
-    customRequest: data.customRequest,
+    customRequest: productType === "normal" ? (data.customRequest || "") : data.customRequest,
     originalImageUrl: data.originalImageUrl || "",
     originalImageUrls: normalizeMediaList(data.originalImageUrls || data.originalImageUrl || ""),
     aiPreviewUrl: data.aiPreviewUrl || "",
     finalDesignUrl: data.finalDesignUrl || data.aiPreviewUrl || "",
     category: data.category || (Array.isArray(product.categories) ? product.categories[0] : "") || "",
-    isCustomOrder: String(data.isCustomOrder || "false") === "true" ? "true" : "false",
+    isCustomOrder: productType === "normal" ? "false" : (String(data.isCustomOrder || "false") === "true" ? "true" : "false"),
     openid: data.openid || "",
     userId: data.userId || "",
     userToken: data.userToken || "",
-    remark: [data.remark || "", data.newcomerBenefitText ? `新人福利：${data.newcomerBenefitText}` : ""].filter(Boolean).join("\n"),
+    remark: [data.remark || "", cartItems.length ? `购物车：${cartItems.map(item => `${item.product.name}x${item.quantity}`).join("，")}` : "", data.newcomerBenefitText ? `新人福利：${data.newcomerBenefitText}` : ""].filter(Boolean).join("\n"),
     inviterCode: data.inviterCode || "",
     deliveryType,
     pickupStoreId: pickupStore?.id || "",
@@ -3578,6 +3603,7 @@ async function initDb() {
     video_url VARCHAR(500),
     detail_images JSON,
     detail_text TEXT,
+    product_type VARCHAR(20) DEFAULT 'custom',
     categories JSON,
     status VARCHAR(20) DEFAULT 'on',
     stock INT DEFAULT 0,
@@ -3606,6 +3632,7 @@ async function initDb() {
   await ensureColumn("products", "video_url", "VARCHAR(500)")
   await ensureColumn("products", "detail_images", "JSON")
   await ensureColumn("products", "detail_text", "TEXT")
+  await ensureColumn("products", "product_type", "VARCHAR(20) DEFAULT 'custom'")
   await query(`CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(32) PRIMARY KEY,
     customer_name VARCHAR(50) NOT NULL,

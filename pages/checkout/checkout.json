@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "确认定制"
+  "navigationBarTitleText": "确认订单",
+  "usingComponents": {
+    "login-sheet": "/components/login-sheet/login-sheet"
+  }
 }
