@@ -8,11 +8,19 @@ const BADGE_TEXT = {
   none: ""
 }
 
+function isNormalProduct(product = {}) {
+  const categories = Array.isArray(product.categories) ? product.categories : []
+  return String(product.productType || product.orderType || "").toLowerCase() === "normal" ||
+    String(product.needCustom || "").toLowerCase() === "false" ||
+    categories.some(item => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
+}
+
 function normalizeProducts(products) {
   return (products || []).filter(product => product.status !== "off").map(product => ({
     ...product,
     categories: Array.isArray(product.categories) ? product.categories : [],
-    badgeText: BADGE_TEXT[product.badge] || product.badge || ""
+    badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    isNormalProduct: isNormalProduct(product)
   }))
 }
 
@@ -72,7 +80,9 @@ Page({
     ...buildHomeState(defaultData),
     themeStyle: "",
     themeClass: "theme-skin01",
-    cmsStatus: "local"
+    cmsStatus: "local",
+    headerAvatar: "",
+    headerMarkText: "我"
   },
 
   onLoad(options = {}) {
@@ -86,6 +96,7 @@ Page({
 
   onShow() {
     applyTheme(this)
+    this.loadHeaderAvatar()
     this.loadHomeConfig()
     this.startLiveSync()
   },
@@ -128,6 +139,30 @@ Page({
         })
         this.loadSearchProducts()
       })
+  },
+
+  loadHeaderAvatar() {
+    const localAvatar = wx.getStorageSync("memberAvatar") || ""
+    this.setData({
+      headerAvatar: localAvatar,
+      headerMarkText: "我"
+    })
+    const { getLoginState } = require("../../utils/auth")
+    if (!getLoginState().loggedIn) return
+    request("/api/user/profile")
+      .then(profile => {
+        const avatarUrl = profile.avatarUrl || localAvatar || ""
+        if (profile.avatarUrl) wx.setStorageSync("memberAvatar", profile.avatarUrl)
+        this.setData({
+          headerAvatar: avatarUrl,
+          headerMarkText: avatarUrl ? "" : "我"
+        })
+      })
+      .catch(() => {})
+  },
+
+  goProfile() {
+    wx.switchTab({ url: "/pages/profile/profile" })
   },
 
   loadSearchProducts() {

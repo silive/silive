@@ -184,7 +184,9 @@ Page({
   isNormalProduct(product = this.data.product || {}) {
     const categories = Array.isArray(product.categories) ? product.categories : []
     const type = String(product.productType || product.orderType || "").toLowerCase()
-    return type === "normal" || String(product.needCustom || "").toLowerCase() === "false" || categories.some(item => String(item).includes("日用好货"))
+    return type === "normal" ||
+      String(product.needCustom || "").toLowerCase() === "false" ||
+      categories.some(item => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
   },
 
   isQuoteProduct(product = this.data.product || {}, mode = this.data.mode) {

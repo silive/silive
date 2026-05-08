@@ -4,7 +4,10 @@
       <view class="eyebrow">CUSTOM STUDIO</view>
       <view class="brand">非常智造</view>
     </view>
-    <view class="header-mark">智</view>
+    <button class="header-mark" bindtap="goProfile" aria-label="进入我的页面">
+      <image wx:if="{{headerAvatar}}" class="header-avatar" src="{{headerAvatar}}" mode="aspectFill" />
+      <text wx:else>{{headerMarkText}}</text>
+    </button>
   </view>
 
   <swiper class="hero-swiper" autoplay circular interval="3600" duration="650" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">

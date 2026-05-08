@@ -16,7 +16,7 @@ function isNormalProduct(product = {}) {
   const needCustom = String(product.needCustom || "").toLowerCase()
   return type === "normal" ||
     needCustom === "false" ||
-    categories.some(item => ["日用好货", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
+    categories.some(item => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
 }
 
 function normalize(product) {

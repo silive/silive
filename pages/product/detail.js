@@ -31,7 +31,7 @@ function normalizeProduct(product) {
     badgeText: BADGE_TEXT[product.badge] || product.badge || "",
     isNormalProduct: String(product.productType || product.orderType || "").toLowerCase() === "normal" ||
       String(product.needCustom || "").toLowerCase() === "false" ||
-      categories.some(item => String(item).includes("日用好货"))
+      categories.some(item => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
   }
 }
 

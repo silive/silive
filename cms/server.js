@@ -1642,7 +1642,7 @@ function normalizeProduct(product, index) {
   const categories = normalizeProductCategories(product.categories, product)
   const levels = productCategoryLevels(categories)
   const productType = String(product.productType || product.product_type || "").toLowerCase() === "normal" ||
-    categories.some(category => String(category).includes("日用好货")) ? "normal" : "custom"
+    categories.some(category => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(category).includes(keyword))) ? "normal" : "custom"
   const isHot = normalizeBooleanText(product.isHot ?? product.is_hot ?? product.hot ?? product.hotRecommend, false)
   const promotionHot = normalizeBooleanText(product.promotionHot ?? product.isPromotionHot ?? product.promotion_hot, false)
   const sortOrder = product.sortOrder ?? product.sort ?? product.sort_order ?? index ?? 0
@@ -1912,6 +1912,11 @@ function storePrivateView(store) {
 function maskPhone(phone) {
   const text = String(phone || "")
   return text.length === 11 ? `${text.slice(0, 3)}****${text.slice(7)}` : text
+}
+
+function maskTail(value) {
+  const text = String(value || "")
+  return text ? `***${text.slice(-4)}` : "empty"
 }
 
 function storeRoleText(role) {
@@ -2758,10 +2763,37 @@ async function getStoreSettlementSummary(filters = {}) {
 async function getStoreSession(req) {
   const token = String(req.headers["x-user-session"] || req.headers["x-user-token"] || "").trim()
   const session = getUserSession(token)
-  if (!session?.phone) return null
+  if (!session?.phone) {
+    console.log("[store-me]", {
+      hasSession: !!session,
+      sessionPhoneTail: "empty",
+      hasOpenid: !!session?.openid,
+      bound: false,
+      reason: "no_session_phone"
+    })
+    return null
+  }
   const stores = await getPartnerStores({ status: "enabled" })
   const sessionPhone = normalizePhone(session.phone)
+  const managerPhones = stores
+    .filter(item => item.managerPhone)
+    .map(item => ({
+      id: item.id,
+      managerPhoneTail: maskTail(normalizePhone(item.managerPhone)),
+      status: item.status,
+      storeStatus: item.storeStatus,
+      phoneMatched: normalizePhone(item.managerPhone) === sessionPhone
+    }))
   const matches = stores.filter(item => item.managerPhone && normalizePhone(item.managerPhone) === sessionPhone && item.storeStatus !== "disabled")
+  console.log("[store-me]", {
+    hasSession: true,
+    sessionPhoneTail: maskTail(sessionPhone),
+    hasOpenid: !!session.openid,
+    managerPhones: managerPhones.slice(0, 8),
+    matchCount: matches.length,
+    bound: matches.length === 1,
+    matchedStore: matches[0] ? { id: matches[0].id, name: matches[0].name, status: matches[0].status, storeStatus: matches[0].storeStatus } : null
+  })
   if (matches.length > 1) {
     return { token, session, store: null, duplicated: true, error: "该手机号绑定多个门店，请联系管理员处理" }
   }

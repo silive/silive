@@ -1,8 +1,10 @@
-<view wx:if="{{rendered}}" class="login-mask {{leaving ? 'leaving' : ''}}" bindtap="handleClose">
-  <view class="login-panel {{leaving ? 'leaving' : ''}}" catchtap="noop">
-    <view class="login-title">{{title}}</view>
-    <view class="login-desc">{{desc}}</view>
-    <button class="login-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="handlePhoneNumber" loading="{{loading}}">{{confirmText}}</button>
-    <button class="login-cancel-btn" bindtap="handleClose">{{cancelText}}</button>
+<root-portal enable="{{rendered}}">
+  <view wx:if="{{rendered}}" class="login-mask {{leaving ? 'leaving' : ''}}" bindtap="handleClose">
+    <view class="login-panel {{leaving ? 'leaving' : ''}}" catchtap="noop">
+      <view class="login-title">{{title}}</view>
+      <view class="login-desc">{{desc}}</view>
+      <button class="login-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="handlePhoneNumber" loading="{{loading}}">{{confirmText}}</button>
+      <button class="login-cancel-btn" bindtap="handleClose">{{cancelText}}</button>
+    </view>
   </view>
-</view>
+</root-portal>

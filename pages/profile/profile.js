@@ -286,6 +286,13 @@ Page({
     const { request } = require("../../utils/api")
     request("/api/store/me")
       .then(data => {
+        console.log("[store-me] profile response", {
+          hasUserSession: !!wx.getStorageSync("userSession"),
+          bound: !!data.bound,
+          error: data.error || "",
+          storeName: data.storeInfo && data.storeInfo.name || "",
+          managerPhone: data.storeInfo && data.storeInfo.managerPhone || ""
+        })
         const levelMap = { display: "展示点", pickup: "自提点", supplier: "供货点", partner: "合伙点" }
         const storeInfo = data.storeInfo
           ? { ...data.storeInfo, levelText: levelMap[data.storeInfo.level] || data.storeInfo.level || "门店" }
