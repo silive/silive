@@ -1798,6 +1798,10 @@ function normalizeStoreLevel(value) {
   return ["display", "pickup", "supplier", "partner"].includes(value) ? value : "display"
 }
 
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "")
+}
+
 function defaultStoreRules(level) {
   if (level === "pickup") return { referralType: "percent", referralValue: "3", pickupType: "fixed", pickupValue: "2" }
   if (level === "supplier") return { referralType: "percent", referralValue: "1", pickupType: "fixed", pickupValue: "1" }
@@ -1814,7 +1818,7 @@ function normalizePartnerStore(store = {}, index = 0) {
     address: store.address || "",
     phone: store.phone || "",
     contactName: store.contactName || store.contact_name || "",
-    managerPhone: store.managerPhone || store.manager_phone || "",
+    managerPhone: normalizePhone(store.managerPhone || store.manager_phone || ""),
     managerOpenid: store.managerOpenid || store.manager_openid || "",
     storeRole: store.storeRole || store.store_role || "manager",
     storeStatus: store.storeStatus || store.store_status || "active",
@@ -2252,7 +2256,7 @@ function isActiveStoreManagerBinding(store) {
 function managerPhoneDuplicateMap(stores = []) {
   const groups = new Map()
   stores.filter(isActiveStoreManagerBinding).forEach(store => {
-    const phone = String(store.managerPhone || "").trim()
+    const phone = normalizePhone(store.managerPhone)
     if (!groups.has(phone)) groups.set(phone, [])
     groups.get(phone).push(store)
   })
@@ -2262,7 +2266,7 @@ function managerPhoneDuplicateMap(stores = []) {
 function withStoreManagerWarnings(stores = []) {
   const groups = managerPhoneDuplicateMap(stores)
   return stores.map(store => {
-    const duplicates = groups.get(String(store.managerPhone || "").trim()) || []
+    const duplicates = groups.get(normalizePhone(store.managerPhone)) || []
     return duplicates.length > 1
       ? { ...store, managerPhoneDuplicated: true, managerPhoneWarning: "该手机号已绑定多个启用门店，请联系管理员处理" }
       : store
@@ -2271,11 +2275,11 @@ function withStoreManagerWarnings(stores = []) {
 
 function assertUniqueManagerPhone(stores = [], candidate = {}) {
   if (!isActiveStoreManagerBinding(candidate)) return
-  const phone = String(candidate.managerPhone || "").trim()
+  const phone = normalizePhone(candidate.managerPhone)
   const conflict = stores.find(store =>
     store.id !== candidate.id &&
     isActiveStoreManagerBinding(store) &&
-    String(store.managerPhone || "").trim() === phone
+    normalizePhone(store.managerPhone) === phone
   )
   if (conflict) throw httpError(400, "该手机号已绑定其他门店，请更换负责人手机号或先解绑原门店。")
 }
@@ -2756,7 +2760,8 @@ async function getStoreSession(req) {
   const session = getUserSession(token)
   if (!session?.phone) return null
   const stores = await getPartnerStores({ status: "enabled" })
-  const matches = stores.filter(item => item.managerPhone && item.managerPhone === session.phone && item.storeStatus !== "disabled")
+  const sessionPhone = normalizePhone(session.phone)
+  const matches = stores.filter(item => item.managerPhone && normalizePhone(item.managerPhone) === sessionPhone && item.storeStatus !== "disabled")
   if (matches.length > 1) {
     return { token, session, store: null, duplicated: true, error: "该手机号绑定多个门店，请联系管理员处理" }
   }

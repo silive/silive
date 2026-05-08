@@ -29,7 +29,8 @@ Page({
     storeChecked: false,
     storeBound: false,
     storeInfo: null,
-    storeStats: null
+    storeStats: null,
+    storeConflictMessage: ""
   },
 
   onShow() {
@@ -40,6 +41,17 @@ Page({
     this.loadOrderSummary()
     this.loadStoreMe()
     this.loadUserProfile()
+  },
+
+  onPullDownRefresh() {
+    this.refreshLoginState()
+    Promise.all([
+      Promise.resolve(this.loadContact()),
+      Promise.resolve(this.loadPromotionSummary()),
+      Promise.resolve(this.loadOrderSummary()),
+      Promise.resolve(this.loadStoreMe()),
+      Promise.resolve(this.loadUserProfile())
+    ]).finally(() => wx.stopPullDownRefresh())
   },
 
   refreshLoginState() {
@@ -59,7 +71,8 @@ Page({
       storeChecked: !state.loggedIn,
       storeBound: state.loggedIn ? this.data.storeBound : false,
       storeInfo: state.loggedIn ? this.data.storeInfo : null,
-      storeStats: state.loggedIn ? this.data.storeStats : null
+      storeStats: state.loggedIn ? this.data.storeStats : null,
+      storeConflictMessage: state.loggedIn ? this.data.storeConflictMessage : ""
     })
   },
 
@@ -281,11 +294,13 @@ Page({
           storeChecked: true,
           storeBound: !!data.bound,
           storeInfo,
-          storeStats: data.stats || null
+          storeStats: data.stats || null,
+          storeConflictMessage: data.error || ""
         })
+        if (data.error) wx.showToast({ title: data.error, icon: "none" })
       })
       .catch(() => {
-        this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null })
+        this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
       })
   },
 

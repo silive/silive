@@ -217,7 +217,10 @@ Page({
   },
 
   showLoginSheet() {
-    this.setData({ loginVisible: true })
+    this.setData({ loginVisible: false })
+    setTimeout(() => {
+      this.setData({ loginVisible: true })
+    }, 20)
   },
 
   closeLoginSheet() {

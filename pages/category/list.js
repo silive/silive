@@ -10,11 +10,21 @@ const BADGE_TEXT = {
 }
 const CATEGORY_VERSION_KEY = "categoryCatalogVersion"
 
+function isNormalProduct(product = {}) {
+  const categories = Array.isArray(product.categories) ? product.categories : []
+  const type = String(product.productType || product.product_type || product.orderType || "").toLowerCase()
+  const needCustom = String(product.needCustom || "").toLowerCase()
+  return type === "normal" ||
+    needCustom === "false" ||
+    categories.some(item => ["日用好货", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
+}
+
 function normalize(product) {
   return {
     ...product,
     categories: Array.isArray(product.categories) ? product.categories : [],
-    badgeText: BADGE_TEXT[product.badge] || product.badge || ""
+    badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    isNormalProduct: isNormalProduct(product)
   }
 }
 
@@ -273,6 +283,34 @@ Page({
     wx.navigateTo({
       url: `/pages/product/detail?product=${encodeURIComponent(JSON.stringify(product))}`
     })
+  },
+
+  buyProduct(event) {
+    const product = this.data.products[event.currentTarget.dataset.index]
+    wx.navigateTo({
+      url: `/pages/checkout/checkout?product=${encodeURIComponent(JSON.stringify(product))}`
+    })
+  },
+
+  addToCart(event) {
+    const product = this.data.products[event.currentTarget.dataset.index]
+    if (!product) return
+    const cart = wx.getStorageSync("cartItems") || []
+    const index = cart.findIndex(item => item.id === product.id)
+    if (index >= 0) {
+      cart[index].quantity = Number(cart[index].quantity || 1) + 1
+    } else {
+      cart.push({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        imageUrl: product.imageUrl || product.mainImage || "",
+        quantity: 1,
+        productType: "normal"
+      })
+    }
+    wx.setStorageSync("cartItems", cart)
+    wx.showToast({ title: "已加入购物车", icon: "success" })
   },
 
   showContact() {

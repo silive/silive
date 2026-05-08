@@ -32,6 +32,11 @@
           <view class="feature-title">门店中心</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">订单与收益</view>
         </button>
+        <button wx:elif="{{loggedIn && storeConflictMessage}}" class="feature-card" style="{{cardStyle}}">
+          <view class="feature-icon" style="{{iconBadgeStyle}}">!</view>
+          <view class="feature-title">门店异常</view>
+          <view class="feature-subtitle" style="{{mutedTextStyle}}">{{storeConflictMessage}}</view>
+        </button>
         <button wx:else class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
           <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
           <view class="feature-title">我的推广</view>

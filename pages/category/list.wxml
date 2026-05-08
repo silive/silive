@@ -28,10 +28,14 @@
       <view class="product-info">
         <view class="product-name">{{item.name}}</view>
         <view class="product-intro">{{item.intro}}</view>
-        <view class="product-proof">下单前确认设计稿</view>
+        <view class="product-proof">{{item.isNormalProduct ? '现货好物直接购买' : '下单前确认设计稿'}}</view>
         <view class="product-bottom">
           <view class="price">¥{{item.price}}</view>
-          <button class="buy-btn">定制</button>
+          <view wx:if="{{item.isNormalProduct}}" class="product-actions">
+            <button class="cart-btn" catchtap="addToCart" data-index="{{index}}">购物车</button>
+            <button class="buy-btn" catchtap="buyProduct" data-index="{{index}}">购买</button>
+          </view>
+          <button wx:else class="buy-btn" catchtap="openProduct" data-index="{{index}}">定制</button>
         </view>
       </view>
     </view>
@@ -42,7 +46,7 @@
     <view class="empty-title">{{searchKeyword ? '暂无相关商品' : '新品正在上架中'}}</view>
     <view class="empty-desc">可联系客服先定制</view>
     <view class="empty-actions">
-      <button class="empty-btn dark" bindtap="showContact">联系客服</button>
+      <button class="empty-btn dark" open-type="contact">联系客服</button>
       <button class="empty-btn" bindtap="backAll">返回全部商品</button>
       <button class="empty-btn" bindtap="chooseImage">上传图片定制</button>
     </view>

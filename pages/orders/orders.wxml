@@ -12,7 +12,7 @@
       <view class="login-title">登录后查看订单</view>
       <view class="login-desc" style="{{mutedTextStyle}}">同步订单进度、物流与售后服务</view>
     </view>
-    <button class="login-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">微信快捷登录</button>
+    <button class="login-btn" style="{{primaryButtonStyle}}" catchtap="showLoginSheet">微信快捷登录</button>
   </view>
 
   <view wx:if="{{loggedIn}}" class="status-panel">
