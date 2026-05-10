@@ -228,6 +228,9 @@ function requestPhoneLogin(phoneCode, loginCode, debugInfo = {}) {
 }
 
 function bindStoredPromotionRelation(name = "微信用户") {
+  const storeId = wx.getStorageSync("referrerStoreId") || wx.getStorageSync("pendingReferrerStoreId") || ""
+  const storeExpireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
+  if (storeId && storeExpireAt && Date.now() <= storeExpireAt) return Promise.resolve(null)
   const inviterCode = wx.getStorageSync("boundInviterCode") || wx.getStorageSync("inviterCode") || ""
   if (!inviterCode) return Promise.resolve(null)
   return request("/api/promotion/bind", {
@@ -240,6 +243,38 @@ function bindStoredPromotionRelation(name = "微信用户") {
     console.warn("[promotion] bind failed:", error.message || error)
     return null
   })
+}
+
+function syncStoredStoreReferrer() {
+  const storeId = wx.getStorageSync("referrerStoreId") || wx.getStorageSync("pendingReferrerStoreId") || ""
+  const expireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
+  if (!storeId) return Promise.resolve(null)
+  if (!expireAt || Date.now() > expireAt) {
+    wx.removeStorageSync("pendingReferrerStoreId")
+    wx.removeStorageSync("boundReferrerStoreId")
+    wx.removeStorageSync("referrerStoreId")
+    wx.removeStorageSync("referrerStoreBoundAt")
+    wx.removeStorageSync("referrerStoreExpireAt")
+    return Promise.resolve(null)
+  }
+  return request(`/api/store/source/validate?storeId=${encodeURIComponent(storeId)}`, { timeout: 5000 })
+    .then(data => {
+      if (!data.valid) {
+        wx.removeStorageSync("pendingReferrerStoreId")
+        wx.removeStorageSync("boundReferrerStoreId")
+        wx.removeStorageSync("referrerStoreId")
+        wx.removeStorageSync("referrerStoreBoundAt")
+        wx.removeStorageSync("referrerStoreExpireAt")
+        return null
+      }
+      wx.setStorageSync("referrerStoreId", storeId)
+      wx.setStorageSync("boundReferrerStoreId", storeId)
+      return data.store || null
+    })
+    .catch(error => {
+      console.warn("[store-referrer] sync failed:", error.message || error)
+      return null
+    })
 }
 
 function loginWithPhoneDetail(detail = {}) {
@@ -300,7 +335,8 @@ function loginWithPhoneDetail(detail = {}) {
       userSession: state.userSession
     }
     logLoginDebug("after phone login saved")
-    return bindStoredPromotionRelation(wx.getStorageSync("memberName") || "微信用户")
+    return syncStoredStoreReferrer()
+      .then(() => bindStoredPromotionRelation(wx.getStorageSync("memberName") || "微信用户"))
       .catch(error => {
         console.warn("[auth] post-login promotion sync failed:", error.message || error)
         return null

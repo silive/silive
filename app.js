@@ -43,8 +43,12 @@ App({
   captureInvite(options = {}) {
     const query = options.query || {}
     const scene = decodeURIComponent(query.scene || "")
-    const storeId = decodeURIComponent(query.store_id || query.storeId || (scene.match(/(?:^|&)store_id=([^&]+)/) || [])[1] || "")
-    if (storeId) this.captureStoreReferrer(storeId)
+    const storeId = decodeURIComponent(query.store_id || query.storeId || query.referrerStoreId || (scene.match(/(?:^|&)(?:store_id|storeId|referrerStoreId)=([^&]+)/) || [])[1] || "")
+    if (storeId) {
+      this.captureStoreReferrer(storeId)
+      return
+    }
+    if (this.getValidReferrerStoreId()) return
     const sceneInvite = (scene.match(/(?:^|&)invite=([^&]+)/) || [])[1] || (scene.match(/(?:^|&)inviterCode=([^&]+)/) || [])[1] || ""
     const invite = decodeURIComponent(query.invite || query.inviterCode || sceneInvite || "")
     if (!invite) return
@@ -81,6 +85,8 @@ App({
   captureStoreReferrer(storeId) {
     const now = Date.now()
     const expireAt = now + STORE_REFERRER_TTL
+    wx.setStorageSync("pendingReferrerStoreId", storeId)
+    wx.setStorageSync("boundReferrerStoreId", storeId)
     wx.setStorageSync("referrerStoreId", storeId)
     wx.setStorageSync("referrerStoreBoundAt", now)
     wx.setStorageSync("referrerStoreExpireAt", expireAt)
@@ -92,6 +98,8 @@ App({
   },
 
   clearStoreReferrer() {
+    wx.removeStorageSync("pendingReferrerStoreId")
+    wx.removeStorageSync("boundReferrerStoreId")
     wx.removeStorageSync("referrerStoreId")
     wx.removeStorageSync("referrerStoreBoundAt")
     wx.removeStorageSync("referrerStoreExpireAt")

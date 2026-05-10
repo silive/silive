@@ -8,6 +8,7 @@
     "pages/cart/cart",
     "pages/promotion/promotion",
     "pages/store/center/center",
+    "pages/store/code/code",
     "pages/store/referral-orders/referral-orders",
     "pages/store/pickup-orders/pickup-orders",
     "pages/store/settlements/settlements",

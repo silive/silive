@@ -107,6 +107,11 @@ function publicAssetUrl(value) {
   return text.replace(/^https?:\/\/(?:127\.0\.0\.1|localhost):\d+\/uploads\//, `${PUBLIC_BASE_URL}/uploads/`)
 }
 
+function safeWxacodeScene(value, fallback = "VSCUSTOM") {
+  const text = String(value || "").replace(/[^\w=&-]/g, "").slice(0, 32)
+  return text || fallback
+}
+
 function normalizeAssetUrls(value) {
   if (Array.isArray(value)) return value.map(publicAssetUrl).filter(Boolean)
   return []
@@ -2378,12 +2383,15 @@ async function savePartnerStores(stores) {
 
 async function upsertPartnerStore(store) {
   const list = await getPartnerStores()
+  const requestedId = store.id || ""
+  const index = requestedId ? list.findIndex(item => item.id === requestedId) : -1
+  const base = index >= 0 ? list[index] : {}
   const normalized = normalizePartnerStore({
+    ...base,
     ...store,
-    id: store.id || `STORE${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    id: requestedId || `STORE${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     updatedAt: formatDateTime(new Date())
   }, list.length)
-  const index = list.findIndex(item => item.id === normalized.id)
   const candidate = index >= 0 ? { ...list[index], ...normalized } : normalized
   assertUniqueManagerPhone(list, candidate)
   if (index >= 0) list[index] = candidate
@@ -4092,6 +4100,44 @@ async function generatePromotionWxacode(inviteCode) {
   return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false }
 }
 
+async function generateStoreWxacode(store) {
+  if (!store?.id) throw httpError(404, "门店不存在")
+  if (!isStoreEnabled(store)) throw httpError(400, "门店已停用，暂不能生成二维码")
+  const safeStoreId = String(store.id || "").replace(/[^\w-]/g, "").slice(0, 24)
+  const outputFile = path.join(uploadsDir, `store-code-${safeStoreId}.png`)
+  if (fs.existsSync(outputFile)) {
+    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, scene: `store_id=${safeStoreId}` }
+  }
+  const accessToken = await getAccessToken()
+  const body = JSON.stringify({
+    scene: safeWxacodeScene(`store_id=${safeStoreId}`, `store_id=${safeStoreId}`),
+    page: "pages/index/index",
+    check_path: false,
+    env_version: process.env.WECHAT_WXACODE_ENV_VERSION || "trial"
+  })
+  const result = await requestBuffer(`https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${accessToken}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "image/png,application/json" },
+    timeout: 15000
+  }, body)
+  const contentType = String(result.headers["content-type"] || "")
+  if (contentType.includes("application/json")) {
+    let data = {}
+    try {
+      data = JSON.parse(result.data.toString() || "{}")
+    } catch (error) {
+      data = { errcode: "wxacode_parse_error", errmsg: "微信小程序码接口返回异常" }
+    }
+    throw wechatApiError(data.errcode || "wxacode_error", data.errmsg || "微信小程序码生成失败", "微信小程序码接口")
+  }
+  if (!contentType.includes("image") || !result.data.length) {
+    throw wechatApiError("wxacode_empty", "微信未返回小程序码图片", "微信小程序码接口")
+  }
+  fs.mkdirSync(uploadsDir, { recursive: true })
+  fs.writeFileSync(outputFile, result.data)
+  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, scene: `store_id=${safeStoreId}` }
+}
+
 async function getWechatPhoneNumber(code) {
   if (canUseMockWechatLogin()) return MOCK_WECHAT_PHONE
   if (!code) throw httpError(400, "缺少手机号授权 code")
@@ -4427,6 +4473,21 @@ async function handle(req, res) {
     }
     const [orders, records] = await Promise.all([getOrders(), getStoreSettlementRecords({ storeId: storeSession.store.id })])
     sendJson(res, 200, { ok: true, bound: true, storeInfo: storePrivateView(storeSession.store), stats: storeCenterStats(storeSession.store, orders, records) })
+    return
+  }
+
+  if (url.pathname === "/api/store/qrcode" && req.method === "GET") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const result = await generateStoreWxacode(storeSession.store)
+    sendJson(res, 200, {
+      ok: true,
+      url: result.url,
+      scene: result.scene,
+      link: `/pages/index/index?store_id=${encodeURIComponent(storeSession.store.id)}`,
+      cached: result.cached,
+      storeInfo: storePrivateView(storeSession.store)
+    })
     return
   }
 
@@ -4925,6 +4986,22 @@ async function handle(req, res) {
   if (url.pathname === "/api/admin/debug/store-manager" && req.method === "GET") {
     const phone = url.searchParams.get("phone") || ""
     sendJson(res, 200, storeManagerDebugView(await getPartnerStores(), phone))
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/stores\/[^/]+\/qrcode$/) && req.method === "GET") {
+    const id = decodeURIComponent(url.pathname.split("/")[4])
+    const store = await getPartnerStore(id)
+    if (!store) throw httpError(404, "门店不存在")
+    if (!isStoreEnabled(store)) throw httpError(400, "门店已停用，暂不能生成二维码")
+    const result = await generateStoreWxacode(store)
+    sendJson(res, 200, {
+      ok: true,
+      url: result.url,
+      scene: result.scene,
+      link: `/pages/index/index?store_id=${encodeURIComponent(store.id)}`,
+      cached: result.cached
+    })
     return
   }
 

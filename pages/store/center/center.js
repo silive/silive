@@ -16,6 +16,10 @@ Page({
     wx.navigateTo({ url: "/pages/store/referral-orders/referral-orders" })
   },
 
+  goStoreCode() {
+    wx.navigateTo({ url: "/pages/store/code/code" })
+  },
+
   goPickupOrders() {
     wx.navigateTo({ url: "/pages/store/pickup-orders/pickup-orders" })
   },

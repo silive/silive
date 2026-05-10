@@ -2258,6 +2258,9 @@
           <p class="muted">门店ID：${escapeHtml(store.id)}</p>
           <div class="toolbar" style="margin-top:12px">
             <button class="secondary" data-action="copy-store-id" data-id="${escapeHtml(store.id)}">复制门店ID</button>
+            <button class="secondary" data-action="view-store-qrcode" data-id="${escapeHtml(store.id)}">查看二维码</button>
+            <button class="secondary" data-action="download-store-qrcode" data-id="${escapeHtml(store.id)}">下载二维码</button>
+            <button class="secondary" data-action="copy-store-link" data-id="${escapeHtml(store.id)}">复制推广链接</button>
             <button class="secondary" data-action="filter-store-referral" data-id="${escapeHtml(store.id)}">查看推广订单</button>
             <button class="secondary" data-action="filter-store-pickup" data-id="${escapeHtml(store.id)}">查看自提订单</button>
             <button class="secondary" data-action="filter-store-settlement" data-id="${escapeHtml(store.id)}">查看结算明细</button>
@@ -2712,6 +2715,41 @@
         } else {
           setStatus(`门店ID：${id}`)
         }
+      }
+      if (event.target.dataset.action === "view-store-qrcode" || event.target.dataset.action === "download-store-qrcode" || event.target.dataset.action === "copy-store-link") {
+        const id = event.target.dataset.id || ""
+        api(`/api/admin/stores/${encodeURIComponent(id)}/qrcode`)
+          .then(result => {
+            const url = result.url || result.data?.url || ""
+            const link = result.link || result.data?.link || `/pages/index/index?store_id=${encodeURIComponent(id)}`
+            if (event.target.dataset.action === "copy-store-link") {
+              if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(link).then(() => setStatus("门店推广链接已复制")).catch(() => setStatus(`推广链接：${link}`))
+              } else {
+                setStatus(`推广链接：${link}`)
+              }
+              return
+            }
+            if (!url) {
+              setStatus("二维码生成失败，请稍后重试")
+              return
+            }
+            if (event.target.dataset.action === "download-store-qrcode") {
+              const a = document.createElement("a")
+              a.href = url
+              a.download = `store-code-${id}.png`
+              a.target = "_blank"
+              a.rel = "noopener"
+              document.body.appendChild(a)
+              a.click()
+              a.remove()
+              setStatus("二维码已生成，可在新窗口下载")
+              return
+            }
+            window.open(url, "_blank", "noopener")
+            setStatus("二维码已生成并打开")
+          })
+          .catch(error => setStatus(error.message || "二维码生成失败"))
       }
       if (event.target.dataset.action === "filter-store-referral" || event.target.dataset.action === "filter-store-pickup" || event.target.dataset.action === "filter-store-settlement") {
         const id = event.target.dataset.id || ""
