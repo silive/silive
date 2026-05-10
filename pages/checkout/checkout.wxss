@@ -292,30 +292,45 @@ label,
 .quantity-stepper {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12rpx;
   flex-shrink: 0;
 }
 
 .quantity-btn {
-  width: 58rpx;
-  height: 58rpx;
+  width: 48rpx;
+  height: 48rpx;
+  min-width: 48rpx;
+  max-width: 48rpx;
+  min-height: 48rpx;
+  max-height: 48rpx;
+  margin: 0;
+  padding: 0;
   border-radius: 50%;
   background: #eef6ff;
   color: #1677ff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 950;
-  line-height: 1;
+  line-height: 48rpx;
+  flex: 0 0 48rpx;
+  box-sizing: border-box;
 }
 
 .quantity-num {
-  min-width: 44rpx;
+  width: 60rpx;
+  min-width: 60rpx;
   color: #1f2937;
   text-align: center;
   font-size: 26rpx;
   font-weight: 950;
+  line-height: 48rpx;
+}
+
+.quantity-btn::after {
+  border: 0;
 }
 
 .normal-total {

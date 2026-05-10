@@ -56,7 +56,7 @@
     </view>
     <view wx:else class="search-empty">
       <view>暂无相关商品，联系客服定制</view>
-      <button class="search-service" style="{{primaryButtonStyle}}" bindtap="showContact">联系客服</button>
+      <button class="search-service" style="{{primaryButtonStyle}}" open-type="contact">联系客服</button>
     </view>
   </view>
 
@@ -124,31 +124,11 @@
     </view>
   </scroll-view>
 
-  <view class="section-head">
-    <view>
-      <view class="section-title">买家秀 / 用户评价</view>
-      <view class="section-subtitle" style="{{mutedTextStyle}}">真实反馈，看得见的品质</view>
-    </view>
-  </view>
-
-  <view class="review-list">
-    <view class="review-card" style="{{cardStyle}}" wx:for="{{reviews}}" wx:key="name">
-      <view class="review-top">
-        <view class="review-avatar">{{item.avatar}}</view>
-        <view>
-          <view class="review-name">{{item.name}}</view>
-          <view class="review-product">{{item.product}}</view>
-        </view>
-      </view>
-      <view class="review-text" style="{{mutedTextStyle}}">{{item.text}}</view>
-    </view>
-  </view>
-
   <view class="contact-panel" style="{{cardStyle}}">
     <view>
       <view class="contact-title">需要先沟通方案？</view>
       <view class="contact-subtitle" style="{{mutedTextStyle}}">客服会确认图片、文件、尺寸和交付时间</view>
     </view>
-    <button class="contact-btn" style="{{primaryButtonStyle}}" bindtap="showContact">联系客服</button>
+    <button class="contact-btn" style="{{primaryButtonStyle}}" open-type="contact">联系客服</button>
   </view>
 </view>

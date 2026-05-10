@@ -44,7 +44,8 @@ Page({
     loginLoading: false,
     themeStyle: "",
     themeClass: "theme-skin01",
-    loading: true
+    loading: true,
+    cartCount: 0
   },
 
   onLoad(options) {
@@ -70,8 +71,15 @@ Page({
 
   onShow() {
     applyTheme(this)
+    this.loadCartCount()
     this.ensureShareIdentity()
     this.loadNewcomerBenefits()
+  },
+
+  loadCartCount() {
+    const cart = wx.getStorageSync("cartItems") || []
+    const cartCount = (Array.isArray(cart) ? cart : []).reduce((sum, item) => sum + Number(item.quantity || 1), 0)
+    this.setData({ cartCount })
   },
 
   loadProduct(id) {
@@ -132,6 +140,7 @@ Page({
       productType: "normal"
     })
     wx.setStorageSync("cartItems", cart)
+    this.loadCartCount()
     wx.showToast({ title: "已加入购物车", icon: "success" })
   },
 

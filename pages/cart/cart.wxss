@@ -43,7 +43,7 @@
 
 .cart-card {
   display: grid;
-  grid-template-columns: 44rpx 120rpx minmax(0, 1fr);
+  grid-template-columns: 40rpx 120rpx minmax(0, 1fr);
   align-items: start;
   column-gap: 18rpx;
   row-gap: 14rpx;
@@ -59,9 +59,11 @@
   width: 36rpx;
   height: 36rpx;
   min-width: 36rpx;
+  max-width: 36rpx;
   min-height: 36rpx;
-  margin: 42rpx 0 0;
-  padding: 0;
+  max-height: 36rpx;
+  margin: 42rpx 0 0 !important;
+  padding: 0 !important;
   border-radius: 50%;
   background: #eef6ff;
   border: 2rpx solid #dcebff;
@@ -71,14 +73,21 @@
   justify-content: center;
   font-size: 22rpx;
   font-weight: 900;
-  line-height: 36rpx;
+  line-height: 36rpx !important;
+  flex: 0 0 36rpx;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .qty {
   width: 56rpx;
   height: 56rpx;
   min-width: 56rpx;
+  max-width: 56rpx;
+  min-height: 56rpx;
+  max-height: 56rpx;
+  margin: 0 !important;
+  padding: 0 !important;
   border-radius: 50%;
   background: #eef6ff;
   color: #1677ff;
@@ -87,8 +96,10 @@
   justify-content: center;
   font-size: 30rpx;
   font-weight: 950;
-  line-height: 1;
+  line-height: 56rpx !important;
+  flex: 0 0 56rpx;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .check::after,
@@ -109,11 +120,14 @@
   width: 120rpx;
   height: 120rpx;
   min-width: 120rpx;
+  max-width: 120rpx;
   min-height: 120rpx;
+  max-height: 120rpx;
   border-radius: 20rpx;
   background: #eef6ff;
   display: block;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .placeholder {
@@ -153,10 +167,12 @@
 }
 
 .qty-num {
-  min-width: 40rpx;
+  width: 56rpx;
+  min-width: 56rpx;
   color: #1f2937;
   text-align: center;
   font-weight: 900;
+  line-height: 56rpx;
 }
 
 .remove {

@@ -231,6 +231,7 @@
   width: 180rpx;
   height: 58rpx;
   margin: 22rpx auto 0;
+  padding: 0;
   border-radius: 999rpx;
   background: #1f2937;
   color: #f8fbff;
@@ -239,6 +240,12 @@
   justify-content: center;
   font-size: 23rpx;
   font-weight: 850;
+  line-height: 1;
+}
+
+.search-service::after,
+.contact-btn::after {
+  border: 0;
 }
 
 .hero-visual {
