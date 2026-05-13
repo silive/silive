@@ -30,7 +30,7 @@
 
   <view wx:if="{{product.isNormalProduct}}" class="normal-actions">
     <button class="cart-entry-btn" bindtap="openCart">
-      <text>购物车</text>
+      <text class="cart-entry-icon">🛒</text>
       <text wx:if="{{cartCount > 0}}" class="cart-entry-badge">{{cartCount}}</text>
     </button>
     <button class="primary-btn compact" style="{{secondaryButtonStyle}}" bindtap="addToCart">加入购物车</button>

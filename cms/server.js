@@ -3010,9 +3010,10 @@ async function createOrder(data) {
       return { product: found, quantity: Math.max(1, Number(item.quantity || 1)) }
     })
     const amount = cartItems.reduce((sum, item) => sum + Number(item.product.price || 0) * item.quantity, 0)
+    const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0)
     product = {
       id: "CART_ORDER",
-      name: cartItems.length > 1 ? `${cartItems[0].product.name}等${cartItems.length}件` : cartItems[0].product.name,
+      name: cartItems.length > 1 ? `${cartItems[0].product.name}等${totalQuantity}件` : cartItems[0].product.name,
       price: amount.toFixed(2),
       productType: "normal",
       categories: ["日用好货"]

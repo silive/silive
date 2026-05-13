@@ -53,7 +53,7 @@
   </view>
 
   <button wx:if="{{showCartEntry}}" class="floating-cart" bindtap="goCart" aria-label="进入购物车">
-    <text class="floating-cart-icon">车</text>
+    <text class="floating-cart-icon">🛒</text>
     <text wx:if="{{cartCount > 0}}" class="floating-cart-badge">{{cartCount}}</text>
   </button>
 </view>

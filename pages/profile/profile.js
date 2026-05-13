@@ -1,6 +1,5 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
-const { chooseWechatAddress, formatWechatAddress, addressErrorMessage } = require("../../utils/address")
 
 Page({
   data: {
@@ -318,22 +317,6 @@ Page({
   goStoreCenter() {
     if (!this.requireLogin()) return
     wx.navigateTo({ url: "/pages/store/center/center" })
-  },
-
-  chooseAddress() {
-    if (!this.requireLogin()) return
-    chooseWechatAddress()
-      .then(address => {
-        const fullAddress = formatWechatAddress(address)
-        wx.showModal({
-          title: "收货地址",
-          content: `${address.userName || ""} ${address.telNumber || ""}\n${fullAddress || "已选择地址"}`,
-          showCancel: false
-        })
-      })
-      .catch(error => {
-        wx.showToast({ title: addressErrorMessage(error), icon: "none" })
-      })
   },
 
   contact() {

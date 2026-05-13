@@ -188,6 +188,12 @@
   font-weight: 950;
   line-height: 1;
   box-sizing: border-box;
+  overflow: visible;
+}
+
+.cart-entry-icon {
+  font-size: 34rpx;
+  line-height: 1;
 }
 
 .cart-entry-badge {

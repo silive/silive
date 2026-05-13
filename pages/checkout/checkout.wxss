@@ -233,6 +233,12 @@ label,
   margin-top: 16rpx;
 }
 
+.cart-kind-tip,
+.manual-address-tip {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+}
+
 .cart-summary-item {
   display: grid;
   grid-template-columns: 84rpx minmax(0, 1fr) auto;
@@ -388,12 +394,6 @@ input {
 
 .mini-btn {
   margin-top: 12rpx;
-}
-
-.address-action {
-  margin-top: 24rpx;
-  display: flex;
-  justify-content: flex-start;
 }
 
 .light-btn {

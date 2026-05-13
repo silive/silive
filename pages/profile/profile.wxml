@@ -51,11 +51,6 @@
       </button>
     </view>
     <view class="feature-row bottom-row">
-      <button class="feature-card" style="{{cardStyle}}" bindtap="chooseAddress">
-        <view class="feature-icon" style="{{iconBadgeStyle}}">⌂</view>
-        <view class="feature-title">收货地址</view>
-        <view class="feature-subtitle" style="{{mutedTextStyle}}">快速下单</view>
-      </button>
       <button class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
         <view wx:if="{{afterSaleDot}}" class="red-dot"></view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">✓</view>

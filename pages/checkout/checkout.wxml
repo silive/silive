@@ -28,6 +28,7 @@
     <view wx:if="{{phoneTip}}" class="field-tip {{phoneTipType}}">{{phoneTip}}</view>
     <view wx:if="{{normalMode}}" class="normal-order-panel">
       <view class="normal-order-title">商品清单</view>
+      <view wx:if="{{cartMode && cartKindCount > 1}}" class="cart-kind-tip">共 {{cartKindCount}} 种商品</view>
       <view wx:if="{{cartMode}}" class="cart-summary-list">
         <view class="cart-summary-item" wx:for="{{cartItems}}" wx:key="id">
           <image wx:if="{{item.imageUrl}}" class="cart-summary-image" src="{{item.imageUrl}}" mode="aspectFill" />
@@ -54,9 +55,7 @@
         <text class="normal-total-price">¥{{totalPrice}}</text>
       </view>
     </view>
-    <view class="address-action">
-      <button class="light-btn" style="{{secondaryButtonStyle}}" bindtap="chooseAddress">一键选择收货地址</button>
-    </view>
+    <view wx:if="{{deliveryType === 'delivery'}}" class="manual-address-tip" style="{{mutedTextStyle}}">请手动填写收货信息</view>
     <view class="field">地址<textarea value="{{form.address}}" data-field="address" bindinput="onInput" placeholder="请输入收货地址"></textarea></view>
     <view class="delivery-section">
       <view class="upload-label">配送方式</view>

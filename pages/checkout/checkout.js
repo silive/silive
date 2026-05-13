@@ -1,7 +1,6 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
-const { chooseWechatAddress, formatWechatAddress, addressErrorMessage } = require("../../utils/address")
 
 function safeJson(value, fallback = null) {
   try {
@@ -101,9 +100,10 @@ Page({
     const category = decodeURIComponent(options.category || "")
     const cartItems = safeJson(options.cartItems, [])
     if (Array.isArray(cartItems) && cartItems.length) {
+      const cartTotalQuantity = cartItems.reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1)), 0)
       this.initCheckout({
         id: "CART_ORDER",
-        name: `购物车商品（${cartItems.length}件）`,
+        name: `购物车商品（${cartTotalQuantity}件）`,
         intro: "普通商品直接购买",
         price: cartItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0).toFixed(2),
         productType: "normal",
@@ -151,6 +151,8 @@ Page({
       normalMode,
       cartMode: cartItems.length > 0,
       cartItems,
+      cartTotalQuantity: cartItems.reduce((sum, item) => sum + Number(item.quantity || 1), 0),
+      cartKindCount: cartItems.length,
       quantity,
       unitPrice: unitPrice.toFixed(2),
       totalPrice: totalPrice.toFixed(2),
@@ -168,9 +170,6 @@ Page({
       this.setData({
         "form.customRequest": "我已上传照片，请根据照片沟通定制方案。"
       })
-    }
-    if (options.autoAddress === "1") {
-      setTimeout(() => this.chooseAddress({ silent: true }), 350)
     }
     if (!getLoginState().loggedIn) setTimeout(() => this.promptLogin(), 120)
   },
@@ -413,42 +412,6 @@ Page({
       selectedPickupStoreId: id,
       selectedPickupStore: store
     })
-  },
-
-  chooseAddress(options = {}) {
-    chooseWechatAddress()
-      .then(address => {
-        const fullAddress = formatWechatAddress(address)
-        const apply = () => {
-          this.setData({
-            "form.customerName": address.userName || this.data.form.customerName,
-            "form.address": fullAddress || this.data.form.address
-          })
-          this.setPhone(address.telNumber)
-        }
-        if (this.data.form.customerName && address.userName && this.data.form.customerName !== address.userName) {
-          wx.showModal({
-            title: "覆盖姓名？",
-            content: `是否使用收货地址中的姓名：${address.userName}`,
-            confirmText: "使用",
-            cancelText: "保留",
-            success: res => {
-              if (res.confirm) {
-                apply()
-                return
-              }
-              this.setData({ "form.address": fullAddress || this.data.form.address })
-              this.setPhone(address.telNumber)
-            }
-          })
-          return
-        }
-        apply()
-      })
-      .catch(error => {
-        if (options.silent) return
-        wx.showToast({ title: addressErrorMessage(error), icon: "none" })
-      })
   },
 
   templateType() {
