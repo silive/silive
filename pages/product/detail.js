@@ -9,7 +9,6 @@ const BADGE_TEXT = {
   none: ""
 }
 const RECOMMEND_TIPS = ["朋友可能刚好需要", "分享好物给朋友", "送礼灵感推荐", "值得收藏的定制礼物"]
-const SHARE_TITLES = ["朋友推荐给你", "值得送TA的礼物", "朋友觉得你会喜欢", "高颜值定制礼物"]
 
 function pickOne(list) {
   return list[Math.floor(Math.random() * list.length)]
@@ -48,7 +47,8 @@ Page({
     themeStyle: "",
     themeClass: "theme-skin01",
     loading: true,
-    cartCount: 0
+    cartCount: 0,
+    shareStoreId: ""
   },
 
   onLoad(options) {
@@ -76,6 +76,7 @@ Page({
     applyTheme(this)
     this.loadCartCount()
     this.ensureShareIdentity()
+    this.loadShareStoreInfo()
     this.loadNewcomerBenefits()
   },
 
@@ -202,6 +203,27 @@ Page({
       .catch(() => {})
   },
 
+  loadShareStoreInfo() {
+    if (!getLoginState().loggedIn) {
+      this.setData({ shareStoreId: "" })
+      return
+    }
+    request("/api/store/me", { timeout: 5000 })
+      .then(data => {
+        const storeInfo = data && data.bound && data.storeInfo ? data.storeInfo : null
+        const storeId = storeInfo && (storeInfo.id || storeInfo.storeId)
+        if (storeId) {
+          wx.setStorageSync("storeInfo", storeInfo)
+          this.setData({ shareStoreId: storeId })
+          return
+        }
+        this.setData({ shareStoreId: "" })
+      })
+      .catch(() => {
+        this.setData({ shareStoreId: "" })
+      })
+  },
+
   loadNewcomerBenefits() {
     ensureOpenid().then(openid => {
       const phone = wx.getStorageSync("memberPhone") || ""
@@ -219,20 +241,27 @@ Page({
     return wx.getStorageSync("profileInviteCode") || wx.getStorageSync("localUserId") || "U0000"
   },
 
+  getShareStoreId() {
+    if (this.data.shareStoreId) return this.data.shareStoreId
+    const storeInfo = wx.getStorageSync("storeInfo") || {}
+    return storeInfo.id || storeInfo.storeId || wx.getStorageSync("managerStoreId") || ""
+  },
+
   buildSharePath() {
     const product = this.data.product || {}
     const id = product.id || ""
+    const storeId = this.getShareStoreId()
+    if (storeId) return `/pages/product/detail?id=${encodeURIComponent(id)}&store_id=${encodeURIComponent(storeId)}`
     const invite = this.getShareInvite()
     return `/pages/product/detail?id=${encodeURIComponent(id)}&invite=${encodeURIComponent(invite)}`
   },
 
   onShareAppMessage() {
     const product = this.data.product || {}
-    const titleSuffix = pickOne(SHARE_TITLES)
     return {
-      title: `${product.name || "非常智造"} · ${titleSuffix}`,
+      title: "非常智造｜发现一个不错的定制礼物",
       path: this.buildSharePath(),
-      imageUrl: product.imageUrl || product.mediaImages?.[0] || ""
+      imageUrl: product.displayImage || product.imageUrl || product.mediaImages?.[0] || ""
     }
   }
 })
