@@ -43,7 +43,7 @@ Page({
           pageTitle: data.pageTitle || "售后保障",
           pageSubtitle: data.pageSubtitle || "下单流程、定制说明、发货时效与售后政策",
           articles: (data.articles || []).map(normalizeArticle),
-          banner: data.helpBanner || data.banner || null,
+          banner: null,
           guideAd: guideAd && String(guideAd.enabled) !== "false" ? {
             ...guideAd,
             desc: guideAd.desc || guideAd.subtitle || "",

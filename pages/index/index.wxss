@@ -363,30 +363,32 @@
 }
 
 .entry-card {
-  min-height: 158rpx;
-  padding: 22rpx;
+  min-height: 150rpx;
+  padding: 20rpx 22rpx;
   border-radius: 20rpx;
   background: rgba(255, 255, 255, .92);
   box-shadow: 0 14rpx 34rpx rgba(83, 69, 64, .07);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
+  gap: 18rpx;
   text-align: left;
+  box-sizing: border-box;
 }
 
 .entry-icon {
-  width: 54rpx;
-  height: 54rpx;
-  border-radius: 16rpx;
+  width: 96rpx;
+  height: 96rpx;
+  min-width: 96rpx;
+  border-radius: 24rpx;
   overflow: hidden;
-  background: #1f2937;
-  color: #f8fbff;
+  background: #eef6ff;
+  color: #1677ff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24rpx;
-  font-weight: 850;
+  font-size: 38rpx;
+  font-weight: 950;
 }
 
 .entry-image {
@@ -394,15 +396,20 @@
   height: 100%;
 }
 
+.entry-copy {
+  flex: 1;
+  min-width: 0;
+}
+
 .entry-name {
-  margin-top: 14rpx;
   color: #1f2937;
-  font-size: 27rpx;
-  font-weight: 850;
+  font-size: 28rpx;
+  line-height: 1.25;
+  font-weight: 950;
 }
 
 .entry-desc {
-  margin-top: 7rpx;
+  margin-top: 8rpx;
   color: #6b7280;
   font-size: 21rpx;
   line-height: 1.35;
@@ -930,8 +937,8 @@
 }
 
 .entry-card {
-  min-height: 170rpx;
-  padding: 24rpx;
+  min-height: 150rpx;
+  padding: 20rpx 22rpx;
 }
 
 .entry-card:active,
@@ -942,9 +949,10 @@
 }
 
 .entry-icon {
-  width: 62rpx;
-  height: 62rpx;
-  border-radius: 20rpx;
+  width: 96rpx;
+  height: 96rpx;
+  min-width: 96rpx;
+  border-radius: 24rpx;
   background: linear-gradient(135deg, #eef6ff, #e6f4ff);
   color: #1677ff;
   box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, .9);

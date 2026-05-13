@@ -1620,8 +1620,7 @@
         <div class="item" data-index="${index}">
           <div class="item-head">
             <div>
-              <div class="item-title">${id === "homeBanners" ? ["Banner 1（首页轮播）", "Banner 2（首页轮播）", "Banner 3（首页轮播）", "Banner 4（我的页专属 Banner）", "Banner 5（帮助中心专属 Banner）"][index] || `${prefix} ${index + 1}` : `${prefix} ${index + 1}`}</div>
-              ${id === "homeBanners" && index >= 3 ? `<div class="muted">${index === 3 ? "展示在我的页面帮助中心下方" : "展示在帮助中心文章列表下方"}</div>` : ""}
+              <div class="item-title">${id === "homeBanners" ? ["Banner 1（首页轮播）", "Banner 2（首页轮播）", "Banner 3（首页轮播）"][index] || `${prefix} ${index + 1}` : `${prefix} ${index + 1}`}</div>
             </div>
             ${removable ? `<button class="danger" data-action="remove-product" data-index="${index}">删除</button>` : ""}
           </div>
@@ -1717,7 +1716,8 @@
       $("contactWechat").value = home.contact?.wechat || ""
       $("workWechatUrl").value = home.contact?.workWechatUrl || ""
       home.banners = Array.isArray(home.banners) ? home.banners : []
-      while (home.banners.length < 5) {
+      home.banners = home.banners.slice(0, 3)
+      while (home.banners.length < 3) {
         const index = home.banners.length
         home.banners.push({
           tag: "",
@@ -1740,7 +1740,7 @@
       while (entries.length < 4) entries.push({ name: `入口${entries.length + 1}`, desc: "", icon: "＋", imageUrl: "", targetType: "primary", targetValue: "", visible: "true", sort: String(entries.length + 1) })
       home.homeEntries = entries.slice(0, 4)
       renderEditableList("homeEntries", home.homeEntries, [
-        { label: "图标/图片", key: "imageUrl" },
+        { label: "图标/图片（建议无文字主体图）", key: "imageUrl" },
         { label: "图标文字", key: "icon" },
         { label: "名称", key: "name" },
         { label: "副标题", key: "desc", type: "textarea" },
@@ -2466,6 +2466,7 @@
         home.promoText = $("promoText").value
         home.contact = { phone: $("contactPhone").value, wechat: $("contactWechat").value, workWechatUrl: $("workWechatUrl").value }
         collectList("homeBanners", home.banners)
+        home.banners = (home.banners || []).slice(0, 3)
         collectList("homeEntries", home.homeEntries)
         const ads = homeAdSlots()
         collectList("homeAds", ads)

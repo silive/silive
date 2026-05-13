@@ -1353,7 +1353,7 @@ function normalizeHome(data) {
     { name: "日用好货", desc: "食品饮料 · 日用百货", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
   ]
   return {
-    banners: (Array.isArray(data.banners) ? data.banners : []).map(item => {
+    banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => {
       const imageVariants = uploadImageVariants(item.imageUrl)
       return {
         ...item,
@@ -4760,9 +4760,6 @@ async function handle(req, res) {
       pageTitle: settings.helpPageTitle || "售后保障",
       pageSubtitle: settings.helpPageSubtitle || "下单流程、定制说明、发货时效与售后政策",
       articles: normalizeHelpArticles(settings.helpArticles).filter(item => item.status !== "off"),
-      banner: pickBanner(home.banners, 4),
-      profileBanner: pickBanner(home.banners, 3),
-      helpBanner: pickBanner(home.banners, 4),
       ads: home.ads || normalizeAds({}),
       profileBottomAd: home.ads?.profile_bottom_ad || normalizeAds({}).profile_bottom_ad,
       afterSalesGuideAd: home.ads?.after_sales_guide_ad || normalizeAds({}).after_sales_guide_ad,

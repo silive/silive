@@ -243,7 +243,7 @@ Page({
   loadContact() {
     request("/api/help-center")
       .then(data => {
-        const profileAd = data.profileBottomAd || data.ads?.profile_bottom_ad || data.profileBanner || null
+        const profileAd = data.profileBottomAd || data.ads?.profile_bottom_ad || null
         this.setData({
           contact: data.contact || this.data.contact,
           banner: profileAd && String(profileAd.enabled) !== "false" ? {

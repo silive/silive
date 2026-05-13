@@ -63,11 +63,13 @@
   <view class="entry-grid">
     <button class="entry-card" style="{{cardStyle}}" wx:for="{{homeEntries}}" wx:key="name" bindtap="openHomeEntry" data-index="{{index}}">
       <view class="entry-icon" style="{{iconBadgeStyle}}">
-        <image wx:if="{{item.thumbUrl || item.imageUrl}}" class="entry-image" src="{{item.thumbUrl || item.imageUrl}}" mode="aspectFill" lazy-load />
+        <image wx:if="{{item.thumbUrl || item.imageUrl}}" class="entry-image" src="{{item.thumbUrl || item.imageUrl}}" mode="aspectFit" lazy-load />
         <text wx:else>{{item.icon}}</text>
       </view>
-      <view class="entry-name">{{item.name}}</view>
-      <view class="entry-desc" style="{{mutedTextStyle}}">{{item.desc}}</view>
+      <view class="entry-copy">
+        <view class="entry-name">{{item.name}}</view>
+        <view class="entry-desc" style="{{mutedTextStyle}}">{{item.desc}}</view>
+      </view>
     </button>
   </view>
 
