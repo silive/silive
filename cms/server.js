@@ -734,6 +734,25 @@ function uploadUrlToFilename(value) {
   }
 }
 
+function uploadBaseName(value) {
+  const filename = uploadUrlToFilename(value)
+  if (!filename) return ""
+  return path.basename(filename, path.extname(filename))
+    .replace(/\.(optimized|banner|banner-thumb|thumb|cart-thumb|detail)$/i, "")
+}
+
+function uploadVariantMatchesSource(sourceUrl, variantUrl) {
+  if (!variantUrl) return false
+  const sourceBase = uploadBaseName(sourceUrl)
+  const variantBase = uploadBaseName(variantUrl)
+  return !!sourceBase && !!variantBase && sourceBase === variantBase
+}
+
+function currentBannerAsset(sourceUrl, candidateUrl, fallbackUrl) {
+  if (uploadVariantMatchesSource(sourceUrl, candidateUrl)) return publicAssetUrl(candidateUrl)
+  return publicAssetUrl(fallbackUrl || sourceUrl || "")
+}
+
 async function referencedUploadFilenames() {
   const names = new Set()
   const orders = await getOrders()
@@ -1415,14 +1434,18 @@ function normalizeHome(data) {
     banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => {
       const imageVariants = uploadImageVariants(item.imageUrl)
       const bannerVersion = item.version || item.updatedAt || homeUpdatedAt || ""
-      const displayUrl = publicAssetUrl(item.bannerUrl || item.optimizedUrl || imageVariants.bannerUrl || imageVariants.optimizedUrl || imageVariants.url)
+      const optimizedUrl = currentBannerAsset(item.imageUrl, item.optimizedUrl, imageVariants.optimizedUrl)
+      const thumbUrl = currentBannerAsset(item.imageUrl, item.thumbUrl, imageVariants.thumbUrl)
+      const bannerUrl = currentBannerAsset(item.imageUrl, item.bannerUrl, imageVariants.bannerUrl || optimizedUrl)
+      const bannerThumbUrl = currentBannerAsset(item.imageUrl, item.bannerThumbUrl, imageVariants.bannerThumbUrl || thumbUrl)
+      const displayUrl = bannerUrl || optimizedUrl || imageVariants.url
       return {
         ...item,
         imageUrl: imageVariants.url,
-        optimizedUrl: item.optimizedUrl ? publicAssetUrl(item.optimizedUrl) : imageVariants.optimizedUrl,
-        thumbUrl: item.thumbUrl ? publicAssetUrl(item.thumbUrl) : imageVariants.thumbUrl,
-        bannerUrl: item.bannerUrl ? publicAssetUrl(item.bannerUrl) : imageVariants.bannerUrl,
-        bannerThumbUrl: item.bannerThumbUrl ? publicAssetUrl(item.bannerThumbUrl) : imageVariants.bannerThumbUrl,
+        optimizedUrl,
+        thumbUrl,
+        bannerUrl,
+        bannerThumbUrl,
         finalImageUrl: withVersion(displayUrl, bannerVersion),
         version: bannerVersion,
         updatedAt: item.updatedAt || bannerVersion,
