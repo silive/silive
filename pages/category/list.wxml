@@ -22,7 +22,7 @@
   <view class="product-list" wx:if="{{products.length}}">
     <view class="product-card" wx:for="{{products}}" wx:key="id" bindtap="openProduct" data-index="{{index}}">
       <view class="product-cover cover-{{item.cover}}">
-        <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
         <view wx:if="{{item.badgeText}}" class="product-badge badge-{{item.badge}}">{{item.badgeText}}</view>
       </view>
       <view class="product-info">

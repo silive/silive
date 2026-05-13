@@ -19,13 +19,16 @@ function normalizeProduct(product) {
   const categories = Array.isArray(product.categories) ? product.categories : []
   const galleryImages = Array.isArray(product.galleryImages) ? product.galleryImages.filter(Boolean) : []
   const detailImages = Array.isArray(product.detailImages) ? product.detailImages.filter(Boolean) : []
-  const mediaImages = galleryImages.length ? galleryImages : (product.imageUrl ? [product.imageUrl] : [])
+  const heroImage = product.optimizedUrl || product.webpUrl || product.imageUrl
+  const mediaImages = galleryImages.length ? galleryImages : (heroImage ? [heroImage] : [])
   return {
     ...product,
     categories,
     galleryImages,
     detailImages,
     mediaImages,
+    displayImage: heroImage,
+    cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     recommendTip: pickOne(RECOMMEND_TIPS),
     categoryText: categories.join(" / "),
     badgeText: BADGE_TEXT[product.badge] || product.badge || "",
@@ -135,7 +138,7 @@ Page({
       id: product.id,
       name: product.name,
       price: product.price,
-      imageUrl: product.imageUrl || product.mediaImages?.[0] || "",
+      imageUrl: product.cartImage || product.displayImage || product.imageUrl || product.mediaImages?.[0] || "",
       quantity: 1,
       productType: "normal"
     })

@@ -10,7 +10,7 @@
   <view wx:if="{{items.length}}" class="cart-list">
     <view class="cart-card" wx:for="{{items}}" wx:key="id">
       <button class="check {{item.selected !== false ? 'checked' : ''}}" bindtap="toggleItem" data-index="{{index}}">{{item.selected !== false ? '✓' : ''}}</button>
-      <image wx:if="{{item.imageUrl}}" class="cover" src="{{item.imageUrl}}" mode="aspectFill" />
+      <image wx:if="{{item.cartThumbUrl || item.thumbUrl || item.imageUrl}}" class="cover" src="{{item.cartThumbUrl || item.thumbUrl || item.imageUrl}}" mode="aspectFill" lazy-load />
       <view wx:else class="cover placeholder">非常智造</view>
       <view class="info">
         <view class="name">{{item.name}}</view>

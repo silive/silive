@@ -11,6 +11,12 @@ try {
 } catch (error) {
   mysql = null
 }
+let sharp
+try {
+  sharp = require("sharp")
+} catch (error) {
+  sharp = null
+}
 
 const ROOT = path.join(__dirname, "..")
 loadEnv(path.join(ROOT, ".env"))
@@ -106,6 +112,40 @@ function publicAssetUrl(value) {
   if (text.startsWith("/cms/uploads/")) return `${PUBLIC_BASE_URL}${text.replace(/^\/cms\/uploads/, "/uploads")}`
   if (text.startsWith("/uploads/")) return `${PUBLIC_BASE_URL}${text}`
   return text.replace(/^https?:\/\/(?:127\.0\.0\.1|localhost):\d+\/uploads\//, `${PUBLIC_BASE_URL}/uploads/`)
+}
+
+function uploadPublicUrl(filename) {
+  return `${PUBLIC_BASE_URL}/uploads/${filename}`
+}
+
+function uploadVariantFilename(filename, suffix, ext = "webp") {
+  const base = path.basename(filename || "", path.extname(filename || ""))
+  return base ? `${base}${suffix}.${ext}` : ""
+}
+
+function uploadVariantUrl(sourceUrl, suffix) {
+  const filename = uploadUrlToFilename(sourceUrl)
+  if (!filename || /\.svg$/i.test(filename)) return publicAssetUrl(sourceUrl)
+  const webpName = uploadVariantFilename(filename, suffix, "webp")
+  const jpgName = uploadVariantFilename(filename, suffix, "jpg")
+  if (webpName && fs.existsSync(path.join(uploadsDir, webpName))) return uploadPublicUrl(webpName)
+  if (jpgName && fs.existsSync(path.join(uploadsDir, jpgName))) return uploadPublicUrl(jpgName)
+  return publicAssetUrl(sourceUrl)
+}
+
+function uploadImageVariants(sourceUrl) {
+  const url = publicAssetUrl(sourceUrl)
+  return {
+    url,
+    optimizedUrl: uploadVariantUrl(url, ".optimized"),
+    thumbUrl: uploadVariantUrl(url, ".thumb"),
+    listImage: uploadVariantUrl(url, ".thumb"),
+    cartThumbUrl: uploadVariantUrl(url, ".cart-thumb"),
+    bannerUrl: uploadVariantUrl(url, ".banner"),
+    bannerThumbUrl: uploadVariantUrl(url, ".banner-thumb"),
+    detailUrl: uploadVariantUrl(url, ".detail"),
+    webpUrl: uploadVariantUrl(url, ".optimized")
+  }
 }
 
 function safeWxacodeScene(value, fallback = "VSCUSTOM") {
@@ -1276,11 +1316,16 @@ function defaultAds() {
 
 function normalizeAdSlot(item, key, fallback) {
   const source = item && typeof item === "object" ? item : {}
+  const imageVariants = uploadImageVariants(source.imageUrl || fallback.imageUrl || "")
   return {
     key,
     title: source.title || fallback.title || "",
     subtitle: source.subtitle || source.desc || fallback.subtitle || "",
-    imageUrl: publicAssetUrl(source.imageUrl || fallback.imageUrl || ""),
+    imageUrl: imageVariants.url,
+    optimizedUrl: source.optimizedUrl ? publicAssetUrl(source.optimizedUrl) : imageVariants.optimizedUrl,
+    thumbUrl: source.thumbUrl ? publicAssetUrl(source.thumbUrl) : imageVariants.thumbUrl,
+    bannerUrl: source.bannerUrl ? publicAssetUrl(source.bannerUrl) : imageVariants.bannerUrl,
+    bannerThumbUrl: source.bannerThumbUrl ? publicAssetUrl(source.bannerThumbUrl) : imageVariants.bannerThumbUrl,
     linkType: source.linkType || source.targetType || fallback.linkType || "none",
     linkValue: source.linkValue || source.targetValue || fallback.linkValue || "",
     enabled: String(source.enabled == null ? fallback.enabled || "true" : source.enabled),
@@ -1302,20 +1347,29 @@ function normalizeHome(data) {
     { name: "日用好货", desc: "食品饮料 · 日用百货", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
   ]
   return {
-    banners: (Array.isArray(data.banners) ? data.banners : []).map(item => ({
-      ...item,
-      imageUrl: publicAssetUrl(item.imageUrl),
-      targetType: item.targetType || "primary",
-      targetValue: item.targetValue || ""
-    })),
+    banners: (Array.isArray(data.banners) ? data.banners : []).map(item => {
+      const imageVariants = uploadImageVariants(item.imageUrl)
+      return {
+        ...item,
+        imageUrl: imageVariants.url,
+        optimizedUrl: item.optimizedUrl ? publicAssetUrl(item.optimizedUrl) : imageVariants.optimizedUrl,
+        thumbUrl: item.thumbUrl ? publicAssetUrl(item.thumbUrl) : imageVariants.thumbUrl,
+        bannerUrl: item.bannerUrl ? publicAssetUrl(item.bannerUrl) : imageVariants.bannerUrl,
+        bannerThumbUrl: item.bannerThumbUrl ? publicAssetUrl(item.bannerThumbUrl) : imageVariants.bannerThumbUrl,
+        targetType: item.targetType || "primary",
+        targetValue: item.targetValue || ""
+      }
+    }),
     categories: Array.isArray(data.categories) ? data.categories : [],
     homeEntries: (Array.isArray(data.homeEntries) && data.homeEntries.length ? data.homeEntries : defaultHomeEntries).slice(0, 4).map((rawItem, index) => {
       const item = rawItem.name === "联系客服" || rawItem.targetType === "service" ? { ...rawItem, name: "日用好货", desc: rawItem.desc && rawItem.name !== "联系客服" ? rawItem.desc : "食品饮料 · 日用百货", icon: rawItem.icon === "☎" || rawItem.icon === "聊" ? "货" : (rawItem.icon || "货"), targetType: "primary", targetValue: "日用好货" } : rawItem
+      const imageVariants = uploadImageVariants(item.imageUrl)
       return {
       name: item.name || defaultHomeEntries[index]?.name || `入口${index + 1}`,
       desc: item.desc || "",
       icon: item.icon || defaultHomeEntries[index]?.icon || "＋",
-      imageUrl: publicAssetUrl(item.imageUrl),
+      imageUrl: imageVariants.url,
+      thumbUrl: item.thumbUrl ? publicAssetUrl(item.thumbUrl) : imageVariants.thumbUrl,
       targetType: item.targetType || "primary",
       targetValue: item.targetValue || "",
       visible: String(item.visible == null ? "true" : item.visible),
@@ -1479,6 +1533,72 @@ function validatePublicUploadImage(file, loggedIn) {
     throw uploadInputError(400, "图片格式不支持，请选择jpg/png/webp/heic")
   }
   return { type: "image", ext: detectedExt }
+}
+
+async function writeOptimizedImage(sourceFile, outputName, options = {}) {
+  if (!sharp) return null
+  const targetFile = path.join(uploadsDir, outputName)
+  const pipeline = sharp(sourceFile, { failOnError: false }).rotate()
+  if (options.fit === "cover") {
+    pipeline.resize(options.width, options.height, { fit: "cover", position: "centre" })
+  } else {
+    pipeline.resize({ width: options.width, height: options.height, fit: "inside", withoutEnlargement: true })
+  }
+  try {
+    await pipeline.webp({ quality: options.quality || 78 }).toFile(targetFile)
+    return targetFile
+  } catch (error) {
+    const jpgName = outputName.replace(/\.webp$/i, ".jpg")
+    const jpgFile = path.join(uploadsDir, jpgName)
+    await sharp(sourceFile, { failOnError: false })
+      .rotate()
+      .resize(options.fit === "cover"
+        ? { width: options.width, height: options.height, fit: "cover", position: "centre" }
+        : { width: options.width, height: options.height, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: options.quality || 78, mozjpeg: true })
+      .toFile(jpgFile)
+    return jpgFile
+  }
+}
+
+async function optimizeUploadedImage(sourceFile, filename, type = "image") {
+  const originalUrl = uploadPublicUrl(filename)
+  const variants = uploadImageVariants(originalUrl)
+  const result = {
+    ...variants,
+    width: null,
+    height: null,
+    size: fs.existsSync(sourceFile) ? fs.statSync(sourceFile).size : 0,
+    warning: ""
+  }
+  if (type !== "image" || /\.svg$/i.test(filename)) return result
+  if (!sharp) {
+    result.warning = "图片压缩组件不可用，已保存原图"
+    return result
+  }
+  try {
+    const meta = await sharp(sourceFile, { failOnError: false }).metadata()
+    result.width = meta.width || null
+    result.height = meta.height || null
+    const tasks = [
+      [".optimized", { width: 1200, height: 1200, fit: "inside", quality: 80 }],
+      [".banner", { width: 1200, height: 500, fit: "cover", quality: 80 }],
+      [".banner-thumb", { width: 600, height: 250, fit: "cover", quality: 74 }],
+      [".thumb", { width: 400, height: 400, fit: "cover", quality: 80 }],
+      [".cart-thumb", { width: 200, height: 200, fit: "cover", quality: 74 }],
+      [".detail", { width: 800, height: 4000, fit: "inside", quality: 80 }]
+    ]
+    for (const [suffix, options] of tasks) {
+      const outputName = uploadVariantFilename(filename, suffix, "webp")
+      if (outputName && !fs.existsSync(path.join(uploadsDir, outputName))) {
+        await writeOptimizedImage(sourceFile, outputName, options)
+      }
+    }
+    return { ...result, ...uploadImageVariants(originalUrl) }
+  } catch (error) {
+    result.warning = "图片压缩失败，已保存原图"
+    return result
+  }
 }
 
 function normalizeMediaList(value) {
@@ -1645,6 +1765,7 @@ function assertProductionPaymentConfig() {
 
 function normalizeProduct(product, index) {
   const imageUrl = publicAssetUrl(product.mainImage || product.imageUrl || product.image || product.coverImage)
+  const imageVariants = uploadImageVariants(imageUrl)
   const categories = normalizeProductCategories(product.categories, product)
   const levels = productCategoryLevels(categories)
   const productType = String(product.productType || product.product_type || "").toLowerCase() === "normal" ||
@@ -1662,9 +1783,15 @@ function normalizeProduct(product, index) {
     cover: product.cover || "keyring",
     imageUrl,
     mainImage: imageUrl,
-    galleryImages: normalizeAssetUrls(normalizeMediaList(product.galleryImages)),
+    optimizedUrl: product.optimizedUrl ? publicAssetUrl(product.optimizedUrl) : imageVariants.optimizedUrl,
+    thumbUrl: product.thumbUrl ? publicAssetUrl(product.thumbUrl) : imageVariants.thumbUrl,
+    listImage: product.listImage ? publicAssetUrl(product.listImage) : imageVariants.listImage,
+    cartThumbUrl: product.cartThumbUrl ? publicAssetUrl(product.cartThumbUrl) : imageVariants.cartThumbUrl,
+    detailUrl: product.detailUrl ? publicAssetUrl(product.detailUrl) : imageVariants.detailUrl,
+    webpUrl: product.webpUrl ? publicAssetUrl(product.webpUrl) : imageVariants.webpUrl,
+    galleryImages: normalizeAssetUrls(normalizeMediaList(product.galleryImages)).map(url => uploadVariantUrl(url, ".optimized")),
     videoUrl: publicAssetUrl(product.videoUrl),
-    detailImages: normalizeAssetUrls(normalizeMediaList(product.detailImages)),
+    detailImages: normalizeAssetUrls(normalizeMediaList(product.detailImages)).map(url => uploadVariantUrl(url, ".detail")),
     detailText: product.detailText || "",
     productType,
     needCustom: productType === "normal" ? "false" : "true",
@@ -4929,15 +5056,29 @@ async function handle(req, res) {
       sendJson(res, 400, { ok: false, message: "每次最多上传9张图片" })
       return
     }
-    const uploaded = files.map(file => {
+    const uploaded = []
+    for (const file of files) {
       const uploadType = isPublicUpload ? validatePublicUploadImage(file, loggedInPublicUpload) : validateUploadFile(file)
       if (isPublicUpload && uploadType.type !== "image") throw new Error("仅支持上传jpg/jpeg/png/webp/heic图片")
       const filename = isPublicUpload ? publicUploadFilename(uploadType.ext, !loggedInPublicUpload) : safeName(file.filename || `upload.${uploadType.ext}`)
-      fs.writeFileSync(path.join(uploadsDir, filename), file.body)
-      return { url: `${PUBLIC_BASE_URL}/uploads/${filename}`, type: uploadType.type }
-    })
+      const targetFile = path.join(uploadsDir, filename)
+      fs.writeFileSync(targetFile, file.body)
+      const optimized = uploadType.type === "image" ? await optimizeUploadedImage(targetFile, filename, uploadType.type) : { url: uploadPublicUrl(filename), size: file.body.length, warning: "" }
+      if (uploadType.type === "image" && file.body.length > 2 * 1024 * 1024) {
+        optimized.warning = optimized.warning || "图片较大，已尝试压缩；建议上传前先压缩，提升小程序加载速度"
+      }
+      uploaded.push({ ...optimized, type: uploadType.type })
+    }
     const first = uploaded[0]
-    sendJson(res, 200, { ok: true, url: first.url, urls: uploaded.map(item => item.url), type: first.type, temporary: isPublicUpload && !loggedInPublicUpload })
+    sendJson(res, 200, {
+      ok: true,
+      ...first,
+      urls: uploaded.map(item => item.url),
+      optimizedUrls: uploaded.map(item => item.optimizedUrl || item.url),
+      thumbUrls: uploaded.map(item => item.thumbUrl || item.url),
+      type: first.type,
+      temporary: isPublicUpload && !loggedInPublicUpload
+    })
     return
   }
 

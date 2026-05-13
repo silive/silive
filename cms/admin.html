@@ -1036,13 +1036,13 @@
       const v = escapeHtml(value || "")
       if (key === "imageUrl" || key === "posterUrl") {
         const isBanner = label.includes("Banner") || label.includes("海报")
-        const sizeText = isBanner ? "Banner图：1200x500 像素" : "商品图：800x800 像素"
+        const sizeText = isBanner ? "Banner图：1200x500 像素，建议300KB以内" : "商品图：800x800 像素，建议300KB以内"
         return `<label>${label}
           <div class="upload-row">
             <input data-key="${key}" value="${v}">
             <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-upload-key="${key}">
           </div>
-          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}</div>
+          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB<br>系统会自动生成前台压缩图，原图仅作备份${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}</div>
           <img class="image-preview ${v ? "show" : ""}" src="${v}" alt="图片预览">
         </label>`
       }
@@ -1442,6 +1442,9 @@
       if (file.size > 10 * 1024 * 1024) {
         throw new Error("图片超过10MB，请压缩后上传")
       }
+      if (file.size > 2 * 1024 * 1024) {
+        alert("图片较大，系统会尝试压缩；建议上传前先压缩，提升小程序加载速度。")
+      }
       const form = new FormData()
       form.append("file", file)
       let res
@@ -1456,6 +1459,7 @@
       }
       const data = await res.json()
       if (!data.ok) throw new Error(data.message || "上传失败，请重试")
+      if (data.warning) alert(data.warning)
       return data.url
     }
     async function uploadMedia(file, kind = "image") {

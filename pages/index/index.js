@@ -18,9 +18,19 @@ function isNormalProduct(product = {}) {
 function normalizeProducts(products) {
   return (products || []).filter(product => product.status !== "off").map(product => ({
     ...product,
+    displayImage: product.listImage || product.thumbUrl || product.optimizedUrl || product.imageUrl,
+    cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     categories: Array.isArray(product.categories) ? product.categories : [],
     badgeText: BADGE_TEXT[product.badge] || product.badge || "",
     isNormalProduct: isNormalProduct(product)
+  }))
+}
+
+function normalizeBanners(banners = []) {
+  return banners.map(item => ({
+    ...item,
+    displayImage: item.bannerUrl || item.optimizedUrl || item.imageUrl,
+    placeholderColor: "#eef6ff"
   }))
 }
 
@@ -44,7 +54,8 @@ function productMatchesKeyword(product, keyword) {
 function buildHomeState(data) {
   const products = normalizeProducts(data.products || defaultData.products)
   const hotProducts = products.filter(product => String(product.isHot) === "true" || ["best", "hot"].includes(product.badge)).slice(0, 6)
-  const banners = (data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc)
+  const firstScreenProducts = (hotProducts.length ? hotProducts : products).slice(0, 4)
+  const banners = normalizeBanners((data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc))
   const homeEntries = (data.homeEntries || defaultData.homeEntries || [])
     .map(item => item.name === "联系客服" || item.targetType === "service" ? {
       ...item,
@@ -60,7 +71,8 @@ function buildHomeState(data) {
     ...defaultData,
     ...data,
     banners,
-    products,
+    products: firstScreenProducts,
+    searchAllProducts: products,
     hotProducts: hotProducts.length ? hotProducts : products.slice(0, 4),
     homeEntries,
     trustTags: (data.trustTags || defaultData.trustTags || []).map(item => ({
@@ -130,14 +142,12 @@ Page({
           ...buildHomeState(data || defaultData),
           cmsStatus: "online"
         })
-        this.loadSearchProducts()
       })
       .catch(() => {
         this.setData({
           ...buildHomeState(defaultData),
           cmsStatus: "local"
         })
-        this.loadSearchProducts()
       })
   },
 
@@ -194,6 +204,7 @@ Page({
     this.setData({
       searchKeyword
     })
+    if (searchKeyword && (!this.data.searchAllProducts || this.data.searchAllProducts.length <= this.data.products.length)) this.loadSearchProducts()
     this.refreshSearchResults(searchKeyword)
   },
 

@@ -1,7 +1,7 @@
 <view class="page {{themeClass}}" style="{{themeStyle}}" wx:if="{{product}}">
   <view class="summary" style="{{cardStyle}}">
     <view class="summary-cover cover-{{product.cover}}">
-      <image wx:if="{{product.imageUrl}}" class="summary-image" src="{{product.imageUrl}}" mode="aspectFill" />
+      <image wx:if="{{product.cartThumbUrl || product.thumbUrl || product.optimizedUrl || product.imageUrl}}" class="summary-image" src="{{product.cartThumbUrl || product.thumbUrl || product.optimizedUrl || product.imageUrl}}" mode="aspectFill" />
     </view>
     <view class="summary-info">
       <view class="product-name">{{product.name}}</view>
@@ -31,7 +31,7 @@
       <view wx:if="{{cartMode && cartKindCount > 1}}" class="cart-kind-tip">共 {{cartKindCount}} 种商品</view>
       <view wx:if="{{cartMode}}" class="cart-summary-list">
         <view class="cart-summary-item" wx:for="{{cartItems}}" wx:key="id">
-          <image wx:if="{{item.imageUrl}}" class="cart-summary-image" src="{{item.imageUrl}}" mode="aspectFill" />
+          <image wx:if="{{item.cartThumbUrl || item.thumbUrl || item.imageUrl}}" class="cart-summary-image" src="{{item.cartThumbUrl || item.thumbUrl || item.imageUrl}}" mode="aspectFill" />
           <view class="cart-summary-info">
             <view class="cart-summary-name">{{item.name}}</view>
             <view class="cart-summary-meta">¥{{item.price}} × {{item.quantity}}</view>

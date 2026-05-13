@@ -13,7 +13,7 @@
   <swiper class="hero-swiper" autoplay circular interval="3600" duration="650" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
     <swiper-item wx:for="{{banners}}" wx:key="title">
       <view class="hero hero-{{item.theme}}" style="{{bannerStyle}}" bindtap="openBanner" data-index="{{index}}">
-        <image wx:if="{{item.imageUrl}}" class="hero-image" style="{{bannerImageStyle}}" src="{{item.imageUrl}}" mode="aspectFill" lazy-load="{{index > 0}}" />
+        <image wx:if="{{item.displayImage || item.imageUrl}}" class="hero-image" style="{{bannerImageStyle}}" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load="{{index > 0}}" />
         <view wx:if="{{item.imageUrl}}" class="hero-mask" style="{{bannerOverlayStyle}}"></view>
         <view class="hero-copy">
           <view class="hero-tag">{{item.tag}}</view>
@@ -40,7 +40,7 @@
     <view wx:if="{{searchProducts.length}}" class="product-list search-product-list">
       <view class="product-card" style="{{cardStyle}}" wx:for="{{searchProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
         <view class="product-cover cover-{{item.cover}}">
-          <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+          <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
           <view wx:if="{{item.badgeText}}" class="product-badge badge-{{item.badge}}">{{item.badgeText}}</view>
         </view>
         <view class="product-info">
@@ -63,7 +63,7 @@
   <view class="entry-grid">
     <button class="entry-card" style="{{cardStyle}}" wx:for="{{homeEntries}}" wx:key="name" bindtap="openHomeEntry" data-index="{{index}}">
       <view class="entry-icon" style="{{iconBadgeStyle}}">
-        <image wx:if="{{item.imageUrl}}" class="entry-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.thumbUrl || item.imageUrl}}" class="entry-image" src="{{item.thumbUrl || item.imageUrl}}" mode="aspectFill" lazy-load />
         <text wx:else>{{item.icon}}</text>
       </view>
       <view class="entry-name">{{item.name}}</view>
@@ -89,7 +89,7 @@
   <view class="product-list">
     <view class="product-card" style="{{cardStyle}}" wx:for="{{products}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
       <view class="product-cover cover-{{item.cover}}">
-        <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
         <view wx:if="{{item.badgeText}}" class="product-badge badge-{{item.badge}}">{{item.badgeText}}</view>
       </view>
       <view class="product-info">
@@ -116,7 +116,7 @@
     <view class="hot-row">
       <view class="hot-card" style="{{cardStyle}}" wx:for="{{hotProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
         <view class="hot-cover cover-{{item.cover}}">
-          <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+          <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
         </view>
         <view class="hot-name">{{item.name}}</view>
         <view class="hot-price" style="{{priceStyle}}">¥{{item.price}}</view>

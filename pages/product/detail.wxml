@@ -1,11 +1,11 @@
 <view class="page {{themeClass}}" style="{{themeStyle}}" wx:if="{{product}}">
   <swiper class="detail-swiper cover-{{product.cover}}" circular indicator-dots indicator-color="rgba(255,255,255,.55)" indicator-active-color="#ffffff">
     <swiper-item wx:if="{{product.videoUrl}}">
-      <video class="detail-video" src="{{product.videoUrl}}" controls object-fit="cover" poster="{{product.mediaImages[0] || product.imageUrl}}"></video>
+      <video class="detail-video" src="{{product.videoUrl}}" controls object-fit="cover" poster="{{product.mediaImages[0] || product.displayImage || product.imageUrl}}"></video>
     </swiper-item>
     <swiper-item wx:for="{{product.mediaImages}}" wx:key="*this">
       <view class="detail-cover">
-        <image class="detail-image" src="{{item}}" mode="aspectFill" />
+        <image class="detail-image" src="{{item}}" mode="aspectFill" lazy-load />
       </view>
     </swiper-item>
   </swiper>
@@ -46,7 +46,7 @@
     <view class="panel-title">商品详情</view>
     <view wx:if="{{product.detailText}}" class="detail-text" style="{{mutedTextStyle}}">{{product.detailText}}</view>
     <view class="detail-images" wx:if="{{product.detailImages.length}}">
-      <image class="detail-long-image" wx:for="{{product.detailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" />
+      <image class="detail-long-image" wx:for="{{product.detailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" lazy-load />
     </view>
   </view>
 

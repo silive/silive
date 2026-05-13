@@ -22,6 +22,8 @@ function isNormalProduct(product = {}) {
 function normalize(product) {
   return {
     ...product,
+    displayImage: product.listImage || product.thumbUrl || product.optimizedUrl || product.imageUrl,
+    cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     categories: Array.isArray(product.categories) ? product.categories : [],
     badgeText: BADGE_TEXT[product.badge] || product.badge || "",
     isNormalProduct: isNormalProduct(product)
@@ -324,7 +326,7 @@ Page({
         id: product.id,
         name: product.name,
         price: product.price,
-        imageUrl: product.imageUrl || product.mainImage || "",
+        imageUrl: product.cartImage || product.displayImage || product.imageUrl || product.mainImage || "",
         quantity: 1,
         productType: "normal"
       })
