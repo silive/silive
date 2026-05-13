@@ -1346,6 +1346,7 @@ function normalizeAds(value) {
 }
 
 function normalizeHome(data) {
+  const homeUpdatedAt = data.updatedAt || data.homeUpdatedAt || ""
   const defaultHomeEntries = [
     { name: "激光定制", desc: "上传照片定制礼物", icon: "◆", imageUrl: "", targetType: "primary", targetValue: "激光定制", visible: "true", sort: "1" },
     { name: "3D打印", desc: "模型文件直接生产", icon: "✦", imageUrl: "", targetType: "primary", targetValue: "3D打印", visible: "true", sort: "2" },
@@ -1355,6 +1356,7 @@ function normalizeHome(data) {
   return {
     banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => {
       const imageVariants = uploadImageVariants(item.imageUrl)
+      const bannerVersion = item.version || item.updatedAt || homeUpdatedAt || ""
       return {
         ...item,
         imageUrl: imageVariants.url,
@@ -1362,6 +1364,8 @@ function normalizeHome(data) {
         thumbUrl: item.thumbUrl ? publicAssetUrl(item.thumbUrl) : imageVariants.thumbUrl,
         bannerUrl: item.bannerUrl ? publicAssetUrl(item.bannerUrl) : imageVariants.bannerUrl,
         bannerThumbUrl: item.bannerThumbUrl ? publicAssetUrl(item.bannerThumbUrl) : imageVariants.bannerThumbUrl,
+        version: bannerVersion,
+        updatedAt: item.updatedAt || bannerVersion,
         targetType: item.targetType || "primary",
         targetValue: item.targetValue || ""
       }
@@ -2382,7 +2386,17 @@ async function getHome() {
 }
 
 async function saveHome(data) {
-  const home = normalizeHome(data)
+  const bannerVersion = Date.now()
+  const stampedData = {
+    ...data,
+    updatedAt: new Date(bannerVersion).toISOString(),
+    banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => ({
+      ...item,
+      version: bannerVersion,
+      updatedAt: bannerVersion
+    }))
+  }
+  const home = normalizeHome(stampedData)
   if (!pool) {
     writeJsonFile(homeFile, home)
     return home

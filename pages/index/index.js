@@ -27,9 +27,19 @@ function normalizeProducts(products) {
 }
 
 function normalizeBanners(banners = []) {
+  return normalizeBannersWithVersion(banners, "")
+}
+
+function withVersion(url, version) {
+  if (!url) return ""
+  if (!version) return url
+  return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`
+}
+
+function normalizeBannersWithVersion(banners = [], homeUpdatedAt = "") {
   return banners.map(item => ({
     ...item,
-    displayImage: item.bannerUrl || item.optimizedUrl || item.imageUrl,
+    displayImage: withVersion(item.bannerUrl || item.optimizedUrl || item.imageUrl, item.version || item.updatedAt || homeUpdatedAt),
     placeholderColor: "#eef6ff"
   }))
 }
@@ -56,7 +66,8 @@ function buildHomeState(data) {
   const hotProducts = products.filter(product => String(product.isHot) === "true" || ["best", "hot"].includes(product.badge)).slice(0, 6)
   const recommendedProducts = (hotProducts.length ? hotProducts : products).slice(0, 6)
   const burstProducts = (hotProducts.length ? hotProducts : products).slice(0, 4)
-  const banners = normalizeBanners((data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc))
+  const homeUpdatedAt = data.updatedAt || data.homeUpdatedAt || ""
+  const banners = normalizeBannersWithVersion((data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc), homeUpdatedAt)
   const homeEntries = (data.homeEntries || defaultData.homeEntries || [])
     .map(item => item.name === "联系客服" || item.targetType === "service" ? {
       ...item,
@@ -137,10 +148,18 @@ Page({
   },
 
   loadHomeConfig() {
-    request(`/api/home?t=${Date.now()}`, { timeout: 8000 })
+    request(`/api/home?_t=${Date.now()}`, { timeout: 8000 })
       .then(data => {
+        const nextHome = buildHomeState(data || defaultData)
+        const firstBanner = nextHome.banners && nextHome.banners[0] ? nextHome.banners[0] : {}
+        console.log("[home] banners", {
+          count: nextHome.banners.length,
+          firstTitle: firstBanner.title || "",
+          firstVersion: firstBanner.version || firstBanner.updatedAt || "",
+          firstImage: firstBanner.displayImage || ""
+        })
         this.setData({
-          ...buildHomeState(data || defaultData),
+          ...nextHome,
           cmsStatus: "online"
         })
       })
@@ -150,6 +169,11 @@ Page({
           cmsStatus: "local"
         })
       })
+  },
+
+  onPullDownRefresh() {
+    this.loadHomeConfig()
+    setTimeout(() => wx.stopPullDownRefresh(), 600)
   },
 
   loadHeaderAvatar() {

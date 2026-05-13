@@ -2462,6 +2462,7 @@
     }
     async function saveCurrent() {
       setStatus("保存中...")
+      let finalStatus = "已保存发布"
       if (currentView === "home") {
         home.promoText = $("promoText").value
         home.contact = { phone: $("contactPhone").value, wechat: $("contactWechat").value, workWechatUrl: $("workWechatUrl").value }
@@ -2475,6 +2476,7 @@
         await api("/api/home", "PUT", home)
         collectHelpArticles()
         await api("/api/admin/settings", "PUT", { ...settings, helpArticles: settings.helpArticles, helpPageTitle: settings.helpPageTitle, helpPageSubtitle: settings.helpPageSubtitle })
+        finalStatus = "已保存，前台重新进入首页或下拉刷新后生效。"
       }
       if (currentView === "products") {
         collectCategoryManager()
@@ -2543,7 +2545,7 @@
         await api("/api/admin/settings", "PUT", settings)
       }
       await loadAll()
-      setStatus("已保存发布")
+      setStatus(finalStatus)
     }
 
     $("nav").addEventListener("click", event => {

@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "非常智造"
+  "navigationBarTitleText": "非常智造",
+  "enablePullDownRefresh": true
 }
