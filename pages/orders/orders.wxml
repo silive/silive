@@ -52,6 +52,13 @@
           <view class="muted" style="{{mutedTextStyle}}">{{item.createdAtDisplay}}</view>
           <view class="pickup-info" wx:if="{{item.pickupLine}}">
             <view class="pickup-code">{{item.pickupLine}}</view>
+            <view wx:if="{{item.canShowPickupCredential && item.pickupQrCodeUrl}}" class="pickup-qrcode-box">
+              <image class="pickup-qrcode" src="{{item.pickupQrCodeUrl}}" mode="aspectFit" show-menu-by-longpress="true" />
+              <view>
+                <view class="pickup-code-large">{{item.pickupCode}}</view>
+                <view class="muted" style="{{mutedTextStyle}}">向店员出示二维码</view>
+              </view>
+            </view>
             <view class="muted" style="{{mutedTextStyle}}">{{item.pickupTip}}</view>
             <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.pickupStore.address}}">{{item.pickupStore.address}}</view>
           </view>

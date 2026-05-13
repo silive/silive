@@ -96,6 +96,7 @@ function normalizeOrder(order, products = []) {
     canConfirmReceive: display === "待收货",
     canAfterSale: ["已完成", "已自提"].includes(display),
     pickupLine: order.deliveryType === "pickup" && order.pickupStore ? `${order.pickupStore.name} · 取货码 ${order.pickupCode || "-"}` : "",
+    canShowPickupCredential: order.deliveryType === "pickup" && !isUnpaid(order) && !quote && !!order.pickupCode,
     pickupTip: order.deliveryType === "pickup"
       ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
       : "",

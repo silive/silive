@@ -17,6 +17,12 @@ try {
 } catch (error) {
   sharp = null
 }
+let QRCode
+try {
+  QRCode = require("qrcode")
+} catch (error) {
+  QRCode = null
+}
 
 const ROOT = path.join(__dirname, "..")
 loadEnv(path.join(ROOT, ".env"))
@@ -1861,12 +1867,16 @@ function normalizeOrder(order, index) {
     deliveryType: order.deliveryType || "delivery",
     pickupStoreId: order.pickupStoreId || "",
     pickupStore: order.pickupStore || null,
-    pickupCode: order.pickupCode || "",
+    pickupCode: normalizePickupCode(order.pickupCode || order.pickup_code || ""),
+    pickupQrCodeUrl: publicAssetUrl(order.pickupQrCodeUrl || order.pickup_qrcode_url || ""),
     pickupStatus: order.pickupStatus || "none",
     arrivedStoreAt,
     arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(arrivedStoreAt),
     pickedUpAt,
     pickedUpAtText: order.pickedUpAtText || formatChinaDatetime(pickedUpAt),
+    pickupVerifiedAt: order.pickupVerifiedAt || order.pickup_verified_at || null,
+    pickupVerifiedAtText: order.pickupVerifiedAtText || formatChinaDatetime(order.pickupVerifiedAt || order.pickup_verified_at),
+    pickupVerifiedBy: order.pickupVerifiedBy || order.pickup_verified_by || "",
     userLatitude: order.userLatitude == null || order.userLatitude === "" ? "" : String(order.userLatitude),
     userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
     pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
@@ -1892,7 +1902,8 @@ function mysqlOrderParams(order) {
     completedAt: toMysqlDatetime(order.completedAt),
     refundAt: toMysqlDatetime(order.refundAt),
     arrivedStoreAt: toMysqlDatetime(order.arrivedStoreAt),
-    pickedUpAt: toMysqlDatetime(order.pickedUpAt)
+    pickedUpAt: toMysqlDatetime(order.pickedUpAt),
+    pickupVerifiedAt: toMysqlDatetime(order.pickupVerifiedAt)
   }
 }
 
@@ -2030,8 +2041,53 @@ function calculateStoreAmount(amount, type, value) {
   return "0.00"
 }
 
-function generatePickupCode() {
-  return String(Math.floor(100000 + Math.random() * 900000))
+function normalizePickupCode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)
+}
+
+function generatePickupCodeCandidate() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  let code = ""
+  for (let index = 0; index < 6; index += 1) {
+    code += alphabet[Math.floor(Math.random() * alphabet.length)]
+  }
+  return code
+}
+
+async function generateUniquePickupCode() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const code = generatePickupCodeCandidate()
+    if (!pool) {
+      const exists = readJsonFile(ordersFile, []).some(order => normalizePickupCode(order.pickupCode || order.pickup_code) === code)
+      if (!exists) return code
+    } else {
+      const rows = await query("SELECT id FROM orders WHERE pickup_code = :code LIMIT 1", { code })
+      if (!rows.length) return code
+    }
+  }
+  return `${Date.now().toString(36).toUpperCase().slice(-6)}`
+}
+
+async function generatePickupQrCode(pickupCode) {
+  const code = normalizePickupCode(pickupCode)
+  if (!code || !QRCode) return ""
+  const outputFile = path.join(uploadsDir, `pickup-code-${code}.png`)
+  if (fs.existsSync(outputFile)) return publicAssetUrl(`/uploads/${path.basename(outputFile)}`)
+  try {
+    await QRCode.toFile(outputFile, code, {
+      margin: 1,
+      width: 420,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#1F2937",
+        light: "#FFFFFF"
+      }
+    })
+    return publicAssetUrl(`/uploads/${path.basename(outputFile)}`)
+  } catch (error) {
+    console.warn("[pickup] qrcode generate failed", { code, message: error.message })
+    return ""
+  }
 }
 
 function storePublicView(store) {
@@ -2068,6 +2124,20 @@ function storePrivateView(store) {
 function maskPhone(phone) {
   const text = String(phone || "")
   return text.length === 11 ? `${text.slice(0, 3)}****${text.slice(7)}` : text
+}
+
+function maskName(name) {
+  const text = String(name || "").trim()
+  if (!text) return ""
+  if (text.length === 1) return `${text}*`
+  return `${text[0]}${"*".repeat(Math.min(2, text.length - 1))}`
+}
+
+function extractOrderQuantity(order = {}) {
+  const remark = String(order.remark || "")
+  const quantities = Array.from(remark.matchAll(/x(\d+)/g)).map(match => Number(match[1] || 0)).filter(Boolean)
+  if (quantities.length) return quantities.reduce((sum, value) => sum + value, 0)
+  return 1
 }
 
 function maskNormalizedPhone(phone) {
@@ -2753,11 +2823,15 @@ async function getOrders(filters = {}) {
     pickupStoreId: row.pickup_store_id || "",
     pickupStore: storePublicView(stores.find(store => store.id === row.pickup_store_id)),
     pickupCode: row.pickup_code || "",
+    pickupQrCodeUrl: row.pickup_qrcode_url || "",
     pickupStatus: row.pickup_status || "none",
     arrivedStoreAt: formatChinaDatetime(row.arrived_store_at),
     arrivedStoreAtText: formatChinaDatetime(row.arrived_store_at),
     pickedUpAt: formatChinaDatetime(row.picked_up_at),
     pickedUpAtText: formatChinaDatetime(row.picked_up_at),
+    pickupVerifiedAt: formatChinaDatetime(row.pickup_verified_at),
+    pickupVerifiedAtText: formatChinaDatetime(row.pickup_verified_at),
+    pickupVerifiedBy: row.pickup_verified_by || "",
     userLatitude: row.user_latitude,
     userLongitude: row.user_longitude,
     pickupDistance: row.pickup_distance,
@@ -2802,8 +2876,8 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_status, arrived_store_at, picked_up_at, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -2838,9 +2912,12 @@ async function saveOrders(orders) {
        delivery_type = VALUES(delivery_type),
        pickup_store_id = VALUES(pickup_store_id),
        pickup_code = VALUES(pickup_code),
+       pickup_qrcode_url = VALUES(pickup_qrcode_url),
        pickup_status = VALUES(pickup_status),
        arrived_store_at = VALUES(arrived_store_at),
        picked_up_at = VALUES(picked_up_at),
+       pickup_verified_at = VALUES(pickup_verified_at),
+       pickup_verified_by = VALUES(pickup_verified_by),
        user_latitude = VALUES(user_latitude),
        user_longitude = VALUES(user_longitude),
        pickup_distance = VALUES(pickup_distance),
@@ -3082,11 +3159,15 @@ function storeOrderView(order, mode = "referral") {
     paymentStatus: order.paymentStatus,
     phone: maskPhone(order.phone),
     pickupCode: order.pickupCode,
+    pickupQrCodeUrl: order.pickupQrCodeUrl || "",
     pickupStatus: order.pickupStatus,
     arrivedStoreAt: order.arrivedStoreAt,
     arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(order.arrivedStoreAt),
     pickedUpAt: order.pickedUpAt,
     pickedUpAtText: order.pickedUpAtText || formatChinaDatetime(order.pickedUpAt),
+    pickupVerifiedAt: order.pickupVerifiedAt || "",
+    pickupVerifiedAtText: order.pickupVerifiedAtText || formatChinaDatetime(order.pickupVerifiedAt),
+    pickupVerifiedBy: order.pickupVerifiedBy || "",
     referralCommission: mode === "pickup" ? "" : order.referralCommission,
     pickupServiceFee: mode === "referral" ? "" : order.pickupServiceFee,
     storeSettlementStatus: order.storeSettlementStatus
@@ -3116,14 +3197,59 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
   if (order.pickupStoreId !== store.id) throw httpError(403, "不能核销其他门店订单")
   if (order.paymentStatus !== "已支付") throw httpError(400, "订单未支付，暂不能核销")
   if (order.pickupStatus === "picked_up") throw httpError(400, "该订单已核销")
-  if (!pickupCode || String(order.pickupCode) !== String(pickupCode)) throw httpError(400, "取货码不正确")
+  if (!pickupCode || normalizePickupCode(order.pickupCode) !== normalizePickupCode(pickupCode)) throw httpError(400, "取货码不正确")
+  const verifiedAt = formatDateTime(new Date())
   order.pickupStatus = "picked_up"
   order.status = "已完成"
-  order.pickedUpAt = formatDateTime(new Date())
+  order.pickedUpAt = verifiedAt
+  order.pickupVerifiedAt = verifiedAt
+  order.pickupVerifiedBy = store.id
   order.completedAt = order.completedAt || order.pickedUpAt
   await saveOrders([order])
   await createStoreSettlementRecordsForOrder(order)
   return storeOrderView(order, "pickup")
+}
+
+async function verifyStorePickupByCode(store, pickupCode) {
+  const code = normalizePickupCode(pickupCode)
+  if (!code || code.length !== 6) throw httpError(400, "请输入6位取货码")
+  const orders = await getOrders()
+  const order = orders.find(item => normalizePickupCode(item.pickupCode) === code)
+  if (!order) throw httpError(404, "取货码不存在")
+  if (order.pickupStoreId !== store.id) throw httpError(403, "不能核销其他门店订单")
+  if (order.paymentStatus !== "已支付") throw httpError(400, "订单未支付，暂不能核销")
+  if (order.pickupStatus === "picked_up") {
+    return {
+      ok: false,
+      alreadyVerified: true,
+      message: "订单已核销",
+      order: storeOrderView(order, "pickup"),
+      verifiedAt: order.pickupVerifiedAtText || order.pickedUpAtText || order.pickedUpAt || "",
+      verifiedStore: order.pickupStore?.name || store.name,
+      verifiedBy: order.pickupVerifiedBy || store.id
+    }
+  }
+  const verifiedAt = formatDateTime(new Date())
+  order.pickupStatus = "picked_up"
+  order.status = "已完成"
+  order.pickedUpAt = verifiedAt
+  order.pickupVerifiedAt = verifiedAt
+  order.pickupVerifiedBy = store.id
+  order.completedAt = order.completedAt || verifiedAt
+  await saveOrders([order])
+  await createStoreSettlementRecordsForOrder(order)
+  return {
+    ok: true,
+    alreadyVerified: false,
+    message: "核销成功",
+    order: storeOrderView(order, "pickup"),
+    product: order.productName,
+    customer: maskName(order.customerName) || maskPhone(order.phone),
+    quantity: extractOrderQuantity(order),
+    verifiedAt: formatChinaDatetime(verifiedAt),
+    verifiedStore: store.name,
+    verifiedBy: store.id
+  }
 }
 
 async function createOrder(data) {
@@ -3173,6 +3299,8 @@ async function createOrder(data) {
     ? { referrerUserId: "", parentReferrerUserId: "" }
     : await resolvePersonalOrderAttribution(data.phone)
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
+  const pickupCode = deliveryType === "pickup" ? await generateUniquePickupCode() : ""
+  const pickupQrCodeUrl = pickupCode ? await generatePickupQrCode(pickupCode) : ""
   const order = normalizeOrder({
     id: `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     productId: product.id,
@@ -3203,7 +3331,8 @@ async function createOrder(data) {
     deliveryType,
     pickupStoreId: pickupStore?.id || "",
     pickupStore: storePublicView(pickupStore),
-    pickupCode: deliveryType === "pickup" ? generatePickupCode() : "",
+    pickupCode,
+    pickupQrCodeUrl,
     pickupStatus: deliveryType === "pickup" ? "preparing" : "none",
     userLatitude: data.userLatitude || "",
     userLongitude: data.userLongitude || "",
@@ -3230,7 +3359,7 @@ async function createOrder(data) {
     return order
   }
   await query(
-    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
     {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -3297,6 +3426,10 @@ async function markOrderPaid(orderId, transactionId = "") {
       orders[index].status = "待发货"
       orders[index].transactionId = transactionId
       orders[index].paidAt = new Date().toISOString().slice(0, 16).replace("T", " ")
+      if (orders[index].deliveryType === "pickup" && !orders[index].pickupCode) {
+        orders[index].pickupCode = await generateUniquePickupCode()
+        orders[index].pickupQrCodeUrl = await generatePickupQrCode(orders[index].pickupCode)
+      }
       writeJsonFile(ordersFile, orders)
       await createRewardsForOrder(orders[index])
       await createStoreSettlementRecordsForOrder(orders[index])
@@ -3315,6 +3448,11 @@ async function markOrderPaid(orderId, transactionId = "") {
   if (!affectedRows) return false
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (order) {
+    if (order.deliveryType === "pickup" && (!order.pickupCode || !order.pickupQrCodeUrl)) {
+      order.pickupCode = order.pickupCode || await generateUniquePickupCode()
+      order.pickupQrCodeUrl = order.pickupQrCodeUrl || await generatePickupQrCode(order.pickupCode)
+      await saveOrders([order])
+    }
     await createRewardsForOrder(order)
     await createStoreSettlementRecordsForOrder(order)
   }
@@ -4011,9 +4149,12 @@ async function initDb() {
   await ensureColumn("orders", "delivery_type", "VARCHAR(20) DEFAULT 'delivery'")
   await ensureColumn("orders", "pickup_store_id", "VARCHAR(40)")
   await ensureColumn("orders", "pickup_code", "VARCHAR(20)")
+  await ensureColumn("orders", "pickup_qrcode_url", "VARCHAR(500)")
   await ensureColumn("orders", "pickup_status", "VARCHAR(30) DEFAULT 'none'")
   await ensureColumn("orders", "arrived_store_at", "DATETIME")
   await ensureColumn("orders", "picked_up_at", "DATETIME")
+  await ensureColumn("orders", "pickup_verified_at", "DATETIME")
+  await ensureColumn("orders", "pickup_verified_by", "VARCHAR(80)")
   await ensureColumn("orders", "user_latitude", "DECIMAL(10,6)")
   await ensureColumn("orders", "user_longitude", "DECIMAL(10,6)")
   await ensureColumn("orders", "pickup_distance", "DECIMAL(10,2)")
@@ -4735,6 +4876,14 @@ async function handle(req, res) {
     const orderId = decodeURIComponent(url.pathname.split("/")[4])
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     sendJson(res, 200, { ok: true, data: await verifyStorePickupOrder(storeSession.store, orderId, body.pickupCode) })
+    return
+  }
+
+  if (url.pathname === "/api/store/verify" && req.method === "POST") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, await verifyStorePickupByCode(storeSession.store, body.pickupCode || body.code))
     return
   }
 

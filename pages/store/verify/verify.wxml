@@ -1,15 +1,36 @@
-<view class="store-page {{themeClass}}" style="{{themeStyle}}">
+<view class="store-page verify-page {{themeClass}}" style="{{themeStyle}}">
   <view class="verify-card" style="{{cardStyle}}">
-    <view class="eyebrow">VERIFY PICKUP</view>
+    <view class="eyebrow">PICKUP VERIFY</view>
     <view class="store-name">取货核销</view>
-    <view class="store-meta">第一版先输入订单号和取货码，后续可扩展扫码核销。</view>
-    <input class="input" value="{{orderId}}" data-field="orderId" bindinput="onInput" placeholder="请输入订单号" />
-    <input class="input" value="{{pickupCode}}" data-field="pickupCode" bindinput="onInput" placeholder="请输入取货码" />
-    <button class="primary-btn" bindtap="verify" loading="{{verifying}}">确认核销</button>
+    <view class="store-meta">扫码核销更快，手动输入6位取货码作为备用。</view>
+
+    <button class="scan-btn" style="{{primaryButtonStyle}}" bindtap="scanPickupCode" loading="{{verifying}}">
+      扫码核销
+    </button>
+
+    <view class="manual-box">
+      <view class="manual-title">手动输入取货码</view>
+      <input
+        class="code-input"
+        value="{{pickupCode}}"
+        maxlength="6"
+        bindinput="onInput"
+        placeholder="例如 A8K392"
+        placeholder-class="code-placeholder"
+      />
+      <button class="secondary-btn verify-submit" style="{{secondaryButtonStyle}}" bindtap="verifyManual" loading="{{verifying}}">
+        确认核销
+      </button>
+    </view>
   </view>
-  <view wx:if="{{result}}" class="order-card" style="{{cardStyle}}">
-    <view class="order-title">核销成功</view>
-    <view class="order-sub">{{result.id}} · {{result.productName}}</view>
-    <view class="amount">状态：已自提</view>
+
+  <view wx:if="{{result}}" class="result-card {{result.alreadyVerified ? 'already' : 'success'}}" style="{{cardStyle}}">
+    <view class="result-icon">{{result.alreadyVerified ? '!' : '✓'}}</view>
+    <view class="result-title">{{result.alreadyVerified ? '订单已核销' : '核销成功'}}</view>
+    <view class="result-row"><text>商品</text><text>{{result.product || result.order.productName || '-'}}</text></view>
+    <view class="result-row"><text>数量</text><text>x{{result.quantity || 1}}</text></view>
+    <view class="result-row"><text>用户</text><text>{{result.customer || result.order.phone || '-'}}</text></view>
+    <view class="result-row"><text>时间</text><text>{{result.verifiedAt || '-'}}</text></view>
+    <view wx:if="{{result.verifiedStore}}" class="result-row"><text>门店</text><text>{{result.verifiedStore}}</text></view>
   </view>
 </view>

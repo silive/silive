@@ -267,6 +267,30 @@
   font-weight: 900;
 }
 
+.pickup-qrcode-box {
+  margin-top: 12rpx;
+  padding: 14rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.pickup-qrcode {
+  width: 128rpx;
+  height: 128rpx;
+  flex-shrink: 0;
+}
+
+.pickup-code-large {
+  color: #1f2937;
+  font-size: 42rpx;
+  font-weight: 950;
+  letter-spacing: 6rpx;
+  line-height: 1.2;
+}
+
 .order-head {
   display: flex;
   align-items: flex-start;
