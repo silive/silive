@@ -47,6 +47,17 @@ function normalizeProduct(product) {
   }
 }
 
+function cartItemFromProduct(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    imageUrl: product.cartImage || product.displayImage || product.imageUrl || product.mainImage || product.mediaImages?.[0] || "",
+    quantity: 1,
+    productType: "normal"
+  }
+}
+
 Page({
   data: {
     product: null,
@@ -132,6 +143,10 @@ Page({
   },
 
   goCheckout() {
+    if (this.data.product && this.data.product.isNormalProduct) {
+      this.buyNow()
+      return
+    }
     if (!getLoginState().loggedIn) {
       this.setData({ loginVisible: true })
       return
@@ -139,23 +154,37 @@ Page({
     this.openCheckout()
   },
 
+  addProductToCart(product) {
+    if (!product) return 0
+    const cart = wx.getStorageSync("cartItems") || []
+    const index = cart.findIndex(item => item.id === product.id)
+    if (index >= 0) {
+      cart[index].quantity = Number(cart[index].quantity || 1) + 1
+    } else {
+      cart.push(cartItemFromProduct(product))
+    }
+    wx.setStorageSync("cartItems", cart)
+    const cartCount = cart.reduce((sum, item) => sum + Number(item.quantity || 1), 0)
+    this.setData({ cartCount })
+    return cartCount
+  },
+
   addToCart() {
     const product = this.data.product
     if (!product) return
-    const cart = wx.getStorageSync("cartItems") || []
-    const index = cart.findIndex(item => item.id === product.id)
-    if (index >= 0) cart[index].quantity = Number(cart[index].quantity || 1) + 1
-    else cart.push({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      imageUrl: product.cartImage || product.displayImage || product.imageUrl || product.mediaImages?.[0] || "",
-      quantity: 1,
-      productType: "normal"
-    })
-    wx.setStorageSync("cartItems", cart)
-    this.loadCartCount()
+    this.addProductToCart(product)
     wx.showToast({ title: "已加入购物车", icon: "success" })
+  },
+
+  buyNow() {
+    const product = this.data.product
+    if (!product) return
+    if (!product.isNormalProduct) {
+      this.goCheckout()
+      return
+    }
+    this.addProductToCart(product)
+    wx.navigateTo({ url: "/pages/cart/cart" })
   },
 
   openCart() {

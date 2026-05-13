@@ -33,6 +33,18 @@
     <view class="benefit-item" wx:for="{{newcomerBenefits}}" wx:key="text">新人首单{{item.text}}</view>
   </view>
 
+  <view wx:if="{{product.isNormalProduct}}" class="normal-action-panel" style="{{cardStyle}}">
+    <view class="normal-action-row">
+      <view class="normal-action-wrap normal-cart-action">
+        <button class="normal-action-btn normal-add-btn" bindtap="addToCart">加入购物车</button>
+      </view>
+      <view class="normal-action-wrap normal-buy-action">
+        <button class="normal-action-btn normal-buy-btn" bindtap="buyNow">立即购买</button>
+      </view>
+    </view>
+    <button class="normal-share-btn" open-type="share">推荐给朋友</button>
+  </view>
+
   <view wx:if="{{!product.isNormalProduct}}" class="top-actions">
     <button class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
     <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
@@ -62,20 +74,21 @@
   <button wx:if="{{!product.isNormalProduct}}" class="primary-btn" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
 
   <button wx:if="{{product.isNormalProduct}}" class="floating-cart" bindtap="openCart" aria-label="购物车">
-    <text class="cart-icon">🛒</text>
+    <view class="cart-glyph">
+      <view class="cart-handle"></view>
+      <view class="cart-basket"></view>
+      <view class="cart-wheel wheel-left"></view>
+      <view class="cart-wheel wheel-right"></view>
+    </view>
     <text wx:if="{{cartCount > 0}}" class="cart-badge">{{cartCount > 99 ? '99+' : cartCount}}</text>
   </button>
-
-  <view wx:if="{{product.isNormalProduct}}" class="fixed-share-wrap">
-    <button class="fixed-share-btn" open-type="share">推荐给朋友</button>
-  </view>
 
   <view wx:if="{{product.isNormalProduct}}" class="fixed-action-bar">
     <view class="action-btn-wrap action-cart-wrap">
       <button class="action-btn add-cart-btn" bindtap="addToCart">加入购物车</button>
     </view>
     <view class="action-btn-wrap action-buy-wrap">
-      <button class="action-btn buy-btn" bindtap="goCheckout">立即购买</button>
+      <button class="action-btn buy-btn" bindtap="buyNow">立即购买</button>
     </view>
   </view>
 

@@ -30,6 +30,17 @@ function normalize(product) {
   }
 }
 
+function cartItemFromProduct(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    imageUrl: product.cartImage || product.displayImage || product.imageUrl || product.mainImage || "",
+    quantity: 1,
+    productType: "normal"
+  }
+}
+
 function matchesCategory(product, category) {
   if (Array.isArray(product.categories) && product.categories.includes(category)) return true
   const text = `${product.name || ""} ${product.intro || ""}`
@@ -309,30 +320,28 @@ Page({
 
   buyProduct(event) {
     const product = this.data.products[event.currentTarget.dataset.index]
-    wx.navigateTo({
-      url: `/pages/checkout/checkout?product=${encodeURIComponent(JSON.stringify(product))}`
-    })
+    if (!product) return
+    this.addProductToCart(product)
+    wx.navigateTo({ url: "/pages/cart/cart" })
   },
 
-  addToCart(event) {
-    const product = this.data.products[event.currentTarget.dataset.index]
+  addProductToCart(product) {
     if (!product) return
     const cart = wx.getStorageSync("cartItems") || []
     const index = cart.findIndex(item => item.id === product.id)
     if (index >= 0) {
       cart[index].quantity = Number(cart[index].quantity || 1) + 1
     } else {
-      cart.push({
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        imageUrl: product.cartImage || product.displayImage || product.imageUrl || product.mainImage || "",
-        quantity: 1,
-        productType: "normal"
-      })
+      cart.push(cartItemFromProduct(product))
     }
     wx.setStorageSync("cartItems", cart)
     this.loadCartCount()
+  },
+
+  addToCart(event) {
+    const product = this.data.products[event.currentTarget.dataset.index]
+    if (!product) return
+    this.addProductToCart(product)
     wx.showToast({ title: "已加入购物车", icon: "success" })
   },
 
