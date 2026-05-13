@@ -1432,7 +1432,7 @@
         clearTimeout(timer)
       }
     }
-    async function uploadImage(file) {
+    async function uploadImageData(file) {
       const ext = file.name.split(".").pop().toLowerCase()
       const allowedExts = ["jpg", "jpeg", "png", "webp"]
       const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
@@ -1460,6 +1460,10 @@
       const data = await res.json()
       if (!data.ok) throw new Error(data.message || "上传失败，请重试")
       if (data.warning) alert(data.warning)
+      return data
+    }
+    async function uploadImage(file) {
+      const data = await uploadImageData(file)
       return data.url
     }
     async function uploadMedia(file, kind = "image") {
@@ -2468,6 +2472,16 @@
         home.contact = { phone: $("contactPhone").value, wechat: $("contactWechat").value, workWechatUrl: $("workWechatUrl").value }
         collectList("homeBanners", home.banners)
         home.banners = (home.banners || []).slice(0, 3)
+        console.log("[admin-banner-payload]", home.banners.map((banner, index) => ({
+          index,
+          title: banner.title || "",
+          imageUrl: banner.imageUrl || "",
+          optimizedUrl: banner.optimizedUrl || "",
+          bannerUrl: banner.bannerUrl || "",
+          thumbUrl: banner.thumbUrl || "",
+          version: banner.version || "",
+          updatedAt: banner.updatedAt || ""
+        })))
         collectList("homeEntries", home.homeEntries)
         const ads = homeAdSlots()
         collectList("homeAds", ads)
@@ -3174,10 +3188,35 @@
       const inputEl = event.target.closest("label").querySelector(`[data-key='${event.target.dataset.uploadKey}']`)
       const previewEl = event.target.closest("label").querySelector(".image-preview")
       setStatus("图片上传中...")
-      uploadImage(file).then(url => {
+      uploadImageData(file).then(data => {
+        const url = data.url || ""
         inputEl.value = url
-        previewEl.src = url
+        previewEl.src = data.bannerUrl || data.optimizedUrl || data.webpUrl || url
         previewEl.classList.add("show")
+        const itemEl = event.target.closest(".item")
+        const isHomeBanner = !!event.target.closest("#homeBanners")
+        if (isHomeBanner && itemEl) {
+          const index = Number(itemEl.dataset.index)
+          const banner = home.banners[index] || {}
+          banner.imageUrl = url
+          banner.optimizedUrl = data.optimizedUrl || data.webpUrl || url
+          banner.bannerUrl = data.bannerUrl || data.optimizedUrl || data.webpUrl || url
+          banner.thumbUrl = data.thumbUrl || url
+          banner.bannerThumbUrl = data.bannerThumbUrl || data.thumbUrl || url
+          banner.version = Date.now()
+          banner.updatedAt = banner.version
+          home.banners[index] = banner
+          console.log("[admin-banner-upload]", {
+            index,
+            title: banner.title || "",
+            imageUrl: banner.imageUrl,
+            optimizedUrl: banner.optimizedUrl,
+            bannerUrl: banner.bannerUrl,
+            thumbUrl: banner.thumbUrl,
+            version: banner.version,
+            updatedAt: banner.updatedAt
+          })
+        }
         setStatus(file.size > 2 * 1024 * 1024 ? "图片已上传，记得保存当前页。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "图片已上传，记得保存当前页")
       }).catch(error => setStatus(error.message))
     })

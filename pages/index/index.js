@@ -37,11 +37,16 @@ function withVersion(url, version) {
 }
 
 function normalizeBannersWithVersion(banners = [], homeUpdatedAt = "") {
-  return banners.map(item => ({
-    ...item,
-    displayImage: withVersion(item.bannerUrl || item.optimizedUrl || item.imageUrl, item.version || item.updatedAt || homeUpdatedAt),
-    placeholderColor: "#eef6ff"
-  }))
+  return banners.map(item => {
+    const version = item.version || item.updatedAt || homeUpdatedAt
+    const finalImageUrl = item.finalImageUrl || withVersion(item.bannerUrl || item.optimizedUrl || item.imageUrl, version)
+    return {
+      ...item,
+      finalImageUrl,
+      displayImage: finalImageUrl || item.bannerUrl || item.optimizedUrl || item.imageUrl,
+      placeholderColor: "#eef6ff"
+    }
+  })
 }
 
 function normalizeKeyword(value) {
@@ -152,11 +157,13 @@ Page({
       .then(data => {
         const nextHome = buildHomeState(data || defaultData)
         const firstBanner = nextHome.banners && nextHome.banners[0] ? nextHome.banners[0] : {}
-        console.log("[home] banners", {
-          count: nextHome.banners.length,
-          firstTitle: firstBanner.title || "",
-          firstVersion: firstBanner.version || firstBanner.updatedAt || "",
-          firstImage: firstBanner.displayImage || ""
+        console.log("[home-banner-final]", {
+          title: firstBanner.title || "",
+          imageUrl: firstBanner.imageUrl || "",
+          optimizedUrl: firstBanner.optimizedUrl || "",
+          bannerUrl: firstBanner.bannerUrl || "",
+          finalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
+          version: firstBanner.version || firstBanner.updatedAt || ""
         })
         this.setData({
           ...nextHome,

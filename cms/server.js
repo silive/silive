@@ -154,6 +154,64 @@ function uploadImageVariants(sourceUrl) {
   }
 }
 
+function withVersion(url, version) {
+  if (!url) return ""
+  if (!version) return url
+  return `${url}${String(url).includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`
+}
+
+function normalizeBannerForSave(banner = {}, oldBanner = {}) {
+  const version = Date.now()
+  const imageUrl = publicAssetUrl(banner.imageUrl || "")
+  const oldImageUrl = publicAssetUrl(oldBanner.imageUrl || "")
+  const imageChanged = imageUrl !== oldImageUrl
+  const imageCleared = !imageUrl
+  const imageVariants = uploadImageVariants(imageUrl)
+  const next = {
+    ...banner,
+    imageUrl,
+    version,
+    updatedAt: version,
+    targetType: banner.targetType || "primary",
+    targetValue: banner.targetValue || ""
+  }
+  if (imageCleared) {
+    next.optimizedUrl = ""
+    next.bannerUrl = ""
+    next.thumbUrl = ""
+    next.bannerThumbUrl = ""
+    next.finalImageUrl = ""
+    return next
+  }
+  if (imageChanged) {
+    next.optimizedUrl = imageVariants.optimizedUrl || imageUrl
+    next.bannerUrl = imageVariants.bannerUrl || imageVariants.optimizedUrl || imageUrl
+    next.thumbUrl = imageVariants.thumbUrl || imageUrl
+    next.bannerThumbUrl = imageVariants.bannerThumbUrl || imageVariants.thumbUrl || imageUrl
+    next.finalImageUrl = withVersion(next.bannerUrl || next.optimizedUrl || next.imageUrl, version)
+    return next
+  }
+  next.optimizedUrl = banner.optimizedUrl ? publicAssetUrl(banner.optimizedUrl) : (oldBanner.optimizedUrl ? publicAssetUrl(oldBanner.optimizedUrl) : imageVariants.optimizedUrl || imageUrl)
+  next.bannerUrl = banner.bannerUrl ? publicAssetUrl(banner.bannerUrl) : (oldBanner.bannerUrl ? publicAssetUrl(oldBanner.bannerUrl) : imageVariants.bannerUrl || next.optimizedUrl || imageUrl)
+  next.thumbUrl = banner.thumbUrl ? publicAssetUrl(banner.thumbUrl) : (oldBanner.thumbUrl ? publicAssetUrl(oldBanner.thumbUrl) : imageVariants.thumbUrl || imageUrl)
+  next.bannerThumbUrl = banner.bannerThumbUrl ? publicAssetUrl(banner.bannerThumbUrl) : (oldBanner.bannerThumbUrl ? publicAssetUrl(oldBanner.bannerThumbUrl) : imageVariants.bannerThumbUrl || next.thumbUrl || imageUrl)
+  next.finalImageUrl = withVersion(next.bannerUrl || next.optimizedUrl || next.imageUrl, version)
+  return next
+}
+
+function bannerSummaryForLog(banner = {}, index = 0) {
+  return {
+    index,
+    title: banner.title || "",
+    imageUrl: banner.imageUrl || "",
+    optimizedUrl: banner.optimizedUrl || "",
+    bannerUrl: banner.bannerUrl || "",
+    thumbUrl: banner.thumbUrl || "",
+    version: banner.version || "",
+    updatedAt: banner.updatedAt || ""
+  }
+}
+
 function safeWxacodeScene(value, fallback = "VSCUSTOM") {
   const text = String(value || "").replace(/[^\w=&-]/g, "").slice(0, 32)
   return text || fallback
@@ -1357,6 +1415,7 @@ function normalizeHome(data) {
     banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => {
       const imageVariants = uploadImageVariants(item.imageUrl)
       const bannerVersion = item.version || item.updatedAt || homeUpdatedAt || ""
+      const displayUrl = publicAssetUrl(item.bannerUrl || item.optimizedUrl || imageVariants.bannerUrl || imageVariants.optimizedUrl || imageVariants.url)
       return {
         ...item,
         imageUrl: imageVariants.url,
@@ -1364,6 +1423,7 @@ function normalizeHome(data) {
         thumbUrl: item.thumbUrl ? publicAssetUrl(item.thumbUrl) : imageVariants.thumbUrl,
         bannerUrl: item.bannerUrl ? publicAssetUrl(item.bannerUrl) : imageVariants.bannerUrl,
         bannerThumbUrl: item.bannerThumbUrl ? publicAssetUrl(item.bannerThumbUrl) : imageVariants.bannerThumbUrl,
+        finalImageUrl: withVersion(displayUrl, bannerVersion),
         version: bannerVersion,
         updatedAt: item.updatedAt || bannerVersion,
         targetType: item.targetType || "primary",
@@ -2386,17 +2446,19 @@ async function getHome() {
 }
 
 async function saveHome(data) {
-  const bannerVersion = Date.now()
+  const previousHome = await getHome().catch(() => normalizeHome({}))
   const stampedData = {
     ...data,
-    updatedAt: new Date(bannerVersion).toISOString(),
+    updatedAt: new Date().toISOString(),
     banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => ({
-      ...item,
-      version: bannerVersion,
-      updatedAt: bannerVersion
+      ...item
     }))
   }
+  stampedData.banners = stampedData.banners.map((banner, index) => normalizeBannerForSave(banner, previousHome.banners?.[index] || {}))
   const home = normalizeHome(stampedData)
+  home.banners.forEach((banner, index) => {
+    console.log("[admin-banner-save]", bannerSummaryForLog(banner, index))
+  })
   if (!pool) {
     writeJsonFile(homeFile, home)
     return home
@@ -4753,6 +4815,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/home" && req.method === "GET") {
     const [home, settings] = await Promise.all([getHome(), getSettings()])
+    console.log("[api-home-banner]", bannerSummaryForLog(home.banners?.[0] || {}, 0))
     sendJson(res, 200, {
       ...home,
       theme: currentThemeFromSettings(settings),
@@ -5313,6 +5376,18 @@ async function handle(req, res) {
       orderRecommendRate,
       pendingOrders: orders.filter(order => !["已发货", "已完成"].includes(order.status)).length,
       updatedAt: home.updatedAt || ""
+    })
+    return
+  }
+
+  if (url.pathname === "/api/admin/debug/home-banners" && req.method === "GET") {
+    const home = await getHome()
+    sendJson(res, 200, {
+      ok: true,
+      banners: (home.banners || []).slice(0, 3).map((banner, index) => ({
+        ...bannerSummaryForLog(banner, index),
+        finalImageUrl: banner.finalImageUrl || withVersion(banner.bannerUrl || banner.optimizedUrl || banner.imageUrl || "", banner.version || banner.updatedAt)
+      }))
     })
     return
   }
