@@ -1,5 +1,5 @@
 <view class="page {{themeClass}} {{product.isNormalProduct ? 'has-fixed-actions' : ''}}" style="{{themeStyle}}" wx:if="{{product}}">
-  <swiper class="detail-swiper cover-{{product.cover}}" circular indicator-dots indicator-color="rgba(255,255,255,.55)" indicator-active-color="#ffffff">
+  <swiper class="detail-swiper cover-{{product.cover}}" circular indicator-dots="{{product.mediaImages.length > 1 || product.videoUrl}}" indicator-color="rgba(255,255,255,.55)" indicator-active-color="#ffffff">
     <swiper-item wx:if="{{product.videoUrl}}">
       <video class="detail-video" src="{{product.videoUrl}}" controls object-fit="cover" poster="{{product.mediaImages[0] || product.displayImage || product.imageUrl}}"></video>
     </swiper-item>
@@ -12,14 +12,19 @@
   <view wx:if="{{product.badgeText}}" class="detail-badge badge-{{product.badge}}">{{product.badgeText}}</view>
 
   <view class="detail-main" style="{{cardStyle}}">
-    <view>
+    <view class="product-copy">
       <view class="eyebrow">CUSTOM PRODUCT</view>
       <view class="product-title">{{product.name}}</view>
       <view class="product-intro" style="{{mutedTextStyle}}">{{product.intro}}</view>
+      <view class="commerce-meta" style="{{mutedTextStyle}}">
+        <text>已售 {{product.soldCount}}</text>
+        <text>{{product.viewCount}}人浏览</text>
+      </view>
       <view wx:if="{{product.categoryText}}" class="category-line" style="{{tagStyle}}">{{product.categoryText}}</view>
     </view>
     <view class="price-box">
       <view class="price" style="{{priceStyle}}">¥{{product.price}}</view>
+      <view wx:if="{{product.originalPrice}}" class="original-price">¥{{product.originalPrice}}</view>
       <view class="recommend-tip" style="{{mutedTextStyle}}">{{product.recommendTip}}</view>
     </view>
   </view>

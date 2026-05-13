@@ -14,12 +14,19 @@ function pickOne(list) {
   return list[Math.floor(Math.random() * list.length)]
 }
 
+function hashNumber(seed) {
+  return String(seed || "").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)
+}
+
 function normalizeProduct(product) {
   const categories = Array.isArray(product.categories) ? product.categories : []
   const galleryImages = Array.isArray(product.galleryImages) ? product.galleryImages.filter(Boolean) : []
   const detailImages = Array.isArray(product.detailImages) ? product.detailImages.filter(Boolean) : []
   const heroImage = product.optimizedUrl || product.webpUrl || product.imageUrl
   const mediaImages = galleryImages.length ? galleryImages : (heroImage ? [heroImage] : [])
+  const seed = hashNumber(product.id || product.name)
+  const soldCount = Number(product.soldCount || product.sales || product.saleCount || 0) || 120 + (seed % 420)
+  const viewCount = Number(product.viewCount || product.views || 0) || soldCount * 4 + 360 + (seed % 680)
   return {
     ...product,
     categories,
@@ -31,6 +38,9 @@ function normalizeProduct(product) {
     recommendTip: pickOne(RECOMMEND_TIPS),
     categoryText: categories.join(" / "),
     badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    soldCount,
+    viewCount,
+    originalPrice: product.originalPrice || product.marketPrice || product.originPrice || "",
     isNormalProduct: String(product.productType || product.orderType || "").toLowerCase() === "normal" ||
       String(product.needCustom || "").toLowerCase() === "false" ||
       categories.some(item => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
