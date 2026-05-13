@@ -27,6 +27,7 @@ const PAY_MOCK = IS_PRODUCTION ? false : process.env.PAY_MOCK !== "false"
 const MOCK_WECHAT_OPENID = "mock-openid-local"
 const MOCK_WECHAT_PHONE = "13812345678"
 const MOCK_WECHAT_USER_SESSION = "mock-user-session-local"
+const STORE_REFERRER_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const adminFile = path.join(__dirname, "admin.html")
 const loginFile = path.join(__dirname, "login.html")
 const testFile = path.join(__dirname, "test.html")
@@ -1743,6 +1744,8 @@ function normalizeOrder(order, index) {
     userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
     pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
     referrerStoreId: order.referrerStoreId || "",
+    referrerUserId: order.referrerUserId || "",
+    parentReferrerUserId: order.parentReferrerUserId || "",
     supplierStoreId: order.supplierStoreId || "",
     referralCommission: order.referralCommission == null || order.referralCommission === "" ? "0.00" : String(order.referralCommission),
     pickupServiceFee: order.pickupServiceFee == null || order.pickupServiceFee === "" ? "0.00" : String(order.pickupServiceFee),
@@ -2632,6 +2635,8 @@ async function getOrders(filters = {}) {
     userLongitude: row.user_longitude,
     pickupDistance: row.pickup_distance,
     referrerStoreId: row.referrer_store_id || "",
+    referrerUserId: row.referrer_user_id || "",
+    parentReferrerUserId: row.parent_referrer_user_id || "",
     supplierStoreId: row.supplier_store_id || "",
     referralCommission: row.referral_commission,
     pickupServiceFee: row.pickup_service_fee,
@@ -2670,8 +2675,8 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_status, arrived_store_at, picked_up_at, user_latitude, user_longitude, pickup_distance, referrer_store_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_status, arrived_store_at, picked_up_at, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -2713,6 +2718,8 @@ async function saveOrders(orders) {
        user_longitude = VALUES(user_longitude),
        pickup_distance = VALUES(pickup_distance),
        referrer_store_id = VALUES(referrer_store_id),
+       referrer_user_id = VALUES(referrer_user_id),
+       parent_referrer_user_id = VALUES(parent_referrer_user_id),
        supplier_store_id = VALUES(supplier_store_id),
        referral_commission = VALUES(referral_commission),
        pickup_service_fee = VALUES(pickup_service_fee),
@@ -2742,9 +2749,52 @@ function isValidReferrerStore(store) {
   return !!store && isStoreEnabled(store) && store.isDisplayEnabled === "true" && store.referralCommissionType !== "none"
 }
 
-async function resolveValidReferrerStoreId(storeId) {
+function parseMsTime(value) {
+  if (value == null || value === "") return null
+  if (value instanceof Date) {
+    const time = value.getTime()
+    return Number.isFinite(time) ? time : null
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? value : null
+  const text = String(value || "").trim()
+  if (!text) return null
+  if (/^\d+$/.test(text)) {
+    const time = Number(text)
+    return Number.isFinite(time) ? time : null
+  }
+  const parsed = Date.parse(text)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function isStoreReferrerWindowValid(data = {}) {
+  const boundAt = parseMsTime(data.referrerStoreBoundAt || data.storeReferrerBoundAt || data.referrer_store_bound_at)
+  const expireAt = parseMsTime(data.referrerStoreExpireAt || data.storeReferrerExpireAt || data.referrer_store_expire_at)
+  const now = Date.now()
+  if (!boundAt || !expireAt) return false
+  if (boundAt > now + 5 * 60 * 1000) return false
+  if (expireAt <= now) return false
+  if (expireAt - boundAt > STORE_REFERRER_TTL_MS + 5 * 60 * 1000) return false
+  if (now - boundAt > STORE_REFERRER_TTL_MS) return false
+  return true
+}
+
+async function resolveValidReferrerStoreId(storeId, data = {}) {
+  if (!storeId || !isStoreReferrerWindowValid(data)) return ""
   const store = await getPartnerStore(storeId || "")
   return isValidReferrerStore(store) ? store.id : ""
+}
+
+async function resolvePersonalOrderAttribution(phone) {
+  const buyerPhone = normalizePhone(phone)
+  if (!buyerPhone) return { referrerUserId: "", parentReferrerUserId: "" }
+  const relations = await getPromotionRelations()
+  const direct = relations.find(relation => normalizePhone(relation.inviteePhone) === buyerPhone)
+  if (!direct) return { referrerUserId: "", parentReferrerUserId: "" }
+  const parent = relations.find(relation => normalizePhone(relation.inviteePhone) === normalizePhone(direct.inviterPhone))
+  return {
+    referrerUserId: normalizePhone(direct.inviterPhone),
+    parentReferrerUserId: parent ? normalizePhone(parent.inviterPhone) : ""
+  }
 }
 
 async function createStoreSettlementRecordsForOrder(order) {
@@ -2990,7 +3040,10 @@ async function createOrder(data) {
     pickupStore = await getPartnerStore(data.pickupStoreId)
     if (!pickupStore || !isStoreEnabled(pickupStore) || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
   }
-  const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.storeId || data.referrer_store_id || "")
+  const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.storeId || data.referrer_store_id || "", data)
+  const personalAttribution = referrerStoreId
+    ? { referrerUserId: "", parentReferrerUserId: "" }
+    : await resolvePersonalOrderAttribution(data.phone)
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
   const order = normalizeOrder({
     id: `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
@@ -3028,6 +3081,8 @@ async function createOrder(data) {
     userLongitude: data.userLongitude || "",
     pickupDistance: data.pickupDistance || "",
     referrerStoreId,
+    referrerUserId: personalAttribution.referrerUserId,
+    parentReferrerUserId: personalAttribution.parentReferrerUserId,
     supplierStoreId: data.supplierStoreId || "",
     referralCommission: income.referralCommission,
     pickupServiceFee: income.pickupServiceFee,
@@ -3036,7 +3091,7 @@ async function createOrder(data) {
     storeSettlementStatus: "unsettled"
   }, 0)
   await ensureCustomerFromOrder(order)
-  await bindPromotionFromOrder(order)
+  if (!order.referrerStoreId) await bindPromotionFromOrder(order)
   if (!pool) {
     const orders = readJsonFile(ordersFile, [])
     orders.push(order)
@@ -3047,7 +3102,7 @@ async function createOrder(data) {
     return order
   }
   await query(
-    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
     {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -3424,6 +3479,7 @@ async function bindPromotionFromOrder(order) {
 }
 
 async function bindPromotionRelation(inviterCode, inviteePhone, inviteeName = "微信用户", strict = true) {
+  inviteePhone = normalizePhone(inviteePhone)
   if (!inviterCode || !inviteePhone) {
     if (strict) throw httpError(400, "缺少邀请关系参数")
     return null
@@ -3434,12 +3490,12 @@ async function bindPromotionRelation(inviterCode, inviteePhone, inviteeName = "�
     if (strict) throw httpError(400, "邀请码不存在")
     return null
   }
-  if (inviter.phone === inviteePhone) {
+  if (normalizePhone(inviter.phone) === inviteePhone) {
     if (strict) throw httpError(400, "不能绑定自己的邀请码")
     return null
   }
   const relations = await getPromotionRelations()
-  const existing = relations.find(relation => relation.inviteePhone === inviteePhone)
+  const existing = relations.find(relation => normalizePhone(relation.inviteePhone) === inviteePhone)
   if (existing) return { ...existing, alreadyBound: true }
   const relation = normalizePromotionRelation({
     inviterPhone: inviter.phone,
@@ -3542,13 +3598,16 @@ async function createRewardsForOrder(order) {
   if (existing.some(record => record.orderId === normalized.id)) return existing
   const relations = await getPromotionRelations()
   const customers = await getCustomers()
-  const direct = relations.find(relation => relation.inviteePhone === normalized.phone)
-  if (!direct) return existing
-  const parent = relations.find(relation => relation.inviteePhone === direct.inviterPhone)
+  const buyerPhone = normalizePhone(normalized.phone)
+  const directPhone = normalizePhone(normalized.referrerUserId) ||
+    normalizePhone((relations.find(relation => normalizePhone(relation.inviteePhone) === buyerPhone) || {}).inviterPhone)
+  if (!directPhone) return existing
+  const parentPhone = normalizePhone(normalized.parentReferrerUserId) ||
+    normalizePhone((relations.find(relation => normalizePhone(relation.inviteePhone) === directPhone) || {}).inviterPhone)
   const rules = await getRewardRules()
   const rule = rules.find(item => item.productId === normalized.productId || item.productName === normalized.productName) || normalizeRewardRule({ productName: normalized.productName, firstReward: "8", secondReward: "3" }, 0)
   const makeRecord = (promoterPhone, level, amount) => {
-    const promoter = customers.find(customer => customer.phone === promoterPhone) || {}
+    const promoter = customers.find(customer => normalizePhone(customer.phone) === normalizePhone(promoterPhone)) || {}
     return normalizeRewardRecord({
       id: `RW${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}${level}`,
       orderId: normalized.id,
@@ -3564,8 +3623,8 @@ async function createRewardsForOrder(order) {
     }, existing.length)
   }
   const next = [...existing]
-  if (Number(rule.firstReward) > 0) next.unshift(makeRecord(direct.inviterPhone, 1, rule.firstReward))
-  if (parent && Number(rule.secondReward) > 0) next.unshift(makeRecord(parent.inviterPhone, 2, rule.secondReward))
+  if (Number(rule.firstReward) > 0) next.unshift(makeRecord(directPhone, 1, rule.firstReward))
+  if (parentPhone && Number(rule.secondReward) > 0) next.unshift(makeRecord(parentPhone, 2, rule.secondReward))
   await saveRewardRecords(next)
   return next
 }
@@ -3604,16 +3663,18 @@ async function processRewardState() {
 }
 
 async function getPromotionSummary(phone) {
+  phone = normalizePhone(phone)
   const customers = await getCustomers()
-  const customer = customers.find(item => item.phone === phone) || normalizeCustomer({ phone, name: "微信用户" }, 0)
+  const customer = customers.find(item => normalizePhone(item.phone) === phone) || normalizeCustomer({ phone, name: "微信用户" }, 0)
   const relations = await getPromotionRelations()
   const records = await processRewardState()
-  const invited = relations.filter(item => item.inviterPhone === phone)
+  const invited = relations.filter(item => normalizePhone(item.inviterPhone) === phone)
   const orders = await getOrders()
   const inviteCode = customer.inviteCode || inviteCodeFor(phone)
-  const inviteOrders = orders.filter(order => order.inviterCode === inviteCode && (order.paidAt || order.paymentStatus === "已支付"))
-  const inviteAmount = inviteOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
-  const myRewards = records.filter(item => item.promoterPhone === phone)
+  const myRewards = records.filter(item => normalizePhone(item.promoterPhone) === phone)
+  const rewardOrderIds = new Set(myRewards.map(item => item.orderId))
+  const rewardOrders = orders.filter(order => rewardOrderIds.has(order.id) && !order.referrerStoreId)
+  const inviteAmount = rewardOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
   const available = myRewards.filter(item => item.status === "已发放").reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const pending = myRewards.filter(item => item.status === "待发放").reduce((sum, item) => sum + Number(item.amount || 0), 0)
   return {
@@ -3624,13 +3685,14 @@ async function getPromotionSummary(phone) {
       shoppingMoney: available.toFixed(2),
       pendingReward: pending.toFixed(2),
       inviteCount: invited.length,
-      inviteOrderCount: inviteOrders.length,
+      inviteOrderCount: rewardOrderIds.size,
       inviteAmount: inviteAmount.toFixed(2),
       inviteQrUrl: "",
       inviteQrText: `非常智造 邀请码：${inviteCode}`
     },
     invited,
-    rewards: myRewards
+    rewards: myRewards,
+    orders: rewardOrders
   }
 }
 
@@ -3828,6 +3890,8 @@ async function initDb() {
   await ensureColumn("orders", "user_longitude", "DECIMAL(10,6)")
   await ensureColumn("orders", "pickup_distance", "DECIMAL(10,2)")
   await ensureColumn("orders", "referrer_store_id", "VARCHAR(40)")
+  await ensureColumn("orders", "referrer_user_id", "VARCHAR(40)")
+  await ensureColumn("orders", "parent_referrer_user_id", "VARCHAR(40)")
   await ensureColumn("orders", "supplier_store_id", "VARCHAR(40)")
   await ensureColumn("orders", "referral_commission", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "pickup_service_fee", "DECIMAL(10,2) DEFAULT 0")
@@ -4759,7 +4823,22 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/promotion/summary" && req.method === "GET") {
-    sendJson(res, 200, await getPromotionSummary(url.searchParams.get("phone") || ""))
+    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    sendJson(res, 200, await getPromotionSummary(identity.phone || url.searchParams.get("phone") || ""))
+    return
+  }
+
+  if (url.pathname === "/api/promotion/stats" && req.method === "GET") {
+    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const summary = await getPromotionSummary(identity.phone || url.searchParams.get("phone") || "")
+    sendJson(res, 200, { ok: true, data: summary.profile, profile: summary.profile })
+    return
+  }
+
+  if (url.pathname === "/api/promotion/orders" && req.method === "GET") {
+    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const summary = await getPromotionSummary(identity.phone || url.searchParams.get("phone") || "")
+    sendJson(res, 200, { ok: true, data: summary.orders || [], orders: summary.orders || [] })
     return
   }
 

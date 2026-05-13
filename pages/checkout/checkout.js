@@ -43,6 +43,16 @@ function getValidReferrerStoreId() {
   return storeId
 }
 
+function getReferrerStoreMeta() {
+  const storeId = getValidReferrerStoreId()
+  if (!storeId) return { referrerStoreId: "", referrerStoreBoundAt: "", referrerStoreExpireAt: "" }
+  return {
+    referrerStoreId: storeId,
+    referrerStoreBoundAt: wx.getStorageSync("referrerStoreBoundAt") || "",
+    referrerStoreExpireAt: wx.getStorageSync("referrerStoreExpireAt") || ""
+  }
+}
+
 Page({
   data: {
     product: null,
@@ -609,7 +619,7 @@ Page({
     this.setData({ paying: true })
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
-    const referrerStoreId = getValidReferrerStoreId()
+    const referrerStore = getReferrerStoreMeta()
     ensureOpenid().then(openid => request("/api/orders", {
         method: "POST",
         data: {
@@ -633,7 +643,7 @@ Page({
           userLatitude: this.data.userLocation?.latitude || "",
           userLongitude: this.data.userLocation?.longitude || "",
           pickupDistance: this.data.selectedPickupStore?.distance == null ? "" : Number(this.data.selectedPickupStore.distance).toFixed(2),
-          referrerStoreId,
+          ...referrerStore,
           productType: this.data.normalMode ? "normal" : "custom",
           orderType: this.data.normalMode ? "normal" : "custom",
           cartItems: this.data.cartItems,
