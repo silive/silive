@@ -1,6 +1,6 @@
 .page {
   min-height: 100vh;
-  padding: 30rpx 28rpx 48rpx;
+  padding: 30rpx 28rpx calc(190rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
 }
@@ -313,7 +313,7 @@
 .floating-cart {
   position: fixed;
   right: 32rpx;
-  bottom: 150rpx;
+  bottom: calc(170rpx + env(safe-area-inset-bottom));
   z-index: 1200;
   width: 96rpx !important;
   height: 96rpx !important;

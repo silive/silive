@@ -1,0 +1,14 @@
+<view class="bottom-nav">
+  <button class="nav-item {{active === 'home' ? 'active' : ''}}" bindtap="goHome">
+    <view class="nav-icon">⌂</view>
+    <view class="nav-text">首页</view>
+  </button>
+  <button class="nav-item {{active === 'orders' ? 'active' : ''}}" bindtap="goOrders">
+    <view class="nav-icon">▣</view>
+    <view class="nav-text">订单</view>
+  </button>
+  <button class="nav-item {{active === 'profile' ? 'active' : ''}}" bindtap="goProfile">
+    <view class="nav-icon">●</view>
+    <view class="nav-text">我的</view>
+  </button>
+</view>

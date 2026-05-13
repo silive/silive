@@ -56,4 +56,5 @@
     <text class="floating-cart-icon">🛒</text>
     <text wx:if="{{cartCount > 0}}" class="floating-cart-badge">{{cartCount}}</text>
   </button>
+  <bottom-nav active="home" />
 </view>
