@@ -33,15 +33,7 @@
     <view class="benefit-item" wx:for="{{newcomerBenefits}}" wx:key="text">新人首单{{item.text}}</view>
   </view>
 
-  <view wx:if="{{product.isNormalProduct}}" class="share-panel" style="{{cardStyle}}">
-    <view>
-      <view class="share-title">推荐给朋友</view>
-      <view class="share-subtitle" style="{{mutedTextStyle}}">非常智造｜发现一个不错的定制礼物</view>
-    </view>
-    <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
-  </view>
-
-  <view wx:else class="top-actions">
+  <view wx:if="{{!product.isNormalProduct}}" class="top-actions">
     <button class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
     <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
   </view>
@@ -74,20 +66,16 @@
     <text wx:if="{{cartCount > 0}}" class="cart-badge">{{cartCount > 99 ? '99+' : cartCount}}</text>
   </button>
 
-  <view wx:if="{{product.isNormalProduct}}" class="bottom-action-bar">
-    <view class="bar-cart-wrap">
-      <button class="bar-cart-btn" bindtap="openCart" aria-label="购物车">
-        <text class="cart-icon">🛒</text>
-        <text wx:if="{{cartCount > 0}}" class="cart-badge">{{cartCount > 99 ? '99+' : cartCount}}</text>
-      </button>
+  <view wx:if="{{product.isNormalProduct}}" class="fixed-share-wrap">
+    <button class="fixed-share-btn" open-type="share">推荐给朋友</button>
+  </view>
+
+  <view wx:if="{{product.isNormalProduct}}" class="fixed-action-bar">
+    <view class="action-btn-wrap action-cart-wrap">
+      <button class="action-btn add-cart-btn" bindtap="addToCart">加入购物车</button>
     </view>
-    <view class="bar-actions">
-      <view class="btn-wrap">
-        <button class="bar-btn add-cart-btn" bindtap="addToCart">加入购物车</button>
-      </view>
-      <view class="btn-wrap">
-        <button class="bar-btn buy-btn" bindtap="goCheckout">立即购买</button>
-      </view>
+    <view class="action-btn-wrap action-buy-wrap">
+      <button class="action-btn buy-btn" bindtap="goCheckout">立即购买</button>
     </view>
   </view>
 
