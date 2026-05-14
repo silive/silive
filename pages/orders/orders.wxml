@@ -107,12 +107,21 @@
 
   <view class="refund-mask" wx:if="{{refundVisible}}">
     <view class="refund-panel">
-      <view class="refund-title">{{refundForm.refundType}}</view>
-      <view class="field">退款原因<textarea value="{{refundForm.refundReason}}" data-field="refundReason" bindinput="onRefundInput" placeholder="请填写退款原因"></textarea></view>
-      <view class="field">退款金额<input value="{{refundForm.refundAmount}}" data-field="refundAmount" bindinput="onRefundInput" type="digit" placeholder="请输入退款金额" /></view>
-      <view class="field">备注<textarea value="{{refundForm.refundRemark}}" data-field="refundRemark" bindinput="onRefundInput" placeholder="补充说明，可不填"></textarea></view>
-      <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">{{refundForm.refundImageUrl ? '已上传图片，点击更换' : '上传图片凭证（可选）'}}</button>
-      <image wx:if="{{refundForm.refundImageUrl}}" class="refund-image" src="{{refundForm.refundImageUrl}}" mode="aspectFill" />
+      <view class="refund-title">申请售后</view>
+      <picker mode="selector" range="{{afterSalesTypes}}" bindchange="onAfterSalesTypeChange">
+        <view class="field picker-field">售后类型<text>{{refundForm.afterSalesType}}</text></view>
+      </picker>
+      <view class="field">售后原因<textarea value="{{refundForm.afterSalesReason}}" data-field="afterSalesReason" bindinput="onRefundInput" placeholder="请填写售后原因"></textarea></view>
+      <view class="field">问题说明<textarea value="{{refundForm.afterSalesDesc}}" data-field="afterSalesDesc" bindinput="onRefundInput" placeholder="补充说明问题现象、处理诉求"></textarea></view>
+      <view class="field">联系电话<input value="{{refundForm.contactPhone}}" data-field="contactPhone" bindinput="onRefundInput" type="number" placeholder="请填写联系电话" /></view>
+      <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">上传图片凭证（最多6张）</button>
+      <view class="refund-images" wx:if="{{refundForm.afterSalesImages.length}}">
+        <view class="refund-image-wrap" wx:for="{{refundForm.afterSalesImages}}" wx:key="*this">
+          <image class="refund-image" src="{{item}}" mode="aspectFill" />
+          <button class="refund-remove" bindtap="removeRefundImage" data-index="{{index}}">×</button>
+        </view>
+      </view>
+      <view class="muted" style="{{mutedTextStyle}}">提交后进入后台审核，不会自动退款。</view>
       <view class="modal-actions">
         <button class="cancel-btn" style="{{secondaryButtonStyle}}" bindtap="closeRefund">取消</button>
         <button class="submit-btn" style="{{primaryButtonStyle}}" bindtap="submitRefund" loading="{{submittingRefund}}">提交申请</button>

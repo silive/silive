@@ -48,11 +48,13 @@ function isPaid(order) {
 }
 
 function isRefunding(order) {
-  return order.refundStatus === "待审核" || order.status === "退款中"
+  return ["requested", "approved", "refund_pending"].includes(order.afterSalesStatus) ||
+    ["待审核", "售后处理中", "退款处理中", "补发处理中", "重新制作中"].includes(order.refundStatus) ||
+    order.status === "退款中"
 }
 
 function isRefunded(order) {
-  return order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
+  return order.afterSalesStatus === "refunded" || order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
 }
 
 function isCompletedWithinAfterSaleWindow(order) {
@@ -60,6 +62,13 @@ function isCompletedWithinAfterSaleWindow(order) {
   const source = order.completedAt || order.pickedUpAt || order.paidAt || order.createdAt
   const time = source ? new Date(String(source).replace(/-/g, "/")).getTime() : 0
   return !!time && Date.now() - time <= 7 * 24 * 60 * 60 * 1000
+}
+
+function canApplyAfterSales(order) {
+  if (!isPaid(order) || isQuoteOrder(order) || isUnpaid(order) || isRefunded(order) || isRefunding(order)) return false
+  const display = displayStatus(order)
+  if (["待收货", "待自提", "制作中", "待确认"].includes(display)) return true
+  return isCompletedWithinAfterSaleWindow(order)
 }
 
 function normalizeProduct(product) {
@@ -100,8 +109,8 @@ function normalizeOrder(order, products = []) {
     pickupTip: order.deliveryType === "pickup"
       ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
       : "",
-    refundLine: order.refundStatus ? `${order.refundStatus}${order.refundAmount ? ` · ¥${order.refundAmount}` : ""}` : "",
-    canRefund: ["已完成", "已自提"].includes(display)
+    refundLine: order.refundStatus ? `${order.refundStatus}${order.refundAmount && Number(order.refundAmount) > 0 ? ` · ¥${order.refundAmount}` : ""}` : "",
+    canRefund: canApplyAfterSales(order)
   }
 }
 
@@ -172,12 +181,13 @@ Page({
     refundVisible: false,
     refundOrder: null,
     refundForm: {
-      refundType: "仅退款",
-      refundReason: "",
-      refundAmount: "",
-      refundRemark: "",
-      refundImageUrl: ""
+      afterSalesType: "退款",
+      afterSalesReason: "",
+      afterSalesDesc: "",
+      afterSalesImages: [],
+      contactPhone: ""
     },
+    afterSalesTypes: ["退款", "退货退款", "补发", "重新制作"],
     submittingRefund: false,
     payLoadingOrderId: ""
   },
@@ -379,11 +389,11 @@ Page({
       refundVisible: true,
       refundOrder: order,
       refundForm: {
-        refundType: event.currentTarget.dataset.type || "仅退款",
-        refundReason: "",
-        refundAmount: order.amount,
-        refundRemark: "",
-        refundImageUrl: ""
+        afterSalesType: event.currentTarget.dataset.type || "退款",
+        afterSalesReason: "",
+        afterSalesDesc: "",
+        afterSalesImages: [],
+        contactPhone: wx.getStorageSync("memberPhone") || order.phone || ""
       }
     })
   },
@@ -397,29 +407,41 @@ Page({
     this.setData({ [`refundForm.${field}`]: event.detail.value })
   },
 
+  onAfterSalesTypeChange(event) {
+    const index = Number(event.detail.value || 0)
+    this.setData({ "refundForm.afterSalesType": this.data.afterSalesTypes[index] || "退款" })
+  },
+
   chooseRefundImage() {
+    const current = this.data.refundForm.afterSalesImages || []
+    const remain = Math.max(0, 6 - current.length)
+    if (!remain) {
+      wx.showToast({ title: "最多上传6张凭证", icon: "none" })
+      return
+    }
     wx.chooseMedia({
-      count: 1,
+      count: remain,
       mediaType: ["image"],
       sourceType: ["album", "camera"],
       success: res => {
-        const file = res.tempFiles && res.tempFiles[0]
-        if (!file) return
-        if (file.size && file.size > 10 * 1024 * 1024) {
+        const files = (res.tempFiles || []).filter(Boolean)
+        if (!files.length) return
+        if (files.some(file => file.size && file.size > 10 * 1024 * 1024)) {
           wx.showToast({ title: "图片超过10MB，请压缩后上传", icon: "none" })
           return
         }
         wx.showLoading({ title: "上传中" })
-        uploadFileWithFallback("/api/upload/public", {
+        Promise.all(files.map(file => uploadFileWithFallback("/api/upload/public", {
           filePath: file.tempFilePath,
           name: "file"
-        }).then(data => {
+        }))).then(results => {
             wx.hideLoading()
-            if (!data.ok || !data.url) {
-              wx.showToast({ title: data.message || "上传失败，请重试", icon: "none" })
+            const urls = results.map(data => data.url).filter(Boolean)
+            if (!urls.length) {
+              wx.showToast({ title: "上传失败，请重试", icon: "none" })
               return
             }
-            this.setData({ "refundForm.refundImageUrl": data.url })
+            this.setData({ "refundForm.afterSalesImages": [...current, ...urls].slice(0, 6) })
           }).catch(error => {
             wx.hideLoading()
             wx.showToast({ title: error.message || "上传失败，请重试", icon: "none" })
@@ -428,17 +450,22 @@ Page({
     })
   },
 
+  removeRefundImage(event) {
+    const index = Number(event.currentTarget.dataset.index)
+    const next = (this.data.refundForm.afterSalesImages || []).filter((_, itemIndex) => itemIndex !== index)
+    this.setData({ "refundForm.afterSalesImages": next })
+  },
+
   submitRefund() {
-    const { refundReason, refundAmount } = this.data.refundForm
-    if (!refundReason || !refundAmount) {
-      wx.showToast({ title: "请填写退款原因和金额", icon: "none" })
+    const { afterSalesReason, contactPhone } = this.data.refundForm
+    if (!afterSalesReason || !contactPhone) {
+      wx.showToast({ title: "请填写售后原因和联系电话", icon: "none" })
       return
     }
     this.setData({ submittingRefund: true })
-    request("/api/orders/refund", {
+    request(`/api/orders/${encodeURIComponent(this.data.refundOrder.id)}/after-sales/apply`, {
       method: "POST",
       data: {
-        orderId: this.data.refundOrder.id,
         ...getUserIdentity(),
         ...this.data.refundForm
       }

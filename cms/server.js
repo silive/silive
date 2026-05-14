@@ -1945,6 +1945,16 @@ function normalizeOrder(order, index) {
     refundImageUrl: order.refundImageUrl || "",
     refundRejectReason: order.refundRejectReason || "",
     refundReviewedAt: order.refundReviewedAt || null,
+    afterSalesStatus: order.afterSalesStatus || "",
+    afterSalesType: order.afterSalesType || order.refundType || "",
+    afterSalesReason: order.afterSalesReason || order.refundReason || "",
+    afterSalesDesc: order.afterSalesDesc || order.refundRemark || "",
+    afterSalesImages: normalizeMediaList(order.afterSalesImages || order.refundImageUrl || ""),
+    afterSalesRequestedAt: order.afterSalesRequestedAt || null,
+    afterSalesHandledAt: order.afterSalesHandledAt || null,
+    refundNo: order.refundNo || "",
+    refundId: order.refundId || "",
+    refundSuccessAt: order.refundSuccessAt || null,
     createdAt,
     createdAtText: order.createdAtText || formatChinaDatetime(createdAt),
     paidAt,
@@ -1984,6 +1994,9 @@ function mysqlOrderParams(order) {
     ...order,
     shippedAt: toMysqlDatetime(order.shippedAt),
     refundReviewedAt: toMysqlDatetime(order.refundReviewedAt),
+    afterSalesRequestedAt: toMysqlDatetime(order.afterSalesRequestedAt),
+    afterSalesHandledAt: toMysqlDatetime(order.afterSalesHandledAt),
+    refundSuccessAt: toMysqlDatetime(order.refundSuccessAt),
     createdAt: toMysqlDatetime(order.createdAt, nowMysqlDatetime()),
     paidAt: toMysqlDatetime(order.paidAt),
     completedAt: toMysqlDatetime(order.completedAt),
@@ -2912,6 +2925,16 @@ async function getOrders(filters = {}) {
     refundImageUrl: row.refund_image_url || "",
     refundRejectReason: row.refund_reject_reason || "",
     refundReviewedAt: formatChinaDatetime(row.refund_reviewed_at),
+    afterSalesStatus: row.after_sales_status || "",
+    afterSalesType: row.after_sales_type || row.refund_type || "",
+    afterSalesReason: row.after_sales_reason || row.refund_reason || "",
+    afterSalesDesc: row.after_sales_desc || row.refund_remark || "",
+    afterSalesImages: normalizeMediaList(parseJsonValue(row.after_sales_images, row.refund_image_url || [])),
+    afterSalesRequestedAt: formatChinaDatetime(row.after_sales_requested_at),
+    afterSalesHandledAt: formatChinaDatetime(row.after_sales_handled_at),
+    refundNo: row.refund_no || "",
+    refundId: row.refund_id || "",
+    refundSuccessAt: formatChinaDatetime(row.refund_success_at),
     createdAt: formatChinaDatetime(row.created_at),
     createdAtText: formatChinaDatetime(row.created_at),
     paidAt: formatChinaDatetime(row.paid_at),
@@ -2970,13 +2993,14 @@ async function saveOrders(orders) {
     const orderParams = {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
+      afterSalesImagesJson: JSON.stringify(order.afterSalesImages || []),
       userLatitude: order.userLatitude === "" ? null : order.userLatitude,
       userLongitude: order.userLongitude === "" ? null : order.userLongitude,
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -3005,6 +3029,16 @@ async function saveOrders(orders) {
        refund_image_url = VALUES(refund_image_url),
        refund_reject_reason = VALUES(refund_reject_reason),
        refund_reviewed_at = VALUES(refund_reviewed_at),
+       after_sales_status = VALUES(after_sales_status),
+       after_sales_type = VALUES(after_sales_type),
+       after_sales_reason = VALUES(after_sales_reason),
+       after_sales_desc = VALUES(after_sales_desc),
+       after_sales_images = VALUES(after_sales_images),
+       after_sales_requested_at = VALUES(after_sales_requested_at),
+       after_sales_handled_at = VALUES(after_sales_handled_at),
+       refund_no = VALUES(refund_no),
+       refund_id = VALUES(refund_id),
+       refund_success_at = VALUES(refund_success_at),
        paid_at = VALUES(paid_at),
        completed_at = IF(VALUES(status) = '已完成' AND completed_at IS NULL, NOW(), completed_at),
        refund_at = IF(VALUES(status) = '已退款' AND refund_at IS NULL, NOW(), refund_at),
@@ -3606,62 +3640,227 @@ async function markOrderPickedUp(orderId) {
   return orders[index]
 }
 
-async function applyRefundRequest(data) {
+function isOrderPaidForAfterSales(order = {}) {
+  return order.paymentStatus === "已支付" || !!order.transactionId || !!order.paidAt
+}
+
+function isOrderRefunded(order = {}) {
+  return order.paymentStatus === "已退款" || order.status === "已退款" || order.afterSalesStatus === "refunded" || order.refundStatus === "退款成功"
+}
+
+function canApplyAfterSales(order = {}) {
+  if (!isOrderPaidForAfterSales(order)) return false
+  if (isOrderRefunded(order)) return false
+  if (order.paymentStatus === "待报价" || order.status === "待客服确认" || order.status === "待支付") return false
+  const status = String(order.status || "")
+  const pickupStatus = String(order.pickupStatus || "")
+  if (["已发货", "退款中", "制作中", "待发货"].includes(status)) return true
+  if (["arrived_store", "picked_up"].includes(pickupStatus)) return true
+  if (status === "已完成") {
+    const source = order.completedAt || order.pickedUpAt || order.paidAt || order.createdAt
+    const completedAt = parseDateValue(source)
+    return !!completedAt && Date.now() - completedAt.getTime() <= 7 * 24 * 60 * 60 * 1000
+  }
+  return false
+}
+
+function normalizeAfterSalesType(value) {
+  const text = String(value || "").trim()
+  return ["退款", "退货退款", "补发", "重新制作", "仅退款"].includes(text) ? (text === "仅退款" ? "退款" : text) : "退款"
+}
+
+function shouldRefundForAfterSales(type) {
+  return ["退款", "退货退款"].includes(normalizeAfterSalesType(type))
+}
+
+function normalizeAfterSalesImagesInput(value) {
+  return normalizeMediaList(value).slice(0, 6)
+}
+
+function afterSalesRefundAmount(order, type) {
+  if (!shouldRefundForAfterSales(type)) return "0.00"
+  return money(order.amount)
+}
+
+async function applyAfterSalesRequest(data) {
   const orders = await getOrders()
-  const index = orders.findIndex(order => order.id === data.orderId)
+  const orderId = data.orderId || data.id
+  const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
   if (!orderBelongsToIdentity(orders[index], data)) throw new Error("无权操作该订单")
-  const amount = Math.min(Number(data.refundAmount || orders[index].amount), Number(orders[index].amount || 0))
-  if (!amount || amount <= 0) throw new Error("退款金额不正确")
+  if (!canApplyAfterSales(orders[index])) throw httpError(400, "当前订单暂不支持申请售后")
+  if (["requested", "approved", "refund_pending"].includes(orders[index].afterSalesStatus) || ["待审核", "退款处理中", "售后处理中"].includes(orders[index].refundStatus)) {
+    throw httpError(400, "该订单已有售后申请，请勿重复提交")
+  }
+  const type = normalizeAfterSalesType(data.afterSalesType || data.refundType)
+  const images = normalizeAfterSalesImagesInput(data.afterSalesImages || data.images || data.refundImageUrl)
+  const now = formatDateTime(new Date())
+  const refundAmount = afterSalesRefundAmount(orders[index], type)
   orders[index] = {
     ...orders[index],
-    status: "退款中",
-    refundType: data.refundType || "仅退款",
-    refundStatus: "待审核",
-    refundReason: data.refundReason || "",
-    refundAmount: amount.toFixed(2),
-    refundRemark: data.refundRemark || "",
-    refundImageUrl: data.refundImageUrl || "",
+    status: shouldRefundForAfterSales(type) ? "退款中" : orders[index].status,
+    refundType: type,
+    refundStatus: shouldRefundForAfterSales(type) ? "待审核" : "售后处理中",
+    refundReason: data.afterSalesReason || data.refundReason || "",
+    refundAmount,
+    refundRemark: data.afterSalesDesc || data.refundRemark || "",
+    refundImageUrl: images[0] || "",
     refundRejectReason: "",
-    refundReviewedAt: null
+    refundReviewedAt: null,
+    afterSalesStatus: "requested",
+    afterSalesType: type,
+    afterSalesReason: data.afterSalesReason || data.refundReason || "",
+    afterSalesDesc: data.afterSalesDesc || data.refundRemark || "",
+    afterSalesImages: images,
+    afterSalesRequestedAt: now,
+    afterSalesHandledAt: null
+  }
+  await saveOrders([orders[index]])
+  return orders[index]
+}
+
+async function applyRefundRequest(data) {
+  return applyAfterSalesRequest(data)
+}
+
+function generateRefundNo(orderId) {
+  return `RF${String(orderId || "").replace(/[^\w]/g, "").slice(-18)}${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+}
+
+async function markRefundSuccess(order, refundData = {}) {
+  const orders = await getOrders()
+  const index = orders.findIndex(item => item.id === order.id)
+  if (index < 0) throw new Error("订单不存在")
+  const now = formatDateTime(new Date())
+  orders[index] = {
+    ...orders[index],
+    status: "已退款",
+    paymentStatus: "已退款",
+    refundStatus: "退款成功",
+    afterSalesStatus: "refunded",
+    refundId: refundData.refund_id || refundData.refundId || orders[index].refundId || "",
+    refundSuccessAt: now,
+    refundAt: now,
+    afterSalesHandledAt: orders[index].afterSalesHandledAt || now
+  }
+  await saveOrders([orders[index]])
+  await rollbackRewardsForOrder(order.id)
+  await invalidateStoreSettlementRecordsForOrder(order.id)
+  return orders[index]
+}
+
+async function requestWechatRefund(order, amountYuan, outRefundNo) {
+  if (PAY_MOCK || !IS_PRODUCTION) {
+    return {
+      refund_id: `MOCKRF${Date.now()}`,
+      out_refund_no: outRefundNo,
+      status: "PROCESSING",
+      mock: true
+    }
+  }
+  if (!order.transactionId && !order.id) throw new Error("订单缺少微信交易号或订单号")
+  const total = Math.max(1, Math.round(Number(order.amount || 0) * 100))
+  const refund = Math.max(1, Math.round(Number(amountYuan || 0) * 100))
+  if (refund > total) throw httpError(400, "退款金额不能超过实付金额")
+  const notifyUrl = process.env.WECHAT_REFUND_NOTIFY_URL || `${PUBLIC_BASE_URL}/api/pay/refund/notify`
+  const bodyObj = {
+    out_refund_no: outRefundNo,
+    reason: "售后退款",
+    notify_url: notifyUrl,
+    amount: { refund, total, currency: "CNY" }
+  }
+  if (order.transactionId) bodyObj.transaction_id = order.transactionId
+  else bodyObj.out_trade_no = order.id
+  const body = JSON.stringify(bodyObj)
+  const urlPath = "/v3/refund/domestic/refunds"
+  const result = await requestJson(`https://api.mch.weixin.qq.com${urlPath}`, {
+    method: "POST",
+    headers: {
+      Authorization: wechatAuthorization("POST", urlPath, body),
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    }
+  }, body)
+  console.log("[refund] create result", {
+    orderId: order.id,
+    statusCode: result.statusCode,
+    hasRefundId: !!(result.data && result.data.refund_id),
+    status: result.data && result.data.status,
+    code: result.data && result.data.code,
+    message: result.data && result.data.message
+  })
+  if (result.statusCode < 200 || result.statusCode >= 300) throw httpError(400, result.data.message || "微信退款申请失败")
+  return result.data
+}
+
+async function approveAfterSalesRefund(orderId, data = {}) {
+  const orders = await getOrders()
+  const index = orders.findIndex(order => order.id === orderId)
+  if (index < 0) throw new Error("订单不存在")
+  const order = orders[index]
+  if (!isOrderPaidForAfterSales(order)) throw httpError(400, "订单未支付，不能退款")
+  if (isOrderRefunded(order)) throw httpError(400, "订单已退款，不能重复退款")
+  if (["退款处理中", "processing"].includes(order.refundStatus) || order.afterSalesStatus === "refund_pending") throw httpError(400, "退款正在处理中，请勿重复提交")
+  const amount = Math.min(Number(data.refundAmount || order.refundAmount || order.amount || 0), Number(order.amount || 0))
+  if (!amount || amount <= 0) throw new Error("退款金额不正确")
+  const refundNo = order.refundNo || generateRefundNo(order.id)
+  const refund = await requestWechatRefund(order, amount, refundNo)
+  const now = formatDateTime(new Date())
+  orders[index] = {
+    ...order,
+    refundStatus: "退款处理中",
+    afterSalesStatus: "refund_pending",
+    refundAmount: amount.toFixed(2),
+    refundNo,
+    refundId: refund.refund_id || order.refundId || "",
+    refundReviewedAt: now,
+    afterSalesHandledAt: now
+  }
+  await saveOrders([orders[index]])
+  return orders[index]
+}
+
+async function rejectAfterSales(orderId, rejectReason = "") {
+  const orders = await getOrders()
+  const index = orders.findIndex(order => order.id === orderId)
+  if (index < 0) throw new Error("订单不存在")
+  const order = orders[index]
+  orders[index] = {
+    ...order,
+    status: order.status === "退款中" ? (order.paymentStatus === "已支付" ? "待发货" : order.status) : order.status,
+    refundStatus: "已拒绝",
+    refundRejectReason: rejectReason || "售后申请未通过",
+    refundReviewedAt: formatDateTime(new Date()),
+    afterSalesStatus: "rejected",
+    afterSalesHandledAt: formatDateTime(new Date())
+  }
+  await saveOrders([orders[index]])
+  return orders[index]
+}
+
+async function convertAfterSales(orderId, type) {
+  const orders = await getOrders()
+  const index = orders.findIndex(order => order.id === orderId)
+  if (index < 0) throw new Error("订单不存在")
+  const nextType = normalizeAfterSalesType(type)
+  orders[index] = {
+    ...orders[index],
+    status: orders[index].status === "退款中" ? "制作中" : orders[index].status,
+    refundStatus: nextType === "补发" ? "补发处理中" : "重新制作中",
+    afterSalesStatus: "approved",
+    afterSalesType: nextType,
+    afterSalesHandledAt: formatDateTime(new Date())
   }
   await saveOrders([orders[index]])
   return orders[index]
 }
 
 async function reviewRefund(data) {
-  const orders = await getOrders()
-  const index = orders.findIndex(order => order.id === data.orderId)
-  if (index < 0) throw new Error("订单不存在")
-  const order = orders[index]
   const action = data.action || "approve"
-  if (action === "reject") {
-    orders[index] = {
-      ...order,
-      status: order.paymentStatus === "已支付" ? "待发货" : "待支付",
-      refundStatus: "已拒绝",
-      refundRejectReason: data.rejectReason || "退款申请未通过",
-      refundReviewedAt: formatDateTime(new Date())
-    }
-    await saveOrders([orders[index]])
-    return orders[index]
-  }
-  const amount = action === "partial"
-    ? Math.min(Number(data.refundAmount || order.refundAmount || 0), Number(order.amount || 0))
-    : Number(order.refundAmount || order.amount || 0)
-  if (!amount || amount <= 0) throw new Error("退款金额不正确")
-  orders[index] = {
-    ...order,
-    status: "已退款",
-    paymentStatus: amount >= Number(order.amount || 0) ? "已退款" : "部分退款",
-    refundStatus: action === "partial" ? "部分退款成功" : "退款成功",
-    refundAmount: amount.toFixed(2),
-    refundReviewedAt: formatDateTime(new Date()),
-    refundAt: formatDateTime(new Date())
-  }
-  await saveOrders([orders[index]])
-  await rollbackRewardsForOrder(order.id)
-  return orders[index]
+  if (action === "reject") return rejectAfterSales(data.orderId, data.rejectReason)
+  if (action === "resend") return convertAfterSales(data.orderId, "补发")
+  if (action === "remake") return convertAfterSales(data.orderId, "重新制作")
+  return approveAfterSalesRefund(data.orderId, data)
 }
 
 async function rollbackRewardsForOrder(orderId) {
@@ -3675,6 +3874,28 @@ async function rollbackRewardsForOrder(orderId) {
     }
   }
   if (changed) await saveRewardRecords(records)
+  return records
+}
+
+async function invalidateStoreSettlementRecordsForOrder(orderId) {
+  const records = await getStoreSettlementRecords()
+  let changed = false
+  const now = formatDateTime(new Date())
+  for (const record of records) {
+    if (record.orderId !== orderId) continue
+    if (record.status === "settled") {
+      record.description = `${record.description || ""}；订单已退款，已结算佣金需人工处理`.trim()
+      changed = true
+      continue
+    }
+    if (record.status !== "invalid") {
+      record.status = "invalid"
+      record.description = `${record.description || ""}；订单退款成功，结算失效`.trim()
+      record.settledAt = now
+      changed = true
+    }
+  }
+  if (changed) await saveStoreSettlementRecords(records)
   return records
 }
 
@@ -4002,7 +4223,7 @@ async function processRewardState() {
   for (const record of records) {
     const order = orders.find(item => item.id === record.orderId)
     if (!order) continue
-    const refunded = order.status === "已退款" || order.paymentStatus === "已退款"
+    const refunded = order.status === "已退款" || order.paymentStatus === "已退款" || order.afterSalesStatus === "refunded"
     if (refunded && record.status !== "已扣回") {
       record.status = "已扣回"
       record.updatedAt = formatDateTime(now)
@@ -4212,6 +4433,16 @@ async function initDb() {
     refund_image_url VARCHAR(500),
     refund_reject_reason VARCHAR(255),
     refund_reviewed_at DATETIME,
+    after_sales_status VARCHAR(30),
+    after_sales_type VARCHAR(30),
+    after_sales_reason VARCHAR(255),
+    after_sales_desc TEXT,
+    after_sales_images JSON,
+    after_sales_requested_at DATETIME,
+    after_sales_handled_at DATETIME,
+    refund_no VARCHAR(80),
+    refund_id VARCHAR(120),
+    refund_success_at DATETIME,
     created_at DATETIME,
     paid_at DATETIME,
     completed_at DATETIME,
@@ -4242,6 +4473,16 @@ async function initDb() {
   await ensureColumn("orders", "refund_image_url", "VARCHAR(500)")
   await ensureColumn("orders", "refund_reject_reason", "VARCHAR(255)")
   await ensureColumn("orders", "refund_reviewed_at", "DATETIME")
+  await ensureColumn("orders", "after_sales_status", "VARCHAR(30)")
+  await ensureColumn("orders", "after_sales_type", "VARCHAR(30)")
+  await ensureColumn("orders", "after_sales_reason", "VARCHAR(255)")
+  await ensureColumn("orders", "after_sales_desc", "TEXT")
+  await ensureColumn("orders", "after_sales_images", "JSON")
+  await ensureColumn("orders", "after_sales_requested_at", "DATETIME")
+  await ensureColumn("orders", "after_sales_handled_at", "DATETIME")
+  await ensureColumn("orders", "refund_no", "VARCHAR(80)")
+  await ensureColumn("orders", "refund_id", "VARCHAR(120)")
+  await ensureColumn("orders", "refund_success_at", "DATETIME")
   await ensureColumn("orders", "paid_at", "DATETIME")
   await ensureColumn("orders", "completed_at", "DATETIME")
   await ensureColumn("orders", "refund_at", "DATETIME")
@@ -4717,6 +4958,46 @@ async function queryWechatPayOrder(orderId) {
   return result.data
 }
 
+async function queryWechatRefundByNo(refundNo) {
+  if (!refundNo) throw httpError(400, "缺少退款单号")
+  if (PAY_MOCK || !IS_PRODUCTION) {
+    return { out_refund_no: refundNo, status: "SUCCESS", refund_id: `MOCKRF${Date.now()}` }
+  }
+  const urlPath = `/v3/refund/domestic/refunds/${encodeURIComponent(refundNo)}`
+  const result = await requestJson(`https://api.mch.weixin.qq.com${urlPath}`, {
+    method: "GET",
+    headers: {
+      Authorization: wechatAuthorization("GET", urlPath, ""),
+      Accept: "application/json"
+    }
+  })
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw httpError(400, result.data.message || "微信退款查询失败")
+  }
+  return result.data
+}
+
+async function syncRefundStatus(orderId) {
+  const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!order) throw httpError(404, "订单不存在")
+  if (!order.refundNo) return { order, refund: null }
+  const refund = await queryWechatRefundByNo(order.refundNo)
+  const status = refund.status || refund.refund_status || ""
+  if (status === "SUCCESS") {
+    return { order: await markRefundSuccess(order, refund), refund }
+  }
+  if (status === "ABNORMAL" || status === "CLOSED") {
+    const orders = await getOrders()
+    const index = orders.findIndex(item => item.id === order.id)
+    if (index >= 0) {
+      orders[index] = { ...orders[index], refundStatus: "退款失败", afterSalesStatus: "approved" }
+      await saveOrders([orders[index]])
+      return { order: orders[index], refund }
+    }
+  }
+  return { order, refund }
+}
+
 async function assertConfirmedPaymentMatchesOrder(confirmed) {
   const orderId = confirmed.out_trade_no || ""
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
@@ -5069,6 +5350,18 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/after-sales\/apply$/) && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const identity = identityFromRequest(req, body)
+    if (!hasRequestIdentity(identity)) {
+      sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
+      return
+    }
+    const orderId = decodeURIComponent(url.pathname.split("/")[3])
+    sendJson(res, 200, { ok: true, data: await applyAfterSalesRequest({ ...body, ...identity, orderId }) })
+    return
+  }
+
   if (url.pathname === "/api/order-recommendation/event" && req.method === "POST") {
     if (!checkOrderRecommendationEventRateLimit(req)) {
       sendJson(res, 429, { ok: false, message: "操作过于频繁，请稍后再试" })
@@ -5191,6 +5484,26 @@ async function handle(req, res) {
       const transactionId = confirmed.transaction_id || resource.transaction_id || ""
       const updated = await markOrderPaid(resource.out_trade_no, transactionId)
       console.log("[pay] notify mark paid result", { orderId: resource.out_trade_no || "", updated })
+    }
+    sendJson(res, 200, { code: "SUCCESS", message: "成功" })
+    return
+  }
+
+  if (url.pathname === "/api/pay/refund/notify" && req.method === "POST") {
+    const rawBody = (await readBody(req, 1024 * 1024)).toString()
+    console.log("[refund-notify] received", { hasBody: !!rawBody })
+    verifyWechatPayNotify(req, rawBody)
+    const body = JSON.parse(rawBody || "{}")
+    const resource = decryptWechatResource(body.resource)
+    console.log("[refund-notify] decrypted", {
+      outRefundNo: resource.out_refund_no || "",
+      refundStatus: resource.refund_status || resource.status || "",
+      hasRefundId: !!resource.refund_id
+    })
+    const refundNo = resource.out_refund_no || ""
+    const order = (await getOrders()).find(item => item.refundNo === refundNo)
+    if (order && (resource.refund_status === "SUCCESS" || resource.status === "SUCCESS")) {
+      await markRefundSuccess(order, resource)
     }
     sendJson(res, 200, { code: "SUCCESS", message: "成功" })
     return
@@ -5364,8 +5677,10 @@ async function handle(req, res) {
       return sum + Number(product.costPrice || 0)
     }, 0)
     const refundAmount = orders.reduce((sum, order) => {
+      const refunded = order.status === "已退款" || order.paymentStatus === "已退款" || order.afterSalesStatus === "refunded" || order.refundStatus === "退款成功"
+      if (!refunded) return sum
       if (order.refundAmount) return sum + Number(order.refundAmount || 0)
-      return sum + (order.status === "已退款" || order.paymentStatus === "已退款" ? Number(order.amount || 0) : 0)
+      return sum + Number(order.amount || 0)
     }, 0)
     const rewardPaid = rewards.filter(record => record.status === "已发放").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const estimatedProfit = salesAmount - productCost - refundAmount - rewardPaid
@@ -5454,6 +5769,33 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/orders/refund-review" && req.method === "POST") {
     sendJson(res, 200, { ok: true, data: await reviewRefund(JSON.parse((await readBody(req)).toString() || "{}")) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/after-sales\/approve-refund$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await approveAfterSalesRefund(orderId, body) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/after-sales\/reject$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await rejectAfterSales(orderId, body.rejectReason || body.reason || "") })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/after-sales\/convert$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await convertAfterSales(orderId, body.type || "补发") })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/refund-status$/) && req.method === "GET") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await syncRefundStatus(orderId) })
     return
   }
 

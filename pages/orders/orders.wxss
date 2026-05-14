@@ -482,6 +482,18 @@
   font-weight: 800;
 }
 
+.picker-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 76rpx;
+  padding: 0 22rpx;
+  border: 1rpx solid #dcebff;
+  border-radius: 16rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
 input,
 textarea {
   width: 100%;
@@ -509,11 +521,40 @@ textarea {
   margin-top: 20rpx;
 }
 
+.refund-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
+
+.refund-image-wrap {
+  position: relative;
+  width: 168rpx;
+  height: 168rpx;
+}
+
 .refund-image {
   width: 168rpx;
   height: 168rpx;
-  margin-top: 16rpx;
   border-radius: 18rpx;
+}
+
+.refund-remove {
+  position: absolute;
+  top: -10rpx;
+  right: -10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38rpx;
+  height: 38rpx;
+  padding: 0;
+  border-radius: 50%;
+  background: #1f2937;
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 1;
 }
 
 .modal-actions {

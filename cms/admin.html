@@ -2020,6 +2020,7 @@
       const order = orders[index]
       if (!order) return
       const originalImages = normalizeMediaList(order.originalImageUrls || order.originalImageUrl)
+      const afterSalesImages = normalizeMediaList(order.afterSalesImages || order.refundImageUrl)
       drawerMode = "order"
       drawerIndex = index
       $("drawerTitle").textContent = "订单详情"
@@ -2087,17 +2088,25 @@
           <label>快递公司<input data-order-key="shippingCompany" value="${escapeHtml(order.shippingCompany)}" placeholder="例如：顺丰速运"></label>
           <label>快递单号<input data-order-key="trackingNumber" value="${escapeHtml(order.trackingNumber)}" placeholder="填写后可一键标记发货"></label>
         </div><div class="toolbar" style="margin-top:12px"><button class="secondary" data-action="ship-order" data-index="${index}">一键标记已发货</button></div></div>
-        <div class="drawer-section"><h4>退款审核</h4><div class="form-grid">
-          <label>售后状态<input data-order-key="refundStatus" value="${escapeHtml(order.refundStatus || "无退款")}"></label>
+        <div class="drawer-section"><h4>售后审核</h4><div class="form-grid">
+          <label>售后状态<input data-order-key="afterSalesStatus" value="${escapeHtml(order.afterSalesStatus || order.refundStatus || "无售后")}"></label>
+          <label>售后类型<input data-order-key="afterSalesType" value="${escapeHtml(order.afterSalesType || order.refundType || "")}"></label>
+          <label>退款状态<input data-order-key="refundStatus" value="${escapeHtml(order.refundStatus || "无退款")}"></label>
           <label>退款金额<input data-order-key="refundAmount" value="${escapeHtml(order.refundAmount || "")}"></label>
-          <label>退款原因<textarea data-order-key="refundReason">${escapeHtml(order.refundReason || "")}</textarea></label>
-          <label>备注<textarea data-order-key="remark">${escapeHtml(order.remark || "")}</textarea></label>
+          <label>售后原因<textarea data-order-key="afterSalesReason">${escapeHtml(order.afterSalesReason || order.refundReason || "")}</textarea></label>
+          <label>问题说明<textarea data-order-key="afterSalesDesc">${escapeHtml(order.afterSalesDesc || order.refundRemark || "")}</textarea></label>
+          <label>拒绝原因<textarea data-order-key="refundRejectReason">${escapeHtml(order.refundRejectReason || "")}</textarea></label>
+          <label>退款单号<input data-order-key="refundNo" value="${escapeHtml(order.refundNo || "")}"></label>
         </div>
-        ${order.refundImageUrl ? `<p><a href="${escapeHtml(order.refundImageUrl)}" target="_blank">查看退款凭证</a></p>` : ""}
+        <p class="muted">支付状态：${escapeHtml(order.paymentStatus || "-")} · 发货状态：${escapeHtml(order.status || "-")} · 自提状态：${escapeHtml(order.pickupStatus || "-")} · 佣金状态：${escapeHtml(order.storeSettlementStatus || "-")}</p>
+        ${afterSalesImages.length ? `<div class="media-list" style="margin-top:12px">${afterSalesImages.map((url, imageIndex) => `<div class="media-row"><img class="media-thumb" src="${escapeHtml(url)}" alt=""><div><strong>售后凭证 ${imageIndex + 1}</strong><div class="muted">${escapeHtml(url)}</div></div></div>`).join("")}</div>` : ""}
         <div class="toolbar" style="margin-top:12px">
-          <button class="secondary" data-action="refund-approve" data-index="${index}">通过</button>
-          <button class="secondary" data-action="refund-partial" data-index="${index}">部分退款</button>
-          <button class="danger" data-action="refund-reject" data-index="${index}">拒绝</button>
+          <button class="secondary" data-action="refund-approve" data-index="${index}">同意退款</button>
+          <button class="secondary" data-action="after-sales-resend" data-index="${index}">改为补发</button>
+          <button class="secondary" data-action="after-sales-remake" data-index="${index}">改为重新制作</button>
+          <button class="secondary" data-action="refund-status" data-index="${index}">查询退款</button>
+          <button class="secondary" data-action="contact-user" data-index="${index}">联系用户</button>
+          <button class="danger" data-action="refund-reject" data-index="${index}">拒绝售后</button>
         </div></div>
         <div class="drawer-section"><h4>奖励记录</h4>
           <p class="muted">邀请码：${escapeHtml(order.inviterCode || "-")}</p>
@@ -2939,27 +2948,39 @@
       }
       if (event.target.dataset.action === "refund-approve") {
         const order = orders[Number(event.target.dataset.index)]
-        api("/api/admin/orders/refund-review", "POST", { orderId: order.id, action: "approve" })
+        api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/approve-refund`, "POST", { refundAmount: order.refundAmount || order.amount })
           .then(() => loadAll())
-          .then(() => setStatus("退款已通过，奖励已扣回"))
+          .then(() => setStatus("退款已提交微信受理，成功后由回调更新订单"))
           .catch(error => setStatus(error.message))
       }
-      if (event.target.dataset.action === "refund-partial") {
+      if (event.target.dataset.action === "refund-status") {
         const order = orders[Number(event.target.dataset.index)]
-        const amount = prompt("请输入部分退款金额", order.refundAmount || order.amount)
-        if (!amount) return
-        api("/api/admin/orders/refund-review", "POST", { orderId: order.id, action: "partial", refundAmount: amount })
+        api(`/api/admin/orders/${encodeURIComponent(order.id)}/refund-status`, "GET")
           .then(() => loadAll())
-          .then(() => setStatus("部分退款已处理，奖励已扣回"))
+          .then(() => setStatus("退款状态已刷新"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "contact-user") {
+        const order = orders[Number(event.target.dataset.index)]
+        const phone = order?.phone || ""
+        if (phone && navigator.clipboard) navigator.clipboard.writeText(phone).catch(() => {})
+        setStatus(phone ? `用户电话已复制：${phone}` : "该订单没有联系电话")
+      }
+      if (event.target.dataset.action === "after-sales-resend" || event.target.dataset.action === "after-sales-remake") {
+        const order = orders[Number(event.target.dataset.index)]
+        const type = event.target.dataset.action === "after-sales-resend" ? "补发" : "重新制作"
+        api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/convert`, "POST", { type })
+          .then(() => loadAll())
+          .then(() => setStatus(`已改为${type}处理`))
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "refund-reject") {
         const order = orders[Number(event.target.dataset.index)]
-        const rejectReason = prompt("请输入拒绝原因", "退款申请未通过")
+        const rejectReason = prompt("请输入拒绝原因", "售后申请未通过")
         if (!rejectReason) return
-        api("/api/admin/orders/refund-review", "POST", { orderId: order.id, action: "reject", rejectReason })
+        api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/reject`, "POST", { rejectReason })
           .then(() => loadAll())
-          .then(() => setStatus("已拒绝退款申请"))
+          .then(() => setStatus("已拒绝售后申请"))
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "regen-order-preview") {
