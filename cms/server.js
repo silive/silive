@@ -1399,21 +1399,48 @@ function defaultAds() {
 
 function normalizeAdSlot(item, key, fallback) {
   const source = item && typeof item === "object" ? item : {}
-  const imageVariants = uploadImageVariants(source.imageUrl || fallback.imageUrl || "")
+  const has = field => Object.prototype.hasOwnProperty.call(source, field)
+  const imageValue = has("imageUrl") ? source.imageUrl : fallback.imageUrl
+  const imageVariants = uploadImageVariants(imageValue || "")
   return {
     key,
-    title: source.title || fallback.title || "",
-    subtitle: source.subtitle || source.desc || fallback.subtitle || "",
+    title: has("title") ? String(source.title || "") : (fallback.title || ""),
+    subtitle: has("subtitle") ? String(source.subtitle || "") : (has("desc") ? String(source.desc || "") : (fallback.subtitle || "")),
     imageUrl: imageVariants.url,
     optimizedUrl: source.optimizedUrl ? publicAssetUrl(source.optimizedUrl) : imageVariants.optimizedUrl,
     thumbUrl: source.thumbUrl ? publicAssetUrl(source.thumbUrl) : imageVariants.thumbUrl,
     bannerUrl: source.bannerUrl ? publicAssetUrl(source.bannerUrl) : imageVariants.bannerUrl,
     bannerThumbUrl: source.bannerThumbUrl ? publicAssetUrl(source.bannerThumbUrl) : imageVariants.bannerThumbUrl,
-    linkType: source.linkType || source.targetType || fallback.linkType || "none",
-    linkValue: source.linkValue || source.targetValue || fallback.linkValue || "",
+    linkType: has("linkType") ? String(source.linkType || "none") : (source.targetType || fallback.linkType || "none"),
+    linkValue: has("linkValue") ? String(source.linkValue || "") : (source.targetValue || fallback.linkValue || ""),
     enabled: String(source.enabled == null ? fallback.enabled || "true" : source.enabled),
-    sort: String(source.sort || fallback.sort || "999")
+    sort: String(source.sort == null ? fallback.sort || "999" : source.sort)
   }
+}
+
+function homepageProductSort(a, b) {
+  return Number(a.sortOrder || a.sort || 999) - Number(b.sortOrder || b.sort || 999)
+}
+
+function homepageRecommendedProducts(products = []) {
+  const online = products.filter(product => product.status !== "off")
+  const picked = []
+  const seen = new Set()
+  const add = list => {
+    list.sort(homepageProductSort).forEach(product => {
+      if (!seen.has(product.id)) {
+        seen.add(product.id)
+        picked.push(product)
+      }
+    })
+  }
+  add(online.filter(product => String(product.isHot) === "true"))
+  add(online.filter(product => ["hot", "best"].includes(product.badge)))
+  return picked.slice(0, 6)
+}
+
+function homepageBurstProducts(products = []) {
+  return products.filter(product => product.status !== "off" && product.badge === "best").sort(homepageProductSort).slice(0, 4)
 }
 
 function normalizeAds(value) {
@@ -5118,10 +5145,18 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/home" && req.method === "GET") {
-    const [home, settings] = await Promise.all([getHome(), getSettings()])
+    const [home, settings, products] = await Promise.all([getHome(), getSettings(), getProducts()])
     console.log("[api-home-banner]", bannerSummaryForLog(home.banners?.[0] || {}, 0))
     sendJson(res, 200, {
       ...home,
+      products: homepageRecommendedProducts(products),
+      hotProducts: homepageBurstProducts(products),
+      homepageProductRules: {
+        recommendedLimit: 6,
+        burstLimit: 4,
+        recommendedSource: "isHot=true 优先，其次 badge=hot/best，按 sortOrder 排序",
+        burstSource: "badge=best，双列网格，每行2个"
+      },
       theme: currentThemeFromSettings(settings),
       categoryCatalog: Array.isArray(settings.categoryCatalog) ? settings.categoryCatalog : [],
       activities: Array.isArray(settings.activities) ? settings.activities : []

@@ -701,19 +701,13 @@
   font-weight: 800;
 }
 
-.hot-scroll {
-  width: 100%;
-  white-space: nowrap;
-}
-
-.hot-row {
-  display: flex;
+.hot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18rpx;
-  padding-bottom: 4rpx;
 }
 
 .hot-card {
-  flex: 0 0 238rpx;
   padding: 16rpx;
   border-radius: 20rpx;
   background: rgba(255, 255, 255, .94);
@@ -723,8 +717,8 @@
 
 .hot-cover {
   position: relative;
-  width: 206rpx;
-  height: 206rpx;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   border-radius: 18rpx;
   overflow: hidden;
 }

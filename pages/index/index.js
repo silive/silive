@@ -68,9 +68,9 @@ function productMatchesKeyword(product, keyword) {
 
 function buildHomeState(data) {
   const products = normalizeProducts(data.products || defaultData.products)
-  const hotProducts = products.filter(product => String(product.isHot) === "true" || ["best", "hot"].includes(product.badge)).slice(0, 6)
-  const recommendedProducts = (hotProducts.length ? hotProducts : products).slice(0, 6)
-  const burstProducts = (hotProducts.length ? hotProducts : products).slice(0, 4)
+  const recommendedProducts = products.slice(0, 6)
+  const burstSource = Array.isArray(data.hotProducts) && data.hotProducts.length ? normalizeProducts(data.hotProducts) : products.filter(product => product.badge === "best")
+  const burstProducts = burstSource.slice(0, 4)
   const homeUpdatedAt = data.updatedAt || data.homeUpdatedAt || ""
   const banners = normalizeBannersWithVersion((data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc), homeUpdatedAt)
   const homeEntries = (data.homeEntries || defaultData.homeEntries || [])
@@ -210,20 +210,20 @@ Page({
   loadSearchProducts() {
     request("/api/products", { timeout: 8000 }).then(products => {
       const onlineProducts = normalizeProducts(Array.isArray(products) && products.length ? products : defaultData.products)
-      const hotProducts = onlineProducts.filter(product => String(product.isHot) === "true" || ["best", "hot"].includes(product.badge)).slice(0, 6)
+      const hotProducts = onlineProducts.filter(product => product.badge === "best").slice(0, 4)
       this.setData({
         products: onlineProducts,
-        hotProducts: hotProducts.length ? hotProducts : onlineProducts.slice(0, 4),
+        hotProducts,
         searchAllProducts: onlineProducts
       })
       this.refreshSearchResults()
     }).catch(() => {
       const fallbackProducts = normalizeProducts(defaultData.products)
-      const hotProducts = fallbackProducts.filter(product => String(product.isHot) === "true" || ["best", "hot"].includes(product.badge)).slice(0, 6)
+      const hotProducts = fallbackProducts.filter(product => product.badge === "best").slice(0, 4)
       if (!this.data.products || !this.data.products.length) {
         this.setData({
           products: fallbackProducts,
-          hotProducts: hotProducts.length ? hotProducts : fallbackProducts.slice(0, 4)
+          hotProducts
         })
       }
       this.setData({ searchAllProducts: this.data.products || fallbackProducts })

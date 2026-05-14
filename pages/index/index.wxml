@@ -80,7 +80,7 @@
     </view>
   </view>
 
-  <view class="section-head">
+  <view wx:if="{{products.length}}" class="section-head">
     <view>
       <view class="section-title">热门推荐商品</view>
       <view class="section-subtitle" style="{{mutedTextStyle}}">{{sectionSubtitle}}</view>
@@ -88,7 +88,7 @@
     <view class="section-more">精选</view>
   </view>
 
-  <view class="product-list">
+  <view wx:if="{{products.length}}" class="product-list">
     <view class="product-card" style="{{cardStyle}}" wx:for="{{products}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
       <view class="product-cover cover-{{item.cover}}">
         <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
@@ -106,7 +106,7 @@
     </view>
   </view>
 
-  <view class="section-head">
+  <view wx:if="{{hotProducts.length}}" class="section-head">
     <view>
       <view class="section-title">爆款专区</view>
       <view class="section-subtitle" style="{{mutedTextStyle}}">高人气单品，适合送礼和自用收藏</view>
@@ -114,8 +114,7 @@
     <view class="section-more">热卖</view>
   </view>
 
-  <scroll-view scroll-x class="hot-scroll">
-    <view class="hot-row">
+  <view wx:if="{{hotProducts.length}}" class="hot-grid">
       <view class="hot-card" style="{{cardStyle}}" wx:for="{{hotProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
         <view class="hot-cover cover-{{item.cover}}">
           <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
@@ -123,8 +122,7 @@
         <view class="hot-name">{{item.name}}</view>
         <view class="hot-price" style="{{priceStyle}}">¥{{item.price}}</view>
       </view>
-    </view>
-  </scroll-view>
+  </view>
 
   <view class="contact-panel" style="{{cardStyle}}">
     <view>
