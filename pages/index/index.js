@@ -69,7 +69,10 @@ function productMatchesKeyword(product, keyword) {
 function buildHomeState(data) {
   const products = normalizeProducts(data.products || defaultData.products)
   const recommendedProducts = products.slice(0, 6)
-  const burstSource = Array.isArray(data.hotProducts) && data.hotProducts.length ? normalizeProducts(data.hotProducts) : products.filter(product => product.badge === "best")
+  const recommendedIds = new Set(recommendedProducts.map(product => product.id))
+  const burstSource = Array.isArray(data.hotProducts) && data.hotProducts.length
+    ? normalizeProducts(data.hotProducts)
+    : products.filter(product => product.badge === "best" && !recommendedIds.has(product.id))
   const burstProducts = burstSource.slice(0, 4)
   const homeUpdatedAt = data.updatedAt || data.homeUpdatedAt || ""
   const banners = normalizeBannersWithVersion((data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc), homeUpdatedAt)
@@ -210,7 +213,8 @@ Page({
   loadSearchProducts() {
     request("/api/products", { timeout: 8000 }).then(products => {
       const onlineProducts = normalizeProducts(Array.isArray(products) && products.length ? products : defaultData.products)
-      const hotProducts = onlineProducts.filter(product => product.badge === "best").slice(0, 4)
+      const recommendedIds = new Set((this.data.products || []).map(product => product.id))
+      const hotProducts = onlineProducts.filter(product => product.badge === "best" && !recommendedIds.has(product.id)).slice(0, 4)
       this.setData({
         products: onlineProducts,
         hotProducts,
@@ -219,7 +223,8 @@ Page({
       this.refreshSearchResults()
     }).catch(() => {
       const fallbackProducts = normalizeProducts(defaultData.products)
-      const hotProducts = fallbackProducts.filter(product => product.badge === "best").slice(0, 4)
+      const recommendedIds = new Set((this.data.products || []).map(product => product.id))
+      const hotProducts = fallbackProducts.filter(product => product.badge === "best" && !recommendedIds.has(product.id)).slice(0, 4)
       if (!this.data.products || !this.data.products.length) {
         this.setData({
           products: fallbackProducts,

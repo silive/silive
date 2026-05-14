@@ -72,36 +72,36 @@
   </view>
 
   <button wx:if="{{!product.isNormalProduct}}" class="primary-btn" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
-
-  <button wx:if="{{product.isNormalProduct}}" class="floating-cart" bindtap="openCart" aria-label="购物车">
-    <view class="cart-glyph">
-      <view class="cart-handle"></view>
-      <view class="cart-basket"></view>
-      <view class="cart-wheel wheel-left"></view>
-      <view class="cart-wheel wheel-right"></view>
-    </view>
-    <text wx:if="{{cartCount > 0}}" class="cart-badge">{{cartCount > 99 ? '99+' : cartCount}}</text>
-  </button>
-
-  <view wx:if="{{product.isNormalProduct}}" class="fixed-action-bar">
-    <view class="action-btn-wrap action-cart-wrap">
-      <button class="action-btn add-cart-btn" bindtap="addToCart">加入购物车</button>
-    </view>
-    <view class="action-btn-wrap action-buy-wrap">
-      <button class="action-btn buy-btn" bindtap="buyNow">立即购买</button>
-    </view>
-  </view>
-
-  <login-sheet
-    visible="{{loginVisible}}"
-    loading="{{loginLoading}}"
-    title="微信手机号授权登录"
-    desc="授权后自动进入确认定制页，手机号会为你预填，可随时修改。"
-    confirm-text="授权手机号并继续"
-    cancel-text="暂不登录"
-    bind:getphonenumber="onCheckoutPhone"
-    bind:close="closeLoginPrompt"
-  />
 </view>
 
-<view class="loading" wx:else>加载中...</view>
+<view wx:if="{{product && product.isNormalProduct}}" class="floating-cart" bindtap="openCart" aria-label="购物车">
+  <view class="cart-glyph">
+    <view class="cart-handle"></view>
+    <view class="cart-basket"></view>
+    <view class="cart-wheel wheel-left"></view>
+    <view class="cart-wheel wheel-right"></view>
+  </view>
+  <text wx:if="{{cartCount > 0}}" class="cart-badge">{{cartCount > 99 ? '99+' : cartCount}}</text>
+</view>
+
+<view wx:if="{{product && product.isNormalProduct}}" class="fixed-action-bar">
+  <view class="action-btn-wrap action-cart-wrap">
+    <button class="action-btn add-cart-btn" bindtap="addToCart">加入购物车</button>
+  </view>
+  <view class="action-btn-wrap action-buy-wrap">
+    <button class="action-btn buy-btn" bindtap="buyNow">立即购买</button>
+  </view>
+</view>
+
+<login-sheet
+  visible="{{loginVisible}}"
+  loading="{{loginLoading}}"
+  title="微信手机号授权登录"
+  desc="授权后自动进入确认定制页，手机号会为你预填，可随时修改。"
+  confirm-text="授权手机号并继续"
+  cancel-text="暂不登录"
+  bind:getphonenumber="onCheckoutPhone"
+  bind:close="closeLoginPrompt"
+/>
+
+<view class="loading" wx:if="{{!product}}">加载中...</view>

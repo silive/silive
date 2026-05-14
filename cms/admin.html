@@ -1807,10 +1807,10 @@
         <div class="empty" style="text-align:left; line-height:1.9">
           <strong>首页推荐商品</strong><br>
           设置位置：商品中心 → 商品管理 → 编辑商品 → 勾选“首页推荐”。<br>
-          展示规则：最多显示 6 个，优先显示首页推荐商品，其次显示“人气/爆品”标签商品，按排序值从小到大排列。<br><br>
+          展示规则：只显示明确勾选“首页推荐”的商品，最多显示 6 个，按排序值从小到大排列。<br><br>
           <strong>爆款专区</strong><br>
           设置位置：商品中心 → 商品管理 → 商品标签选择“爆品”。<br>
-          展示规则：最多显示 4 个，双列网格展示，每行 2 个，超过 2 个自动换下一行；没有爆品时前台自动隐藏该模块。
+          展示规则：只显示“爆品”且未勾选“首页推荐”的商品，最多显示 4 个，双列网格展示，每行 2 个；没有爆品时前台自动隐藏该模块。
         </div>`
     }
     function normalizeHelpArticles(value) {
@@ -1876,7 +1876,7 @@
       renderProductFilters()
       const filtered = getFilteredProducts()
       $("productEditor").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
-        <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>操作按钮</th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>首页</th><th>操作按钮</th></tr></thead>
         <tbody>${filtered.map(({ item, index }) => `
           <tr class="${selectedProducts.has(index) ? "selected" : ""}">
             <td><input class="product-select" type="checkbox" data-select-product="${index}" ${selectedProducts.has(index) ? "checked" : ""}></td>
@@ -1885,6 +1885,7 @@
             <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
             <td><strong>${formatMoney(item.price)}</strong></td>
             <td><span class="pill">${productStatusText(item.status)}</span></td>
+            <td>${String(item.isHot) === "true" ? `<span class="mini-tag">首页推荐</span>` : `<span class="table-sub">-</span>`}</td>
             <td><div class="table-actions"><button class="secondary" data-action="edit-product" data-index="${index}">编辑</button><button class="danger" data-action="remove-product" data-index="${index}">删除</button></div></td>
           </tr>`).join("")}</tbody>
       </table></div>`
@@ -1996,9 +1997,10 @@
             ${field("商品说明", item.intro, "intro", "textarea")}
             ${field("上架状态", item.status, "status")}
             ${field("商品类型", item.productType || "custom", "productType", "select")}
+            ${field("首页推荐", item.isHot, "isHot", "select")}
             ${field("标签", item.badge, "badge")}
             ${field("所属分类", item.categories, "categories")}
-          </div></div>
+          </div><div class="upload-help">勾选“首页推荐”后显示在首页推荐商品区域，最多显示 6 个，按排序值排序。</div></div>
         </div>
         <div class="drawer-pane" data-drawer-pane="media">
           <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
@@ -2020,7 +2022,6 @@
           <div class="drawer-section"><h4>推广佣金</h4><div class="form-grid">
             ${field("是否开启AI预览", item.aiPreviewEnabled, "aiPreviewEnabled", "select")}
             ${field("预览模板类型", item.aiPreviewType, "aiPreviewType", "select")}
-            ${field("首页推荐", item.isHot, "isHot", "select")}
             ${field("是否加入推广页热门推荐", item.promotionHot, "promotionHot", "select")}
             ${field("是否参与推广奖励", item.rewardEnabled, "rewardEnabled", "select")}
             ${field("一级奖励金额", item.firstReward, "firstReward")}

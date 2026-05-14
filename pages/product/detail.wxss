@@ -307,6 +307,7 @@
 .floating-cart {
   position: fixed;
   right: 28rpx;
+  bottom: 300rpx;
   bottom: calc(300rpx + constant(safe-area-inset-bottom));
   bottom: calc(300rpx + env(safe-area-inset-bottom));
   z-index: 998;
@@ -317,7 +318,7 @@
   max-width: 96rpx;
   max-height: 96rpx;
   margin: 0;
-  padding: 0;
+  padding: 0 !important;
   border-radius: 50%;
   background: linear-gradient(135deg, #1677ff, #36cfc9);
   color: #ffffff;
@@ -329,6 +330,7 @@
   box-sizing: border-box;
   overflow: visible;
   flex-shrink: 0;
+  pointer-events: auto;
 }
 
 .fixed-action-bar {

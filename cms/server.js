@@ -1424,23 +1424,14 @@ function homepageProductSort(a, b) {
 
 function homepageRecommendedProducts(products = []) {
   const online = products.filter(product => product.status !== "off")
-  const picked = []
-  const seen = new Set()
-  const add = list => {
-    list.sort(homepageProductSort).forEach(product => {
-      if (!seen.has(product.id)) {
-        seen.add(product.id)
-        picked.push(product)
-      }
-    })
-  }
-  add(online.filter(product => String(product.isHot) === "true"))
-  add(online.filter(product => ["hot", "best"].includes(product.badge)))
-  return picked.slice(0, 6)
+  return online.filter(product => String(product.isHot) === "true").sort(homepageProductSort).slice(0, 6)
 }
 
 function homepageBurstProducts(products = []) {
-  return products.filter(product => product.status !== "off" && product.badge === "best").sort(homepageProductSort).slice(0, 4)
+  return products
+    .filter(product => product.status !== "off" && product.badge === "best" && String(product.isHot) !== "true")
+    .sort(homepageProductSort)
+    .slice(0, 4)
 }
 
 function normalizeAds(value) {
@@ -5154,8 +5145,8 @@ async function handle(req, res) {
       homepageProductRules: {
         recommendedLimit: 6,
         burstLimit: 4,
-        recommendedSource: "isHot=true 优先，其次 badge=hot/best，按 sortOrder 排序",
-        burstSource: "badge=best，双列网格，每行2个"
+        recommendedSource: "仅显示 isHot=true 的首页推荐商品，按 sortOrder 排序",
+        burstSource: "badge=best 且未勾选首页推荐，双列网格，每行2个"
       },
       theme: currentThemeFromSettings(settings),
       categoryCatalog: Array.isArray(settings.categoryCatalog) ? settings.categoryCatalog : [],
