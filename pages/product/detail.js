@@ -24,12 +24,44 @@ function hashNumber(seed) {
   return String(seed || "").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)
 }
 
+function normalizeImageItem(item) {
+  if (!item) return ""
+  if (typeof item === "string") return item
+  return item.detailUrl || item.optimizedUrl || item.url || item.imageUrl || ""
+}
+
+function normalizeImageList(value) {
+  return (Array.isArray(value) ? value : [])
+    .map(normalizeImageItem)
+    .filter(Boolean)
+}
+
+function getProductListImage(product = {}) {
+  return product.thumbUrl || product.listImage || product.cartThumbUrl || product.optimizedUrl || product.imageUrl || ""
+}
+
+function getProductMainImage(product = {}) {
+  return product.optimizedUrl || product.bannerUrl || product.thumbUrl || product.listImage || product.imageUrl || product.mainImage || ""
+}
+
+function getProductMediaImages(product = {}) {
+  const gallery = normalizeImageList(product.galleryOptimizedImages || product.galleryImagesOptimized || product.galleryUrls || product.galleryImages)
+  const main = getProductMainImage(product)
+  return gallery.length ? gallery : (main ? [main] : [])
+}
+
+function getDetailImages(product = {}) {
+  const optimized = normalizeImageList(product.detailOptimizedImages || product.detailImagesOptimized || product.detailUrls)
+  if (optimized.length) return optimized
+  return normalizeImageList(product.detailImages)
+}
+
 function normalizeProduct(product) {
   const categories = Array.isArray(product.categories) ? product.categories : []
-  const galleryImages = Array.isArray(product.galleryImages) ? product.galleryImages.filter(Boolean) : []
-  const detailImages = Array.isArray(product.detailImages) ? product.detailImages.filter(Boolean) : []
-  const heroImage = product.optimizedUrl || product.webpUrl || product.imageUrl
-  const mediaImages = galleryImages.length ? galleryImages : (heroImage ? [heroImage] : [])
+  const galleryImages = normalizeImageList(product.galleryImages)
+  const detailImages = getDetailImages(product)
+  const heroImage = getProductMainImage(product)
+  const mediaImages = getProductMediaImages(product)
   const seed = hashNumber(product.id || product.name)
   const soldCount = Number(product.soldCount || product.sales || product.saleCount || 0) || 120 + (seed % 420)
   const viewCount = Number(product.viewCount || product.views || 0) || soldCount * 4 + 360 + (seed % 680)
@@ -40,7 +72,8 @@ function normalizeProduct(product) {
     detailImages,
     mediaImages,
     displayImage: heroImage,
-    cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
+    listImage: getProductListImage(product),
+    cartImage: product.cartThumbUrl || product.thumbUrl || product.listImage || product.imageUrl,
     recommendTip: pickOne(RECOMMEND_TIPS),
     categoryText: categories.join(" / "),
     badgeText: normalizeProductTag(product),
@@ -233,7 +266,7 @@ Page({
     wx.setStorageSync("lastShareProduct", {
       id: product.id,
       name: product.name,
-      imageUrl: product.imageUrl || product.mediaImages?.[0] || "",
+      imageUrl: product.displayImage || product.listImage || product.mediaImages?.[0] || product.imageUrl || "",
       firstReward: product.firstReward || "0"
     })
   },
@@ -307,7 +340,7 @@ Page({
     return {
       title: "非常智造｜发现一个不错的定制礼物",
       path: this.buildSharePath(),
-      imageUrl: product.displayImage || product.imageUrl || product.mediaImages?.[0] || ""
+      imageUrl: product.displayImage || product.listImage || product.mediaImages?.[0] || product.imageUrl || ""
     }
   }
 })

@@ -24,7 +24,7 @@ function isNormalProduct(product = {}) {
 function normalizeProducts(products) {
   return (products || []).filter(product => product.status !== "off").map(product => ({
     ...product,
-    displayImage: product.listImage || product.thumbUrl || product.optimizedUrl || product.imageUrl,
+    displayImage: product.thumbUrl || product.listImage || product.cartThumbUrl || product.optimizedUrl || product.imageUrl,
     cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     categories: Array.isArray(product.categories) ? product.categories : [],
     badgeText: normalizeProductTag(product),

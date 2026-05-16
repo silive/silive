@@ -14,6 +14,7 @@
   height: 520rpx;
   border-radius: 26rpx;
   overflow: hidden;
+  background: #eef6ff;
   box-shadow: 0 24rpx 56rpx rgba(63, 45, 42, .16);
   animation: detailFadeUp .34s ease both;
 }
@@ -21,11 +22,13 @@
 .detail-cover {
   width: 100%;
   height: 520rpx;
+  background: #eef6ff;
 }
 
 .detail-image {
   width: 100%;
   height: 100%;
+  display: block;
 }
 
 .detail-video {
@@ -499,6 +502,7 @@
   border-radius: 18rpx;
   overflow: hidden;
   background: #f4f9ff;
+  display: block;
 }
 
 .note-panel {
