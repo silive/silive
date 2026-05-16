@@ -613,15 +613,6 @@
         <div class="panel">
           <h3>订单管理</h3>
           <div class="order-workbench" id="orderWorkbench"></div>
-          <div class="quick-tabs" id="orderQuickTabs">
-            <button class="quick-tab" data-order-status="待支付">待付款</button>
-            <button class="quick-tab" data-order-status="待确认">待确认</button>
-            <button class="quick-tab" data-order-status="待设计">待设计</button>
-            <button class="quick-tab" data-order-status="待发货">待发货</button>
-            <button class="quick-tab" data-order-status="已发货">已发货</button>
-            <button class="quick-tab" data-order-status="退款中">售后中</button>
-            <button class="quick-tab" data-order-status="已完成">已完成</button>
-          </div>
           <div class="filters">
             <input id="orderKeyword" placeholder="搜索订单号、客户、电话、商品">
             <select id="orderStatusFilter">
@@ -632,6 +623,7 @@
               <option value="待发货">待发货</option>
               <option value="制作中">制作中</option>
               <option value="已发货">已发货</option>
+              <option value="售后中">售后中</option>
               <option value="已完成">已完成</option>
               <option value="退款中">退款中</option>
               <option value="已退款">已退款</option>
@@ -1915,9 +1907,50 @@
       const keyword = String(orderFilters.keyword || "").toLowerCase()
       return (source || []).filter(order => {
         const keywordOk = !keyword || [order.id, order.customerName, order.phone, order.productName].some(value => String(value || "").toLowerCase().includes(keyword))
-        const statusOk = !orderFilters.status || order.status === orderFilters.status
+        const statusOk = orderStatusMatchesFilter(order, orderFilters.status)
         return keywordOk && statusOk
       })
+    }
+    function normalizedAfterSalesStatus(order) {
+      const raw = order.afterSalesStatus || order.after_sales_status || order.refundStatus || ""
+      const map = {
+        requested: "requested",
+        approved: "requested",
+        refund_pending: "refund_pending",
+        remake: "remake",
+        reship: "reship",
+        rejected: "rejected",
+        refunded: "refunded",
+        "待审核": "requested",
+        "售后处理中": "requested",
+        "退款处理中": "refund_pending",
+        "重新制作中": "remake",
+        "补发处理中": "reship",
+        "已拒绝": "rejected",
+        "售后已拒绝": "rejected",
+        "退款成功": "refunded",
+        "已退款": "refunded"
+      }
+      return map[String(raw || "").trim()] || "none"
+    }
+    function afterSalesText(order) {
+      return order.afterSalesText || ({
+        requested: "售后处理中",
+        refund_pending: "退款处理中",
+        remake: "重新制作中",
+        reship: "补发处理中",
+        rejected: "售后已拒绝",
+        refunded: "已退款",
+        none: "无售后"
+      })[normalizedAfterSalesStatus(order)] || "无售后"
+    }
+    function isAfterSalesActive(order) {
+      return ["requested", "refund_pending", "remake", "reship"].includes(normalizedAfterSalesStatus(order))
+    }
+    function orderStatusMatchesFilter(order, status) {
+      if (!status) return true
+      if (status === "售后中") return isAfterSalesActive(order)
+      return order.status === status || order.paymentStatus === status
     }
     function updateSelectedProductCount() {
       if ($("selectedProductCount")) $("selectedProductCount").textContent = `已选 ${selectedProducts.size} 个商品`
@@ -2131,13 +2164,13 @@
           <label>快递单号<input data-order-key="trackingNumber" value="${escapeHtml(order.trackingNumber)}" placeholder="填写后可一键标记发货"></label>
         </div><div class="toolbar" style="margin-top:12px"><button class="secondary" data-action="ship-order" data-index="${index}">一键标记已发货</button></div></div>
         <div class="drawer-section"><h4>售后审核</h4><div class="form-grid">
-          <label>售后状态<input data-order-key="afterSalesStatus" value="${escapeHtml(order.afterSalesStatus || order.refundStatus || "无售后")}"></label>
+          <label>售后状态<input value="${escapeHtml(afterSalesText(order))}" disabled></label>
           <label>售后类型<input data-order-key="afterSalesType" value="${escapeHtml(order.afterSalesType || order.refundType || "")}"></label>
           <label>退款状态<input data-order-key="refundStatus" value="${escapeHtml(order.refundStatus || "无退款")}"></label>
           <label>退款金额<input data-order-key="refundAmount" value="${escapeHtml(order.refundAmount || "")}"></label>
           <label>售后原因<textarea data-order-key="afterSalesReason">${escapeHtml(order.afterSalesReason || order.refundReason || "")}</textarea></label>
           <label>问题说明<textarea data-order-key="afterSalesDesc">${escapeHtml(order.afterSalesDesc || order.refundRemark || "")}</textarea></label>
-          <label>拒绝原因<textarea data-order-key="refundRejectReason">${escapeHtml(order.refundRejectReason || "")}</textarea></label>
+          <label>拒绝原因<textarea data-order-key="refundRejectReason">${escapeHtml(order.refundRejectReason || order.afterSalesRejectReason || "")}</textarea></label>
           <label>退款单号<input data-order-key="refundNo" value="${escapeHtml(order.refundNo || "")}"></label>
         </div>
         <p class="muted">支付状态：${escapeHtml(order.paymentStatus || "-")} · 发货状态：${escapeHtml(order.status || "-")} · 自提状态：${escapeHtml(order.pickupStatus || "-")} · 佣金状态：${escapeHtml(order.storeSettlementStatus || "-")}</p>
@@ -2180,7 +2213,7 @@
         .catch(error => setStatus(error.message))
     }
     function orderStageCount(status) {
-      if (status === "售后中") return allOrders.filter(order => order.status === "退款中" || order.refundStatus === "待审核").length
+      if (status === "售后中") return allOrders.filter(isAfterSalesActive).length
       return allOrders.filter(order => order.status === status || order.paymentStatus === status).length
     }
     function renderOrderWorkbench() {
@@ -2193,14 +2226,13 @@
         ["已完成", "已完成"]
       ]
       $("orderWorkbench").innerHTML = stages.map(([status, label]) => `
-        <div class="order-stage ${orderFilters.status === status || (status === "售后中" && orderFilters.status === "退款中") ? "active" : ""}" data-order-stage="${status}">
+        <div class="order-stage ${orderFilters.status === status ? "active" : ""}" data-order-stage="${status}">
           <div class="stage-label">${label}</div>
           <div class="stage-value">${orderStageCount(status)}</div>
         </div>
       `).join("")
     }
     function renderOrders() {
-      document.querySelectorAll("[data-order-status]").forEach(btn => btn.classList.toggle("active", btn.dataset.orderStatus === orderFilters.status))
       $("orderKeyword").value = orderFilters.keyword || ""
       $("orderStatusFilter").value = orderFilters.status || ""
       renderOrderWorkbench()
@@ -2213,7 +2245,7 @@
           <td><span class="pill">${order.deliveryType === "pickup" ? "到店自提" : "配送/快递"}</span><div class="muted">${escapeHtml(order.pickupStore?.name || "")}</div><div class="muted">${order.pickupCode ? `取货码：${escapeHtml(order.pickupCode)}` : ""}</div></td>
           <td><span class="pill">${escapeHtml(order.paymentStatus || "待支付")}</span></td>
           <td><span class="pill">${escapeHtml(order.status || "待发货")}</span></td>
-          <td><span class="pill">${escapeHtml(order.refundStatus || "无售后")}</span></td>
+          <td><span class="pill">${escapeHtml(afterSalesText(order))}</span></td>
           <td>${escapeHtml(order.createdAtText || order.createdAt || "")}</td>
           <td><div class="table-actions"><button class="secondary" data-action="view-order" data-index="${index}">查看详情</button></div></td>
         </tr>`).join("")}</tbody></table></div>`
@@ -2766,7 +2798,7 @@
       }
       if (event.target.closest("[data-order-stage]")) {
         const status = event.target.closest("[data-order-stage]").dataset.orderStage
-        orderFilters.status = status === "售后中" ? "退款中" : status
+        orderFilters.status = status
         loadAll().catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "edit-product") openProductDrawer(Number(event.target.dataset.index))
@@ -3022,7 +3054,10 @@
         if (!rejectReason) return
         api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/reject`, "POST", { rejectReason })
           .then(() => loadAll())
-          .then(() => setStatus("已拒绝售后申请"))
+          .then(() => {
+            setStatus("已拒绝售后申请")
+            closeDrawer()
+          })
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "regen-order-preview") {

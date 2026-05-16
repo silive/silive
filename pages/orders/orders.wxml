@@ -63,7 +63,7 @@
             <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.pickupStore.address}}">{{item.pickupStore.address}}</view>
           </view>
           <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.shippingCompany || item.trackingNumber}}">物流：{{item.shippingCompany}} · {{item.trackingNumber}}</view>
-          <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.refundLine}}">退款：{{item.refundLine}}</view>
+          <view class="muted" style="{{mutedTextStyle}}" wx:if="{{item.refundLine}}">售后：{{item.refundLine}}</view>
           <view class="amount" style="{{priceStyle}}">{{item.isQuoteOrder ? '待报价' : ('¥' + item.amount)}}</view>
         </view>
       </view>

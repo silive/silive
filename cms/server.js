@@ -1924,11 +1924,55 @@ function normalizeProduct(product, index) {
   }
 }
 
+const ACTIVE_AFTER_SALES_STATUSES = new Set(["requested", "refund_pending", "remake", "reship"])
+
+function normalizeAfterSalesStatus(value, fallback = "none") {
+  const raw = String(value || "").trim()
+  const map = {
+    none: "none",
+    requested: "requested",
+    approved: "requested",
+    rejected: "rejected",
+    refund_pending: "refund_pending",
+    refunded: "refunded",
+    remake: "remake",
+    reship: "reship",
+    "无售后": "none",
+    "待审核": "requested",
+    "售后处理中": "requested",
+    "退款处理中": "refund_pending",
+    "已拒绝": "rejected",
+    "售后已拒绝": "rejected",
+    "已退款": "refunded",
+    "退款成功": "refunded",
+    "重新制作中": "remake",
+    "补发处理中": "reship"
+  }
+  return map[raw] || fallback
+}
+
+function afterSalesStatusText(value) {
+  return ({
+    requested: "售后处理中",
+    rejected: "售后已拒绝",
+    refund_pending: "退款处理中",
+    refunded: "已退款",
+    remake: "重新制作中",
+    reship: "补发处理中",
+    none: "无售后"
+  })[normalizeAfterSalesStatus(value)] || "无售后"
+}
+
+function isActiveAfterSalesStatus(value) {
+  return ACTIVE_AFTER_SALES_STATUSES.has(normalizeAfterSalesStatus(value))
+}
+
 function normalizeOrder(order, index) {
   const createdAt = order.createdAt || formatDateTime(new Date())
   const paidAt = order.paidAt || null
   const arrivedStoreAt = order.arrivedStoreAt || null
   const pickedUpAt = order.pickedUpAt || null
+  const afterSalesStatus = normalizeAfterSalesStatus(order.afterSalesStatus || order.refundStatus)
   return {
     id: order.id || `DD${Date.now()}${index}`,
     productId: order.productId || "",
@@ -1961,15 +2005,25 @@ function normalizeOrder(order, index) {
     refundAmount: order.refundAmount === "" || order.refundAmount == null ? null : String(order.refundAmount),
     refundRemark: order.refundRemark || "",
     refundImageUrl: order.refundImageUrl || "",
-    refundRejectReason: order.refundRejectReason || "",
+    refundRejectReason: order.refundRejectReason || order.afterSalesRejectReason || "",
+    afterSalesRejectReason: order.afterSalesRejectReason || order.refundRejectReason || "",
     refundReviewedAt: order.refundReviewedAt || null,
-    afterSalesStatus: order.afterSalesStatus || "",
+    afterSalesStatus,
+    after_sales_status: afterSalesStatus,
+    afterSalesText: afterSalesStatusText(afterSalesStatus),
     afterSalesType: order.afterSalesType || order.refundType || "",
+    after_sales_type: order.afterSalesType || order.refundType || "",
     afterSalesReason: order.afterSalesReason || order.refundReason || "",
+    after_sales_reason: order.afterSalesReason || order.refundReason || "",
     afterSalesDesc: order.afterSalesDesc || order.refundRemark || "",
+    after_sales_desc: order.afterSalesDesc || order.refundRemark || "",
     afterSalesImages: normalizeMediaList(order.afterSalesImages || order.refundImageUrl || ""),
+    after_sales_images: normalizeMediaList(order.afterSalesImages || order.refundImageUrl || ""),
     afterSalesRequestedAt: order.afterSalesRequestedAt || null,
+    after_sales_requested_at: order.afterSalesRequestedAt || null,
     afterSalesHandledAt: order.afterSalesHandledAt || null,
+    after_sales_handled_at: order.afterSalesHandledAt || null,
+    refund_status: order.refundStatus || "",
     refundNo: order.refundNo || "",
     refundId: order.refundId || "",
     refundSuccessAt: order.refundSuccessAt || null,
@@ -2853,7 +2907,11 @@ async function getOrders(filters = {}) {
         return false
       })
     }
-    if (filters.status) orders = orders.filter(order => order.status === filters.status)
+    if (filters.status) {
+      orders = filters.status === "售后中"
+        ? orders.filter(order => isActiveAfterSalesStatus(order.afterSalesStatus || order.refundStatus))
+        : orders.filter(order => order.status === filters.status)
+    }
     if (filters.keyword) {
       const keyword = String(filters.keyword).toLowerCase()
       orders = orders.filter(order => [order.id, order.customerName, order.phone, order.productName].some(value => String(value || "").toLowerCase().includes(keyword)))
@@ -2900,8 +2958,12 @@ async function getOrders(filters = {}) {
     where.push(`(${identityWhere.join(" OR ")})`)
   }
   if (filters.status) {
-    where.push("status = :status")
-    params.status = filters.status
+    if (filters.status === "售后中") {
+      where.push("after_sales_status IN ('requested','refund_pending','remake','reship')")
+    } else {
+      where.push("status = :status")
+      params.status = filters.status
+    }
   }
   if (filters.keyword) {
     where.push("(id LIKE :keyword OR customer_name LIKE :keyword OR phone LIKE :keyword OR product_name LIKE :keyword)")
@@ -2941,15 +3003,25 @@ async function getOrders(filters = {}) {
     refundAmount: row.refund_amount == null ? "" : String(row.refund_amount || ""),
     refundRemark: row.refund_remark || "",
     refundImageUrl: row.refund_image_url || "",
-    refundRejectReason: row.refund_reject_reason || "",
+    refundRejectReason: row.refund_reject_reason || row.after_sales_reject_reason || "",
+    afterSalesRejectReason: row.after_sales_reject_reason || row.refund_reject_reason || "",
     refundReviewedAt: formatChinaDatetime(row.refund_reviewed_at),
-    afterSalesStatus: row.after_sales_status || "",
+    afterSalesStatus: normalizeAfterSalesStatus(row.after_sales_status || row.refund_status),
+    after_sales_status: normalizeAfterSalesStatus(row.after_sales_status || row.refund_status),
+    afterSalesText: afterSalesStatusText(row.after_sales_status || row.refund_status),
     afterSalesType: row.after_sales_type || row.refund_type || "",
+    after_sales_type: row.after_sales_type || row.refund_type || "",
     afterSalesReason: row.after_sales_reason || row.refund_reason || "",
+    after_sales_reason: row.after_sales_reason || row.refund_reason || "",
     afterSalesDesc: row.after_sales_desc || row.refund_remark || "",
+    after_sales_desc: row.after_sales_desc || row.refund_remark || "",
     afterSalesImages: normalizeMediaList(parseJsonValue(row.after_sales_images, row.refund_image_url || [])),
+    after_sales_images: normalizeMediaList(parseJsonValue(row.after_sales_images, row.refund_image_url || [])),
     afterSalesRequestedAt: formatChinaDatetime(row.after_sales_requested_at),
+    after_sales_requested_at: formatChinaDatetime(row.after_sales_requested_at),
     afterSalesHandledAt: formatChinaDatetime(row.after_sales_handled_at),
+    after_sales_handled_at: formatChinaDatetime(row.after_sales_handled_at),
+    refund_status: row.refund_status || "",
     refundNo: row.refund_no || "",
     refundId: row.refund_id || "",
     refundSuccessAt: formatChinaDatetime(row.refund_success_at),
@@ -3716,7 +3788,7 @@ async function applyAfterSalesRequest(data) {
   const refundAmount = afterSalesRefundAmount(orders[index], type)
   orders[index] = {
     ...orders[index],
-    status: shouldRefundForAfterSales(type) ? "退款中" : orders[index].status,
+    status: orders[index].status,
     refundType: type,
     refundStatus: shouldRefundForAfterSales(type) ? "待审核" : "售后处理中",
     refundReason: data.afterSalesReason || data.refundReason || "",
@@ -3838,19 +3910,30 @@ async function approveAfterSalesRefund(orderId, data = {}) {
   return orders[index]
 }
 
+function restoreOrderStatusAfterSalesReject(order = {}) {
+  if (order.pickupStatus === "picked_up" || order.status === "已完成") return "已完成"
+  if (order.status === "已发货" || order.pickupStatus === "arrived_store") return "已发货"
+  if (order.status === "制作中") return "制作中"
+  if (order.paymentStatus === "已支付" || order.paidAt || order.transactionId) return "待发货"
+  return order.status && !["退款中", "售后处理中"].includes(order.status) ? order.status : "待发货"
+}
+
 async function rejectAfterSales(orderId, rejectReason = "") {
   const orders = await getOrders()
   const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
   const order = orders[index]
+  const restoredStatus = restoreOrderStatusAfterSalesReject(order)
+  const now = formatDateTime(new Date())
   orders[index] = {
     ...order,
-    status: order.status === "退款中" ? (order.paymentStatus === "已支付" ? "待发货" : order.status) : order.status,
-    refundStatus: "已拒绝",
+    status: restoredStatus,
+    refundStatus: "none",
     refundRejectReason: rejectReason || "售后申请未通过",
-    refundReviewedAt: formatDateTime(new Date()),
+    afterSalesRejectReason: rejectReason || "售后申请未通过",
+    refundReviewedAt: now,
     afterSalesStatus: "rejected",
-    afterSalesHandledAt: formatDateTime(new Date())
+    afterSalesHandledAt: now
   }
   await saveOrders([orders[index]])
   return orders[index]
@@ -3865,7 +3948,7 @@ async function convertAfterSales(orderId, type) {
     ...orders[index],
     status: orders[index].status === "退款中" ? "制作中" : orders[index].status,
     refundStatus: nextType === "补发" ? "补发处理中" : "重新制作中",
-    afterSalesStatus: "approved",
+    afterSalesStatus: nextType === "补发" ? "reship" : "remake",
     afterSalesType: nextType,
     afterSalesHandledAt: formatDateTime(new Date())
   }

@@ -17,9 +17,51 @@ const STATUS_TABS = [
   { key: "all", label: "全部订单", icon: "≡", row: "bottom" }
 ]
 
+function afterSalesStatus(order) {
+  const raw = order.afterSalesStatus || order.after_sales_status || ""
+  const map = {
+    requested: "requested",
+    approved: "requested",
+    refund_pending: "refund_pending",
+    rejected: "rejected",
+    refunded: "refunded",
+    remake: "remake",
+    reship: "reship",
+    "待审核": "requested",
+    "售后处理中": "requested",
+    "退款处理中": "refund_pending",
+    "售后已拒绝": "rejected",
+    "已拒绝": "rejected",
+    "退款成功": "refunded",
+    "已退款": "refunded",
+    "重新制作中": "remake",
+    "补发处理中": "reship"
+  }
+  return map[String(raw || order.refundStatus || "").trim()] || "none"
+}
+
+function afterSalesText(order) {
+  return order.afterSalesText || ({
+    requested: "售后处理中",
+    rejected: "售后已拒绝",
+    refund_pending: "退款处理中",
+    refunded: "已退款",
+    remake: "重新制作中",
+    reship: "补发处理中",
+    none: ""
+  })[afterSalesStatus(order)] || ""
+}
+
 function displayStatus(order) {
   const status = order.status || "待发货"
   if (isQuoteOrder(order)) return "待报价"
+  const afterStatus = afterSalesStatus(order)
+  if (afterStatus === "requested") return "售后处理中"
+  if (afterStatus === "rejected") return "售后已拒绝"
+  if (afterStatus === "refund_pending") return "退款处理中"
+  if (afterStatus === "refunded") return "已退款"
+  if (afterStatus === "remake") return "重新制作中"
+  if (afterStatus === "reship") return "补发处理中"
   if (isRefunded(order)) return "已退款"
   if (isRefunding(order)) return "退款中"
   if (isUnpaid(order)) return "未支付"
@@ -48,13 +90,13 @@ function isPaid(order) {
 }
 
 function isRefunding(order) {
-  return ["requested", "approved", "refund_pending"].includes(order.afterSalesStatus) ||
+  return ["requested", "refund_pending", "remake", "reship"].includes(afterSalesStatus(order)) ||
     ["待审核", "售后处理中", "退款处理中", "补发处理中", "重新制作中"].includes(order.refundStatus) ||
     order.status === "退款中"
 }
 
 function isRefunded(order) {
-  return order.afterSalesStatus === "refunded" || order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
+  return afterSalesStatus(order) === "refunded" || order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
 }
 
 function isCompletedWithinAfterSaleWindow(order) {
@@ -94,6 +136,8 @@ function normalizeOrder(order, products = []) {
     arrivedStoreAtDisplay: order.arrivedStoreAtText || order.arrivedStoreAt || "",
     pickedUpAtDisplay: order.pickedUpAtText || order.pickedUpAt || "",
     displayStatus: display,
+    afterSalesStatus: afterSalesStatus(order),
+    afterSalesText: afterSalesText(order),
     isQuoteOrder: quote,
     isUnpaidOrder: isUnpaid(order),
     isRefundingOrder: isRefunding(order),
@@ -103,13 +147,13 @@ function normalizeOrder(order, products = []) {
     canViewDetail: display === "待收货",
     canShowPickupCode: display === "待自提",
     canConfirmReceive: display === "待收货",
-    canAfterSale: ["已完成", "已自提"].includes(display),
+    canAfterSale: canApplyAfterSales(order),
     pickupLine: order.deliveryType === "pickup" && order.pickupStore ? `${order.pickupStore.name} · 取货码 ${order.pickupCode || "-"}` : "",
     canShowPickupCredential: order.deliveryType === "pickup" && !isUnpaid(order) && !quote && !!order.pickupCode,
     pickupTip: order.deliveryType === "pickup"
       ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
       : "",
-    refundLine: order.refundStatus ? `${order.refundStatus}${order.refundAmount && Number(order.refundAmount) > 0 ? ` · ¥${order.refundAmount}` : ""}` : "",
+    refundLine: afterSalesText(order) || (order.refundStatus ? `${order.refundStatus}${order.refundAmount && Number(order.refundAmount) > 0 ? ` · ¥${order.refundAmount}` : ""}` : ""),
     canRefund: canApplyAfterSales(order)
   }
 }
@@ -117,7 +161,7 @@ function normalizeOrder(order, products = []) {
 function statusMatches(order, key) {
   if (key === "all") return true
   if (key === "unpaid") return isUnpaid(order)
-  if (key === "afterSale") return isRefunding(order) || isRefunded(order) || isCompletedWithinAfterSaleWindow(order)
+  if (key === "afterSale") return ["requested", "refund_pending", "remake", "reship"].includes(afterSalesStatus(order)) || isRefunded(order) || isCompletedWithinAfterSaleWindow(order)
   if (key === "design") {
     return isPaid(order) && ["待发货", "制作中"].includes(order.status || "")
   }
