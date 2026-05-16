@@ -1925,6 +1925,75 @@ function normalizeProduct(product, index) {
   }
 }
 
+function compactProductImageFields(product = {}) {
+  return {
+    cartThumbUrl: publicAssetUrl(product.cartThumbUrl || product.cart_thumb_url || ""),
+    cart_thumb_url: publicAssetUrl(product.cartThumbUrl || product.cart_thumb_url || ""),
+    thumbUrl: publicAssetUrl(product.thumbUrl || product.thumb_url || ""),
+    thumb_url: publicAssetUrl(product.thumbUrl || product.thumb_url || ""),
+    listImage: publicAssetUrl(product.listImage || product.list_image || ""),
+    list_image: publicAssetUrl(product.listImage || product.list_image || ""),
+    optimizedUrl: publicAssetUrl(product.optimizedUrl || product.optimized_url || ""),
+    optimized_url: publicAssetUrl(product.optimizedUrl || product.optimized_url || ""),
+    imageUrl: publicAssetUrl(product.imageUrl || product.image_url || ""),
+    image_url: publicAssetUrl(product.imageUrl || product.image_url || "")
+  }
+}
+
+function pickProductListImage(fields = {}) {
+  return fields.cartThumbUrl ||
+    fields.cart_thumb_url ||
+    fields.thumbUrl ||
+    fields.thumb_url ||
+    fields.listImage ||
+    fields.list_image ||
+    fields.optimizedUrl ||
+    fields.optimized_url ||
+    fields.imageUrl ||
+    fields.image_url ||
+    ""
+}
+
+function findProductForOrder(order = {}, products = []) {
+  const productId = String(order.productId || order.product_id || "").trim()
+  const productName = String(order.productName || order.product_name || "").trim()
+  const remark = String(order.remark || order.customRequest || order.custom_request || "")
+  return products.find(product => productId && product.id === productId) ||
+    products.find(product => productName && product.name === productName) ||
+    products.find(product => productId === "CART_ORDER" && productName && productName.startsWith(product.name)) ||
+    products.find(product => productId === "CART_ORDER" && remark.includes(`${product.name}x`)) ||
+    {}
+}
+
+function orderProductImageFields(order = {}, product = {}) {
+  const orderFields = compactProductImageFields(order)
+  const productFields = compactProductImageFields(product)
+  const merged = {
+    cartThumbUrl: orderFields.cartThumbUrl || productFields.cartThumbUrl,
+    cart_thumb_url: orderFields.cart_thumb_url || productFields.cart_thumb_url,
+    thumbUrl: orderFields.thumbUrl || productFields.thumbUrl,
+    thumb_url: orderFields.thumb_url || productFields.thumb_url,
+    listImage: orderFields.listImage || productFields.listImage,
+    list_image: orderFields.list_image || productFields.list_image,
+    optimizedUrl: orderFields.optimizedUrl || productFields.optimizedUrl,
+    optimized_url: orderFields.optimized_url || productFields.optimized_url,
+    imageUrl: orderFields.imageUrl || productFields.imageUrl,
+    image_url: orderFields.image_url || productFields.image_url
+  }
+  return {
+    ...merged,
+    productImage: pickProductListImage(merged)
+  }
+}
+
+function hydrateOrderProductImages(order = {}, products = []) {
+  const product = findProductForOrder(order, products)
+  return {
+    ...order,
+    ...orderProductImageFields(order, product)
+  }
+}
+
 const ACTIVE_AFTER_SALES_STATUSES = new Set(["requested", "refund_pending", "remake", "reship"])
 
 function normalizeAfterSalesStatus(value, fallback = "none") {
@@ -2058,7 +2127,8 @@ function normalizeOrder(order, index) {
     pickupServiceFee: order.pickupServiceFee == null || order.pickupServiceFee === "" ? "0.00" : String(order.pickupServiceFee),
     supplierSettlementAmount: order.supplierSettlementAmount == null || order.supplierSettlementAmount === "" ? "0.00" : String(order.supplierSettlementAmount),
     customCommissionAmount: order.customCommissionAmount == null || order.customCommissionAmount === "" ? "0.00" : String(order.customCommissionAmount),
-    storeSettlementStatus: order.storeSettlementStatus || "unsettled"
+    storeSettlementStatus: order.storeSettlementStatus || "unsettled",
+    ...orderProductImageFields(order, {})
   }
 }
 
@@ -2915,9 +2985,13 @@ async function getOrders(filters = {}) {
   const hasIdentity = hasRequestIdentity(identity)
   if (!pool) {
     const stores = readJsonFile(partnerStoresFile, []).map(normalizePartnerStore)
+    const products = await getProducts()
     let orders = readJsonFile(ordersFile, []).map((order, index) => {
       const normalized = normalizeOrder(order, index)
-      return { ...normalized, pickupStore: storePublicView(stores.find(store => store.id === normalized.pickupStoreId)) }
+      return hydrateOrderProductImages({
+        ...normalized,
+        pickupStore: storePublicView(stores.find(store => store.id === normalized.pickupStoreId))
+      }, products)
     })
     if (filters.publicOnly && !hasIdentity) return []
     if (filters.publicOnly) {
@@ -2993,8 +3067,8 @@ async function getOrders(filters = {}) {
     params.keyword = `%${filters.keyword}%`
   }
   const rows = await query(`SELECT * FROM orders ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
-  const stores = await getPartnerStores()
-  const orders = rows.map(row => normalizeOrder({
+  const [stores, products] = await Promise.all([getPartnerStores(), getProducts()])
+  const orders = rows.map(row => hydrateOrderProductImages(normalizeOrder({
     id: row.id,
     productId: row.product_id || "",
     customerName: row.customer_name,
@@ -3079,7 +3153,7 @@ async function getOrders(filters = {}) {
     supplierSettlementAmount: row.supplier_settlement_amount,
     customCommissionAmount: row.custom_commission_amount,
     storeSettlementStatus: row.store_settlement_status || "unsettled"
-  }, 0))
+  }, 0), products))
   return filters.publicOnly ? orders.map(publicOrderView) : orders
 }
 
@@ -3401,6 +3475,17 @@ function storeOrderView(order, mode = "referral") {
     createdAt: order.createdAt,
     createdAtText: order.createdAtText || formatChinaDatetime(order.createdAt),
     productName: order.productName,
+    productImage: order.productImage || pickProductListImage(order),
+    cartThumbUrl: order.cartThumbUrl || "",
+    cart_thumb_url: order.cart_thumb_url || "",
+    thumbUrl: order.thumbUrl || "",
+    thumb_url: order.thumb_url || "",
+    listImage: order.listImage || "",
+    list_image: order.list_image || "",
+    optimizedUrl: order.optimizedUrl || "",
+    optimized_url: order.optimized_url || "",
+    imageUrl: order.imageUrl || "",
+    image_url: order.image_url || "",
     amount: order.amount,
     status: order.status,
     paymentStatus: order.paymentStatus,

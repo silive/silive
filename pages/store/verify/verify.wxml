@@ -27,6 +27,10 @@
   <view wx:if="{{result}}" class="result-card {{result.alreadyVerified ? 'already' : 'success'}}" style="{{cardStyle}}">
     <view class="result-icon">{{result.alreadyVerified ? '!' : '✓'}}</view>
     <view class="result-title">{{result.alreadyVerified ? '订单已核销' : '核销成功'}}</view>
+    <view class="verify-product" wx:if="{{result.order && result.order.productImage}}">
+      <image class="verify-product-image" src="{{result.order.productImage}}" mode="aspectFill" lazy-load />
+      <view class="verify-product-name">{{result.product || result.order.productName || '-'}}</view>
+    </view>
     <view class="result-row"><text>商品</text><text>{{result.product || result.order.productName || '-'}}</text></view>
     <view class="result-row"><text>数量</text><text>x{{result.quantity || 1}}</text></view>
     <view class="result-row"><text>用户</text><text>{{result.customer || result.order.phone || '-'}}</text></view>

@@ -17,6 +17,44 @@ const STATUS_TABS = [
   { key: "all", label: "全部订单", icon: "≡", row: "bottom" }
 ]
 
+const ORDER_PAGE_SIZE = 10
+
+function pickImage(...values) {
+  return values.find(value => !!value) || ""
+}
+
+function getProductListImage(product = {}) {
+  return pickImage(
+    product.cartThumbUrl,
+    product.cart_thumb_url,
+    product.thumbUrl,
+    product.thumb_url,
+    product.listImage,
+    product.list_image,
+    product.optimizedUrl,
+    product.optimized_url,
+    product.imageUrl,
+    product.image_url
+  )
+}
+
+function getOrderProductImage(order = {}, product = {}) {
+  return pickImage(
+    order.cartThumbUrl,
+    order.cart_thumb_url,
+    order.thumbUrl,
+    order.thumb_url,
+    order.listImage,
+    order.list_image,
+    order.optimizedUrl,
+    order.optimized_url,
+    order.productImage,
+    order.imageUrl,
+    order.image_url,
+    getProductListImage(product)
+  )
+}
+
 function afterSalesStatus(order) {
   const raw = order.afterSalesStatus || order.after_sales_status || ""
   const map = {
@@ -136,7 +174,8 @@ function normalizeProduct(product) {
   return {
     ...product,
     categories: Array.isArray(product.categories) ? product.categories : [],
-    badgeText: BADGE_TEXT[product.badge] || product.badge || ""
+    badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    displayImage: getProductListImage(product)
   }
 }
 
@@ -146,7 +185,7 @@ function normalizeOrder(order, products = []) {
   const quote = isQuoteOrder(order)
   return {
     ...order,
-    productImage: product.imageUrl || order.originalImageUrl || "",
+    productImage: getOrderProductImage(order, product),
     productIntro: product.intro || "",
     product,
     categories: Array.isArray(product.categories) ? product.categories : [],
@@ -206,7 +245,7 @@ function buildRecommendations(products, orders) {
       if (product.badge === "best") score += 4
       if (product.badge === "hot") score += 3
       if (!orderedIds.has(product.id)) score += 1
-      return { ...product, recommendReason: sameCategory ? "同类推荐" : product.badgeText || "热卖精选", score }
+      return { ...product, imageUrl: product.displayImage || getProductListImage(product), recommendReason: sameCategory ? "同类推荐" : product.badgeText || "热卖精选", score }
     })
     .sort((a, b) => b.score - a.score)
   return scored.slice(0, 8)
@@ -236,6 +275,9 @@ Page({
     statusTabsBottom: buildStatusTabs([]).filter(item => item.row === "bottom"),
     activeStatus: "all",
     recentOrders: [],
+    visibleLimit: ORDER_PAGE_SIZE,
+    totalFilteredOrders: 0,
+    hasMoreOrders: false,
     recommendations: [],
     themeStyle: "",
     themeClass: "theme-skin01",
@@ -326,15 +368,29 @@ Page({
 
   switchStatus(event) {
     const activeStatus = event.currentTarget.dataset.key
-    this.setData({ activeStatus })
+    this.setData({ activeStatus, visibleLimit: ORDER_PAGE_SIZE })
     this.refreshRecentOrders(activeStatus)
   },
 
   refreshRecentOrders(nextStatus) {
     const activeStatus = nextStatus || this.data.activeStatus
+    const filteredOrders = this.data.orders.filter(order => statusMatches(order, activeStatus))
+    const visibleLimit = this.data.visibleLimit || ORDER_PAGE_SIZE
     this.setData({
-      recentOrders: this.data.orders.filter(order => statusMatches(order, activeStatus))
+      recentOrders: filteredOrders.slice(0, visibleLimit),
+      totalFilteredOrders: filteredOrders.length,
+      hasMoreOrders: filteredOrders.length > visibleLimit
     })
+  },
+
+  loadMoreOrders() {
+    if (!this.data.hasMoreOrders) return
+    this.setData({ visibleLimit: (this.data.visibleLimit || ORDER_PAGE_SIZE) + ORDER_PAGE_SIZE })
+    this.refreshRecentOrders()
+  },
+
+  onReachBottom() {
+    this.loadMoreOrders()
   },
 
   openOrderProduct(event) {

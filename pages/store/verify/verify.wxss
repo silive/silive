@@ -114,6 +114,31 @@
   font-weight: 950;
 }
 
+.verify-product {
+  margin-top: 18rpx;
+  padding: 14rpx;
+  border-radius: 20rpx;
+  background: #f4f9ff;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.verify-product-image {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 18rpx;
+  background: #eef6ff;
+  flex-shrink: 0;
+}
+
+.verify-product-name {
+  color: #1f2937;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
 .result-row {
   margin-top: 16rpx;
   display: flex;

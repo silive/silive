@@ -34,14 +34,14 @@
 
   <view wx:if="{{loggedIn}}" class="section-head">
     <view class="section-title">订单列表</view>
-    <view class="section-subtitle">{{recentOrders.length ? '共 ' + recentOrders.length + ' 单' : ''}}</view>
+    <view class="section-subtitle">{{totalFilteredOrders ? '共 ' + totalFilteredOrders + ' 单' : ''}}</view>
   </view>
 
   <view wx:if="{{loggedIn && recentOrders.length}}" class="order-list">
     <view class="order-card" style="{{cardStyle}}" wx:for="{{recentOrders}}" wx:key="id">
       <view class="order-main" bindtap="openOrderProduct" data-index="{{index}}">
         <view class="order-cover cover-{{item.product.cover}}">
-          <image wx:if="{{item.productImage}}" class="order-image" src="{{item.productImage}}" mode="aspectFill" />
+          <image wx:if="{{item.productImage}}" class="order-image" src="{{item.productImage}}" mode="aspectFill" lazy-load />
           <view wx:else class="order-placeholder">非常智造</view>
         </view>
         <view class="order-info">
@@ -81,6 +81,11 @@
     </view>
   </view>
 
+  <button wx:if="{{loggedIn && hasMoreOrders}}" class="load-more-btn" bindtap="loadMoreOrders">
+    加载更多订单
+  </button>
+  <view wx:elif="{{loggedIn && recentOrders.length}}" class="no-more-text">没有更多订单了</view>
+
   <view wx:elif="{{loggedIn}}" class="empty-box">
     <view class="empty-text">{{activeStatus === 'afterSale' ? '暂无可售后订单' : '暂无相关订单'}}</view>
     <view class="empty-subtext">可以先看看下方推荐商品</view>
@@ -96,7 +101,7 @@
   <view class="recommend-grid">
     <view class="recommend-card" style="{{cardStyle}}" wx:for="{{recommendations}}" wx:key="id" bindtap="openRecommendProduct" data-index="{{index}}">
       <view class="recommend-cover cover-{{item.cover}}">
-        <image wx:if="{{item.imageUrl}}" class="recommend-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.imageUrl}}" class="recommend-image" src="{{item.imageUrl}}" mode="aspectFill" lazy-load />
         <view wx:if="{{item.badgeText}}" class="recommend-badge">{{item.badgeText}}</view>
       </view>
       <view class="recommend-name">{{item.name}}</view>

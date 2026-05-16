@@ -12,9 +12,17 @@
   </view>
   <view class="list">
     <view class="order-card" style="{{cardStyle}}" wx:for="{{orders}}" wx:key="id">
-      <view class="order-head"><view><view class="order-title">{{item.productName}}</view><view class="order-sub">{{item.id}} · {{item.createdAtText || item.createdAt}}</view></view><view class="pill">{{item.storeSettlementStatus === 'settled' ? '已结算' : '未结算'}}</view></view>
-      <view class="order-sub">客户：{{item.phone}} · {{item.status}} / {{item.paymentStatus}}</view>
-      <view class="amount">订单 ¥{{item.amount}} · 佣金 ¥{{item.referralCommission}}</view>
+      <view class="store-order-row">
+        <view class="store-order-cover">
+          <image wx:if="{{item.productImage}}" class="store-order-image" src="{{item.productImage}}" mode="aspectFill" lazy-load />
+          <view wx:else class="store-order-placeholder">非常智造</view>
+        </view>
+        <view class="store-order-info">
+          <view class="order-head"><view><view class="order-title">{{item.productName}}</view><view class="order-sub">{{item.id}} · {{item.createdAtText || item.createdAt}}</view></view><view class="pill">{{item.storeSettlementStatus === 'settled' ? '已结算' : '未结算'}}</view></view>
+          <view class="order-sub">客户：{{item.phone}} · {{item.status}} / {{item.paymentStatus}}</view>
+          <view class="amount">订单 ¥{{item.amount}} · 佣金 ¥{{item.referralCommission}}</view>
+        </view>
+      </view>
     </view>
   </view>
 </view>
