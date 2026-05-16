@@ -1503,6 +1503,8 @@ function normalizeHome(data) {
 }
 
 function normalizeBadge(value) {
+  const text = String(value || "").trim()
+  if (!text || ["none", "无", "无标签", "null", "undefined"].includes(text)) return ""
   const map = {
     新品: "new",
     新品推荐: "new",
@@ -1513,10 +1515,9 @@ function normalizeBadge(value) {
     爆品: "best",
     爆品推荐: "best",
     试运营爆款: "best",
-    入门首选: "new",
-    无标签: "none"
+    入门首选: "new"
   }
-  return map[value] || value || "none"
+  return map[text] || text
 }
 
 function normalizeBooleanText(value, defaultValue = false) {

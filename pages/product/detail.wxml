@@ -9,7 +9,7 @@
       </view>
     </swiper-item>
   </swiper>
-  <view wx:if="{{product.badgeText}}" class="detail-badge badge-{{product.badge}}">{{product.badgeText}}</view>
+  <view wx:if="{{product.displayTag}}" class="detail-badge badge-{{product.badge}}">{{product.displayTag}}</view>
 
   <view class="detail-main" style="{{cardStyle}}">
     <view class="product-copy">

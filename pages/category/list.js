@@ -10,6 +10,12 @@ const BADGE_TEXT = {
 }
 const CATEGORY_VERSION_KEY = "categoryCatalogVersion"
 
+function normalizeProductTag(product = {}) {
+  const tag = String(product.tag || product.badge || product.label || "").trim()
+  if (!tag || ["none", "无", "无标签", "null", "undefined"].includes(tag)) return ""
+  return BADGE_TEXT[tag] || tag
+}
+
 function isNormalProduct(product = {}) {
   const categories = Array.isArray(product.categories) ? product.categories : []
   const type = String(product.productType || product.product_type || product.orderType || "").toLowerCase()
@@ -25,7 +31,8 @@ function normalize(product) {
     displayImage: product.listImage || product.thumbUrl || product.optimizedUrl || product.imageUrl,
     cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     categories: Array.isArray(product.categories) ? product.categories : [],
-    badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    badgeText: normalizeProductTag(product),
+    displayTag: normalizeProductTag(product),
     isNormalProduct: isNormalProduct(product)
   }
 }

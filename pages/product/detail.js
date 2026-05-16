@@ -10,6 +10,12 @@ const BADGE_TEXT = {
 }
 const RECOMMEND_TIPS = ["朋友可能刚好需要", "分享好物给朋友", "送礼灵感推荐", "值得收藏的定制礼物"]
 
+function normalizeProductTag(product = {}) {
+  const tag = String(product.tag || product.badge || product.label || "").trim()
+  if (!tag || ["none", "无", "无标签", "null", "undefined"].includes(tag)) return ""
+  return BADGE_TEXT[tag] || tag
+}
+
 function pickOne(list) {
   return list[Math.floor(Math.random() * list.length)]
 }
@@ -37,7 +43,8 @@ function normalizeProduct(product) {
     cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     recommendTip: pickOne(RECOMMEND_TIPS),
     categoryText: categories.join(" / "),
-    badgeText: BADGE_TEXT[product.badge] || product.badge || "",
+    badgeText: normalizeProductTag(product),
+    displayTag: normalizeProductTag(product),
     soldCount,
     viewCount,
     originalPrice: product.originalPrice || product.marketPrice || product.originPrice || "",
