@@ -2062,6 +2062,27 @@ function normalizeOrder(order, index) {
   }
 }
 
+function isOrderPaidForPickupCredential(order = {}) {
+  const status = String(order.paymentStatus || order.payment_status || order.payStatus || order.pay_status || "").trim().toLowerCase()
+  return order.isPaid === true ||
+    ["已支付", "paid", "success", "支付成功"].includes(status) ||
+    !!order.paidAt ||
+    !!order.paid_at ||
+    !!order.transactionId ||
+    !!order.transaction_id
+}
+
+function publicOrderView(order = {}) {
+  if (isOrderPaidForPickupCredential(order)) return order
+  return {
+    ...order,
+    pickupCode: "",
+    pickup_code: "",
+    pickupQrCodeUrl: "",
+    pickup_qrcode_url: ""
+  }
+}
+
 function mysqlOrderParams(order) {
   return {
     ...order,
@@ -2917,7 +2938,8 @@ async function getOrders(filters = {}) {
       const keyword = String(filters.keyword).toLowerCase()
       orders = orders.filter(order => [order.id, order.customerName, order.phone, order.productName].some(value => String(value || "").toLowerCase().includes(keyword)))
     }
-    return orders.reverse()
+    const result = orders.reverse()
+    return filters.publicOnly ? result.map(publicOrderView) : result
   }
   const where = []
   const params = {}
@@ -2972,7 +2994,7 @@ async function getOrders(filters = {}) {
   }
   const rows = await query(`SELECT * FROM orders ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
   const stores = await getPartnerStores()
-  return rows.map(row => normalizeOrder({
+  const orders = rows.map(row => normalizeOrder({
     id: row.id,
     productId: row.product_id || "",
     customerName: row.customer_name,
@@ -3058,6 +3080,7 @@ async function getOrders(filters = {}) {
     customCommissionAmount: row.custom_commission_amount,
     storeSettlementStatus: row.store_settlement_status || "unsettled"
   }, 0))
+  return filters.publicOnly ? orders.map(publicOrderView) : orders
 }
 
 async function saveOrders(orders) {

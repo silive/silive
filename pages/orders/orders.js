@@ -89,6 +89,25 @@ function isPaid(order) {
   return !isUnpaid(order) && (order.paymentStatus === "已支付" || !!order.paidAt || !!order.transactionId || !order.paymentStatus)
 }
 
+function isStrictPaid(order = {}) {
+  const status = String(order.paymentStatus || order.payment_status || order.payStatus || order.pay_status || "").trim().toLowerCase()
+  return order.isPaid === true ||
+    ["已支付", "paid", "success", "支付成功"].includes(status) ||
+    !!order.paidAt ||
+    !!order.paid_at ||
+    !!order.transactionId ||
+    !!order.transaction_id
+}
+
+function canShowPickupCode(order = {}) {
+  const pickup = order.deliveryType === "pickup" ||
+    order.delivery_type === "pickup" ||
+    !!order.pickupStoreId ||
+    !!order.pickup_store_id
+  const code = order.pickupCode || order.pickup_code
+  return isStrictPaid(order) && pickup && !!code
+}
+
 function isRefunding(order) {
   return ["requested", "refund_pending", "remake", "reship"].includes(afterSalesStatus(order)) ||
     ["待审核", "售后处理中", "退款处理中", "补发处理中", "重新制作中"].includes(order.refundStatus) ||
@@ -145,11 +164,13 @@ function normalizeOrder(order, products = []) {
     canPay: isUnpaid(order) && !quote,
     canContact: ["待报价", "待确认", "制作中", "待自提"].includes(display),
     canViewDetail: display === "待收货",
-    canShowPickupCode: display === "待自提",
+    canShowPickupCode: canShowPickupCode(order),
     canConfirmReceive: display === "待收货",
     canAfterSale: canApplyAfterSales(order),
-    pickupLine: order.deliveryType === "pickup" && order.pickupStore ? `${order.pickupStore.name} · 取货码 ${order.pickupCode || "-"}` : "",
-    canShowPickupCredential: order.deliveryType === "pickup" && !isUnpaid(order) && !quote && !!order.pickupCode,
+    pickupLine: order.deliveryType === "pickup" && order.pickupStore
+      ? `${order.pickupStore.name}${canShowPickupCode(order) ? ` · 取货码 ${order.pickupCode || order.pickup_code}` : ""}`
+      : "",
+    canShowPickupCredential: canShowPickupCode(order) && !!(order.pickupQrCodeUrl || order.pickup_qrcode_url),
     pickupTip: order.deliveryType === "pickup"
       ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
       : "",
@@ -381,6 +402,10 @@ Page({
   showPickupCode(event) {
     const order = this.data.recentOrders[event.currentTarget.dataset.index]
     if (!order) return
+    if (!canShowPickupCode(order)) {
+      wx.showToast({ title: "订单支付后可查看取货码", icon: "none" })
+      return
+    }
     wx.showModal({
       title: "取货码",
       content: `${order.pickupCode || "-"}\n${order.pickupStore?.name || order.pickupLine || ""}`,
