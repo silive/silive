@@ -93,6 +93,8 @@
   background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 52%, #f8fbff 100%);
   opacity: 1;
   transition: opacity .22s ease;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .hero-placeholder::after {
@@ -109,9 +111,10 @@
 }
 
 .hero-image {
-  opacity: 0;
+  opacity: 1;
   transition: opacity .22s ease;
   background: #f5f7fb;
+  z-index: 1;
 }
 
 .hero-image.is-loaded {
@@ -128,6 +131,7 @@
   width: 58%;
   background: linear-gradient(90deg, rgba(15, 23, 42, .28), rgba(15, 23, 42, .10), transparent);
   pointer-events: none;
+  z-index: 2;
 }
 
 .hero-print {
@@ -144,7 +148,7 @@
 
 .hero-copy {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   width: 470rpx;
 }
 

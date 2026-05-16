@@ -60,9 +60,27 @@ function normalizeBannersWithVersion(banners = [], homeUpdatedAt = "") {
         : (item.bannerThumbUrl ? "bannerThumbUrl" : item.thumbUrl ? "thumbUrl" : item.bannerUrl ? "bannerUrl" : item.optimizedUrl ? "optimizedUrl" : item.imageUrl ? "imageUrl" : item.finalImageUrl ? "finalImageUrl" : ""),
       sizeHint: index === 0 ? "首图使用压缩 Banner" : "非首图使用 Banner 缩略图",
       preloadUrl: index > 0 ? (item.bannerThumbUrl || item.thumbUrl || item.bannerUrl || "") : "",
-      loaded: false,
+      loaded: true,
       failed: false,
       placeholderColor: "#eef6ff"
+    }
+  })
+}
+
+function getBannerImageKey(banner = {}) {
+  return banner.finalImageUrl || banner.displayImage || banner.bannerUrl || banner.optimizedUrl || banner.imageUrl || ""
+}
+
+function mergeBannerLoadedState(newBanners = [], oldBanners = []) {
+  return newBanners.map((banner, index) => {
+    const imageKey = getBannerImageKey(banner)
+    const oldByUrl = oldBanners.find(item => getBannerImageKey(item) === imageKey)
+    const oldBanner = oldByUrl || oldBanners[index] || {}
+    const sameImage = imageKey && getBannerImageKey(oldBanner) === imageKey
+    return {
+      ...banner,
+      loaded: sameImage ? oldBanner.loaded !== false : true,
+      failed: sameImage ? !!oldBanner.failed : false
     }
   })
 }
@@ -137,6 +155,7 @@ Page({
   },
 
   onLoad(options = {}) {
+    this.onLoadCount = (this.onLoadCount || 0) + 1
     applyTheme(this)
     const app = getApp()
     if (app.captureInvite) app.captureInvite({ query: options })
@@ -146,14 +165,18 @@ Page({
   },
 
   onShow() {
+    this.onShowCount = (this.onShowCount || 0) + 1
     applyTheme(this)
     this.loadHeaderAvatar()
-    if (!this.lastHomeLoadAt || Date.now() - this.lastHomeLoadAt > 1500) {
+    if (!this.lastHomeLoadAt || Date.now() - this.lastHomeLoadAt > 30000) {
       this.loadHomeConfig()
+    } else {
+      this.logBannerReturnDebug("onShow-cache", false)
     }
   },
 
   onHide() {
+    this.returnedFromHidden = true
     this.stopLiveSync()
   },
 
@@ -177,8 +200,14 @@ Page({
     request(`/api/home?_t=${Date.now()}`, { timeout: 8000 })
       .then(data => {
         const nextHome = buildHomeState(data || defaultData)
+        const oldBanners = this.data.banners || []
+        nextHome.banners = mergeBannerLoadedState(nextHome.banners || [], oldBanners)
         const firstBanner = nextHome.banners && nextHome.banners[0] ? nextHome.banners[0] : {}
         const preloadBannerThumbCount = this.preloadBannerThumbs(nextHome.banners || [])
+        const oldBannerKeys = oldBanners.map(getBannerImageKey).join("|")
+        const nextBannerKeys = (nextHome.banners || []).map(getBannerImageKey).join("|")
+        const willSetDataBanners = oldBannerKeys !== nextBannerKeys || !oldBanners.length || force
+        this.logBannerReturnDebug(force ? "load-force" : "load-home", willSetDataBanners, nextHome.banners)
         console.log("[home-banner-final]", {
           title: firstBanner.title || "",
           imageUrl: firstBanner.imageUrl || "",
@@ -205,6 +234,7 @@ Page({
           cmsStatus: "online",
           preloadBannerThumbCount
         })
+        this.returnedFromHidden = false
         this.homeLoading = false
       })
       .catch(() => {
@@ -214,6 +244,22 @@ Page({
         })
         this.homeLoading = false
       })
+  },
+
+  logBannerReturnDebug(trigger, setDataBanners, banners) {
+    const list = banners || this.data.banners || []
+    const firstBanner = list[0] || {}
+    console.log("[home-banner-return-debug]", {
+      trigger,
+      onLoadCount: this.onLoadCount || 1,
+      onShowCount: this.onShowCount || 0,
+      bannerCount: list.length,
+      firstBannerFinalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
+      firstBannerLoaded: firstBanner.loaded !== false,
+      firstBannerError: !!firstBanner.failed,
+      fromProductReturn: !!this.returnedFromHidden,
+      setDataBanners: !!setDataBanners
+    })
   },
 
   preloadBannerThumbs(banners = []) {

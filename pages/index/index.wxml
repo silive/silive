@@ -14,7 +14,7 @@
     <swiper-item wx:for="{{banners}}" wx:key="title">
       <view class="hero hero-{{item.theme}}" style="{{bannerStyle}}" bindtap="openBanner" data-index="{{index}}">
         <view class="hero-placeholder {{item.loaded ? 'is-hidden' : ''}}"></view>
-        <image wx:if="{{(item.finalImageUrl || item.displayImage || item.bannerUrl || item.optimizedUrl || item.imageUrl) && !item.failed}}" class="hero-image {{item.loaded ? 'is-loaded' : ''}}" style="{{bannerImageStyle}}" src="{{item.finalImageUrl || item.displayImage || item.bannerUrl || item.optimizedUrl || item.imageUrl}}" mode="aspectFill" lazy-load="{{index > 0}}" data-index="{{index}}" bindload="onBannerLoad" binderror="onBannerError" />
+        <image wx:if="{{item.finalImageUrl || item.displayImage || item.bannerUrl || item.optimizedUrl || item.imageUrl}}" class="hero-image {{item.loaded ? 'is-loaded' : ''}}" style="{{bannerImageStyle}}" src="{{item.finalImageUrl || item.displayImage || item.bannerUrl || item.optimizedUrl || item.imageUrl}}" mode="aspectFill" lazy-load="{{index > 0}}" data-index="{{index}}" bindload="onBannerLoad" binderror="onBannerError" />
         <view wx:if="{{item.imageUrl}}" class="hero-mask" style="{{bannerOverlayStyle}}"></view>
         <view class="hero-copy">
           <view class="hero-tag">{{item.tag}}</view>
