@@ -44,6 +44,16 @@ function getProductMainImage(product = {}) {
   return product.optimizedUrl || product.bannerUrl || product.thumbUrl || product.listImage || product.imageUrl || product.mainImage || ""
 }
 
+function getProductMainImageField(product = {}) {
+  if (product.optimizedUrl) return "optimizedUrl"
+  if (product.bannerUrl) return "bannerUrl"
+  if (product.thumbUrl) return "thumbUrl"
+  if (product.listImage) return "listImage"
+  if (product.imageUrl) return "imageUrl"
+  if (product.mainImage) return "mainImage"
+  return ""
+}
+
 function getProductMediaImages(product = {}) {
   const gallery = normalizeImageList(product.galleryOptimizedImages || product.galleryImagesOptimized || product.galleryUrls || product.galleryImages)
   const main = getProductMainImage(product)
@@ -54,6 +64,14 @@ function getDetailImages(product = {}) {
   const optimized = normalizeImageList(product.detailOptimizedImages || product.detailImagesOptimized || product.detailUrls)
   if (optimized.length) return optimized
   return normalizeImageList(product.detailImages)
+}
+
+function getFirstDetailImageField(product = {}) {
+  if (Array.isArray(product.detailOptimizedImages) && product.detailOptimizedImages.length) return "detailOptimizedImages"
+  if (Array.isArray(product.detailImagesOptimized) && product.detailImagesOptimized.length) return "detailImagesOptimized"
+  if (Array.isArray(product.detailUrls) && product.detailUrls.length) return "detailUrls"
+  if (Array.isArray(product.detailImages) && product.detailImages.length) return "detailImages"
+  return ""
 }
 
 function normalizeProduct(product) {
@@ -72,6 +90,8 @@ function normalizeProduct(product) {
     detailImages,
     mediaImages,
     displayImage: heroImage,
+    mainImageField: getProductMainImageField(product),
+    firstDetailImageField: getFirstDetailImageField(product),
     listImage: getProductListImage(product),
     cartImage: product.cartThumbUrl || product.thumbUrl || product.listImage || product.imageUrl,
     recommendTip: pickOne(RECOMMEND_TIPS),
@@ -123,6 +143,7 @@ Page({
         product,
         loading: false
       })
+      this.logImageDebug(product)
       this.rememberShareProduct(product)
       return
     }
@@ -152,6 +173,7 @@ Page({
       .then(product => {
         const normalized = normalizeProduct(product)
         this.setData({ product: normalized, loading: false })
+        this.logImageDebug(normalized)
         this.rememberShareProduct(normalized)
       })
       .catch(() => {
@@ -159,6 +181,7 @@ Page({
           if (!product || product.ok === false) throw new Error("商品不存在")
           const normalized = normalizeProduct(product)
           this.setData({ product: normalized, loading: false })
+          this.logImageDebug(normalized)
           this.rememberShareProduct(normalized)
         }).catch(() => {
           request("/api/products", { timeout: 8000 }).then(products => {
@@ -166,12 +189,14 @@ Page({
             if (!product) throw new Error("商品不存在")
             const normalized = normalizeProduct(product)
             this.setData({ product: normalized, loading: false })
+            this.logImageDebug(normalized)
             this.rememberShareProduct(normalized)
           }).catch(() => {
             const product = (defaultData.products || []).find(item => item.id === id)
             if (product) {
               const normalized = normalizeProduct(product)
               this.setData({ product: normalized, loading: false })
+              this.logImageDebug(normalized)
               this.rememberShareProduct(normalized)
               return
             }
@@ -180,6 +205,17 @@ Page({
           })
         })
       })
+  },
+
+  logImageDebug(product = {}) {
+    console.log("[image-debug-detail]", {
+      productName: product.name || "",
+      mainImageUrl: product.displayImage || "",
+      mainImageField: product.mainImageField || "",
+      detailImageCount: (product.detailImages || []).length,
+      firstDetailImageUrl: (product.detailImages || [])[0] || "",
+      firstDetailImageField: product.firstDetailImageField || ""
+    })
   },
 
   goCheckout() {

@@ -25,6 +25,7 @@ function normalizeProducts(products) {
   return (products || []).filter(product => product.status !== "off").map(product => ({
     ...product,
     displayImage: product.thumbUrl || product.listImage || product.cartThumbUrl || product.optimizedUrl || product.imageUrl,
+    displayImageField: product.thumbUrl ? "thumbUrl" : product.listImage ? "listImage" : product.cartThumbUrl ? "cartThumbUrl" : product.optimizedUrl ? "optimizedUrl" : product.imageUrl ? "imageUrl" : "",
     cartImage: product.cartThumbUrl || product.thumbUrl || product.imageUrl,
     categories: Array.isArray(product.categories) ? product.categories : [],
     badgeText: normalizeProductTag(product),
@@ -44,13 +45,20 @@ function withVersion(url, version) {
 }
 
 function normalizeBannersWithVersion(banners = [], homeUpdatedAt = "") {
-  return banners.map(item => {
+  return banners.map((item, index) => {
     const version = item.version || item.updatedAt || homeUpdatedAt
-    const finalImageUrl = item.finalImageUrl || withVersion(item.bannerUrl || item.optimizedUrl || item.imageUrl, version)
+    const source = index === 0
+      ? (item.bannerUrl || item.optimizedUrl || item.imageUrl || item.finalImageUrl || "")
+      : (item.bannerThumbUrl || item.thumbUrl || item.bannerUrl || item.optimizedUrl || item.imageUrl || item.finalImageUrl || "")
+    const finalImageUrl = withVersion(source, version)
     return {
       ...item,
       finalImageUrl,
-      displayImage: finalImageUrl || item.bannerUrl || item.optimizedUrl || item.imageUrl,
+      displayImage: finalImageUrl || source,
+      displayImageField: index === 0
+        ? (item.bannerUrl ? "bannerUrl" : item.optimizedUrl ? "optimizedUrl" : item.imageUrl ? "imageUrl" : item.finalImageUrl ? "finalImageUrl" : "")
+        : (item.bannerThumbUrl ? "bannerThumbUrl" : item.thumbUrl ? "thumbUrl" : item.bannerUrl ? "bannerUrl" : item.optimizedUrl ? "optimizedUrl" : item.imageUrl ? "imageUrl" : item.finalImageUrl ? "finalImageUrl" : ""),
+      sizeHint: index === 0 ? "首图使用压缩 Banner" : "非首图使用 Banner 缩略图",
       placeholderColor: "#eef6ff"
     }
   })
@@ -137,7 +145,6 @@ Page({
     applyTheme(this)
     this.loadHeaderAvatar()
     this.loadHomeConfig()
-    this.startLiveSync()
   },
 
   onHide() {
@@ -148,12 +155,7 @@ Page({
     this.stopLiveSync()
   },
 
-  startLiveSync() {
-    this.stopLiveSync()
-    this.liveSyncTimer = setInterval(() => {
-      this.loadHomeConfig()
-    }, 5000)
-  },
+  startLiveSync() {},
 
   stopLiveSync() {
     if (this.liveSyncTimer) {
@@ -174,6 +176,16 @@ Page({
           bannerUrl: firstBanner.bannerUrl || "",
           finalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
           version: firstBanner.version || firstBanner.updatedAt || ""
+        })
+        const firstProduct = nextHome.products && nextHome.products[0] ? nextHome.products[0] : {}
+        console.log("[image-debug-home]", {
+          firstBannerTitle: firstBanner.title || "",
+          firstBannerFinalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
+          firstBannerSizeHint: firstBanner.sizeHint || "",
+          productCount: (nextHome.products || []).length,
+          firstProductName: firstProduct.name || "",
+          firstProductImageUrl: firstProduct.displayImage || "",
+          firstProductImageField: firstProduct.displayImageField || ""
         })
         this.setData({
           ...nextHome,
