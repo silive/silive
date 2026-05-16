@@ -59,6 +59,9 @@ function normalizeBannersWithVersion(banners = [], homeUpdatedAt = "") {
         ? (item.bannerUrl ? "bannerUrl" : item.optimizedUrl ? "optimizedUrl" : item.imageUrl ? "imageUrl" : item.finalImageUrl ? "finalImageUrl" : "")
         : (item.bannerThumbUrl ? "bannerThumbUrl" : item.thumbUrl ? "thumbUrl" : item.bannerUrl ? "bannerUrl" : item.optimizedUrl ? "optimizedUrl" : item.imageUrl ? "imageUrl" : item.finalImageUrl ? "finalImageUrl" : ""),
       sizeHint: index === 0 ? "首图使用压缩 Banner" : "非首图使用 Banner 缩略图",
+      preloadUrl: index > 0 ? (item.bannerThumbUrl || item.thumbUrl || item.bannerUrl || "") : "",
+      loaded: false,
+      failed: false,
       placeholderColor: "#eef6ff"
     }
   })
@@ -129,7 +132,8 @@ Page({
     themeClass: "theme-skin01",
     cmsStatus: "local",
     headerAvatar: "",
-    headerMarkText: "我"
+    headerMarkText: "我",
+    preloadBannerThumbCount: 0
   },
 
   onLoad(options = {}) {
@@ -144,7 +148,9 @@ Page({
   onShow() {
     applyTheme(this)
     this.loadHeaderAvatar()
-    this.loadHomeConfig()
+    if (!this.lastHomeLoadAt || Date.now() - this.lastHomeLoadAt > 1500) {
+      this.loadHomeConfig()
+    }
   },
 
   onHide() {
@@ -164,11 +170,15 @@ Page({
     }
   },
 
-  loadHomeConfig() {
+  loadHomeConfig(force = false) {
+    if (this.homeLoading && !force) return
+    this.homeLoading = true
+    this.lastHomeLoadAt = Date.now()
     request(`/api/home?_t=${Date.now()}`, { timeout: 8000 })
       .then(data => {
         const nextHome = buildHomeState(data || defaultData)
         const firstBanner = nextHome.banners && nextHome.banners[0] ? nextHome.banners[0] : {}
+        const preloadBannerThumbCount = this.preloadBannerThumbs(nextHome.banners || [])
         console.log("[home-banner-final]", {
           title: firstBanner.title || "",
           imageUrl: firstBanner.imageUrl || "",
@@ -182,6 +192,9 @@ Page({
           firstBannerTitle: firstBanner.title || "",
           firstBannerFinalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
           firstBannerSizeHint: firstBanner.sizeHint || "",
+          secondBannerThumbUrl: nextHome.banners?.[1]?.preloadUrl || "",
+          thirdBannerThumbUrl: nextHome.banners?.[2]?.preloadUrl || "",
+          preloadBannerThumbCount,
           productCount: (nextHome.products || []).length,
           firstProductName: firstProduct.name || "",
           firstProductImageUrl: firstProduct.displayImage || "",
@@ -189,19 +202,50 @@ Page({
         })
         this.setData({
           ...nextHome,
-          cmsStatus: "online"
+          cmsStatus: "online",
+          preloadBannerThumbCount
         })
+        this.homeLoading = false
       })
       .catch(() => {
         this.setData({
           ...buildHomeState(defaultData),
           cmsStatus: "local"
         })
+        this.homeLoading = false
       })
   },
 
+  preloadBannerThumbs(banners = []) {
+    if (!this.preloadedBannerThumbs) this.preloadedBannerThumbs = {}
+    let count = 0
+    banners.slice(1, 3).forEach(banner => {
+      const url = banner.preloadUrl || banner.bannerThumbUrl || banner.thumbUrl || banner.bannerUrl || ""
+      if (!url || this.preloadedBannerThumbs[url]) return
+      this.preloadedBannerThumbs[url] = true
+      count += 1
+      wx.getImageInfo({
+        src: url,
+        fail: () => {}
+      })
+    })
+    return count
+  },
+
+  onBannerLoad(event) {
+    const index = Number(event.currentTarget.dataset.index)
+    if (Number.isNaN(index)) return
+    this.setData({ [`banners[${index}].loaded`]: true })
+  },
+
+  onBannerError(event) {
+    const index = Number(event.currentTarget.dataset.index)
+    if (Number.isNaN(index)) return
+    this.setData({ [`banners[${index}].failed`]: true })
+  },
+
   onPullDownRefresh() {
-    this.loadHomeConfig()
+    this.loadHomeConfig(true)
     setTimeout(() => wx.stopPullDownRefresh(), 600)
   },
 

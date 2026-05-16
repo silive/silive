@@ -5,7 +5,8 @@
     </swiper-item>
     <swiper-item wx:for="{{product.mediaImages}}" wx:key="*this">
       <view class="detail-cover">
-        <image class="detail-image" src="{{item}}" mode="aspectFill" lazy-load="{{index > 0}}" />
+        <view wx:if="{{index === 0 && !mainImageLoaded}}" class="detail-image-placeholder"></view>
+        <image class="detail-image {{index === 0 ? (mainImageLoaded ? 'is-loaded' : 'is-loading') : 'is-loaded'}}" src="{{item}}" mode="aspectFill" lazy-load="{{index > 0}}" data-index="{{index}}" bindload="onMainImageLoad" binderror="onMainImageError" />
       </view>
     </swiper-item>
   </swiper>
@@ -53,8 +54,9 @@
   <view class="panel" style="{{cardStyle}}">
     <view class="panel-title">商品详情</view>
     <view wx:if="{{product.detailText}}" class="detail-text" style="{{mutedTextStyle}}">{{product.detailText}}</view>
-    <view class="detail-images" wx:if="{{product.detailImages.length}}">
-      <image class="detail-long-image" wx:for="{{product.detailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" lazy-load />
+    <view class="detail-images" wx:if="{{visibleDetailImages.length}}">
+      <image class="detail-long-image" wx:for="{{visibleDetailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" lazy-load />
+      <button wx:if="{{product.hasMoreDetailImages && !detailImagesExpanded}}" class="more-detail-btn" bindtap="showMoreDetailImages">查看更多详情</button>
     </view>
   </view>
 

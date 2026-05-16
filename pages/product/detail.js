@@ -92,6 +92,8 @@ function normalizeProduct(product) {
     displayImage: heroImage,
     mainImageField: getProductMainImageField(product),
     firstDetailImageField: getFirstDetailImageField(product),
+    visibleDetailImages: detailImages.slice(0, 3),
+    hasMoreDetailImages: detailImages.length > 3,
     listImage: getProductListImage(product),
     cartImage: product.cartThumbUrl || product.thumbUrl || product.listImage || product.imageUrl,
     recommendTip: pickOne(RECOMMEND_TIPS),
@@ -129,7 +131,10 @@ Page({
     themeClass: "theme-skin01",
     loading: true,
     cartCount: 0,
-    shareStoreId: ""
+    shareStoreId: "",
+    mainImageLoaded: false,
+    visibleDetailImages: [],
+    detailImagesExpanded: false
   },
 
   onLoad(options) {
@@ -141,7 +146,10 @@ Page({
       const product = normalizeProduct(JSON.parse(decodeURIComponent(options.product)))
       this.setData({
         product,
-        loading: false
+        loading: false,
+        mainImageLoaded: false,
+        visibleDetailImages: product.visibleDetailImages || [],
+        detailImagesExpanded: false
       })
       this.logImageDebug(product)
       this.rememberShareProduct(product)
@@ -172,7 +180,13 @@ Page({
     request(`/api/products/${encodeURIComponent(id)}`)
       .then(product => {
         const normalized = normalizeProduct(product)
-        this.setData({ product: normalized, loading: false })
+        this.setData({
+          product: normalized,
+          loading: false,
+          mainImageLoaded: false,
+          visibleDetailImages: normalized.visibleDetailImages || [],
+          detailImagesExpanded: false
+        })
         this.logImageDebug(normalized)
         this.rememberShareProduct(normalized)
       })
@@ -180,7 +194,13 @@ Page({
         request(`/api/product/detail?id=${encodeURIComponent(id)}`, { timeout: 8000 }).then(product => {
           if (!product || product.ok === false) throw new Error("商品不存在")
           const normalized = normalizeProduct(product)
-          this.setData({ product: normalized, loading: false })
+          this.setData({
+            product: normalized,
+            loading: false,
+            mainImageLoaded: false,
+            visibleDetailImages: normalized.visibleDetailImages || [],
+            detailImagesExpanded: false
+          })
           this.logImageDebug(normalized)
           this.rememberShareProduct(normalized)
         }).catch(() => {
@@ -188,14 +208,26 @@ Page({
             const product = (Array.isArray(products) ? products : []).find(item => item.id === id)
             if (!product) throw new Error("商品不存在")
             const normalized = normalizeProduct(product)
-            this.setData({ product: normalized, loading: false })
+            this.setData({
+              product: normalized,
+              loading: false,
+              mainImageLoaded: false,
+              visibleDetailImages: normalized.visibleDetailImages || [],
+              detailImagesExpanded: false
+            })
             this.logImageDebug(normalized)
             this.rememberShareProduct(normalized)
           }).catch(() => {
             const product = (defaultData.products || []).find(item => item.id === id)
             if (product) {
               const normalized = normalizeProduct(product)
-              this.setData({ product: normalized, loading: false })
+              this.setData({
+                product: normalized,
+                loading: false,
+                mainImageLoaded: false,
+                visibleDetailImages: normalized.visibleDetailImages || [],
+                detailImagesExpanded: false
+              })
               this.logImageDebug(normalized)
               this.rememberShareProduct(normalized)
               return
@@ -213,8 +245,29 @@ Page({
       mainImageUrl: product.displayImage || "",
       mainImageField: product.mainImageField || "",
       detailImageCount: (product.detailImages || []).length,
+      visibleDetailImageCount: (product.visibleDetailImages || []).length,
       firstDetailImageUrl: (product.detailImages || [])[0] || "",
       firstDetailImageField: product.firstDetailImageField || ""
+    })
+  },
+
+  onMainImageLoad(event) {
+    if (Number(event.currentTarget.dataset.index || 0) === 0) {
+      this.setData({ mainImageLoaded: true })
+    }
+  },
+
+  onMainImageError(event) {
+    if (Number(event.currentTarget.dataset.index || 0) === 0) {
+      this.setData({ mainImageLoaded: true })
+    }
+  },
+
+  showMoreDetailImages() {
+    const detailImages = this.data.product?.detailImages || []
+    this.setData({
+      visibleDetailImages: detailImages,
+      detailImagesExpanded: true
     })
   },
 
