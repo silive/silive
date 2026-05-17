@@ -774,7 +774,7 @@
     <div class="modal">
       <h3 id="categoryModalTitle">新增二级类目</h3>
       <p class="muted" id="categoryModalDesc">输入名称后立即创建，可继续拖动排序。</p>
-      <label>类目名称<input id="categoryModalName" placeholder="例如：亚克力夜灯"></label>
+      <label>类目名称<input id="categoryModalName" placeholder="例如：照片雕刻"></label>
       <div class="modal-actions">
         <button class="secondary" id="cancelCategoryModal">取消</button>
         <button class="primary" id="confirmCategoryModal">确认</button>
@@ -822,16 +822,33 @@
     let drawerIndex = -1
     const selectedProducts = new Set()
     const defaultCategoryTree = {
-      "激光定制": ["亚克力夜灯", "木牌雕刻", "叶雕纪念"],
-      "3D打印": ["零件加工", "工业打样", "手办打印"],
-      "潮玩手办": ["解压玩具", "热门手办", "创意摆件"],
-      "日用好货": ["食品饮料", "日用百货", "本地好物"]
+      "激光定制": ["照片雕刻", "刻字礼品", "首饰吊牌", "文具刻字", "手机配件", "自带物品加工", "企业LOGO"],
+      "3D打印": ["模型定制", "来图定制", "尺寸定制", "颜色定制", "批量打印", "企业定制", "配件打印"],
+      "潮玩手办": ["现货手办", "桌面摆件", "解压玩具", "钥匙挂件", "书签文创", "车载摆件", "生日礼物", "新品上架"],
+      "日用好货": ["零食饮料", "家庭纸品", "日化清洁", "个护用品", "厨房用品", "宿舍好物", "特价专区"]
     }
-    const legacyCategories = ["3D打印", "激光雕刻", "叶雕定制", "名字礼物", "日用好货"]
+    const legacyCategoryMap = {
+      "激光雕刻": "激光定制/刻字礼品",
+      "叶雕定制": "激光定制/照片雕刻",
+      "名字礼物": "潮玩手办/钥匙挂件",
+      "激光定制/亚克力夜灯": "激光定制/照片雕刻",
+      "激光定制/木牌雕刻": "激光定制/刻字礼品",
+      "激光定制/叶雕纪念": "激光定制/照片雕刻",
+      "激光定制/叶雕礼物": "激光定制/照片雕刻",
+      "3D打印/零件加工": "3D打印/配件打印",
+      "3D打印/工业打样": "3D打印/企业定制",
+      "3D打印/手办打印": "3D打印/模型定制",
+      "3D打印/宠物摆件": "3D打印/模型定制",
+      "潮玩手办/热门手办": "潮玩手办/现货手办",
+      "潮玩手办/创意摆件": "潮玩手办/桌面摆件",
+      "日用好货/食品饮料": "日用好货/零食饮料",
+      "日用好货/日用百货": "日用好货/家庭纸品",
+      "日用好货/本地好物": "日用好货/特价专区"
+    }
     let categoryCatalog = []
     let activities = []
     let categoryTree = { ...defaultCategoryTree }
-    let categoryOptions = [...legacyCategories, ...Object.keys(categoryTree), ...Object.entries(categoryTree).flatMap(([primary, seconds]) => seconds.map(second => `${primary}/${second}`))]
+    let categoryOptions = [...Object.keys(categoryTree), ...Object.entries(categoryTree).flatMap(([primary, seconds]) => seconds.map(second => `${primary}/${second}`))]
 
     function setStatus(text) { $("status").textContent = text }
     function escapeHtml(value) {
@@ -842,9 +859,7 @@
         .replace(/"/g, "&quot;")
     }
     function toCategoryCatalog(value) {
-      const source = Array.isArray(value) && value.length
-        ? value
-        : Object.entries(defaultCategoryTree).map(([name, seconds], index) => ({
+      const source = Object.entries(defaultCategoryTree).map(([name, seconds], index) => ({
             id: `CAT${index + 1}`,
             name,
             sort: index + 1,
@@ -866,11 +881,25 @@
         (item.children || []).sort((a, b) => a.sort - b.sort).map(child => child.name)
       ]))
       categoryOptions = Array.from(new Set([
-        ...legacyCategories,
         ...categoryCatalog.map(item => item.name),
         ...categoryCatalog.flatMap(item => (item.children || []).map(child => `${item.name}/${child.name}`))
       ]))
       activities = normalizeActivities(settings.activities)
+    }
+    function normalizeProductCategoriesForCatalog(value) {
+      const raw = Array.isArray(value) ? value : String(value || "").split(/[,，;]/).map(item => item.trim()).filter(Boolean)
+      const result = []
+      raw.forEach(item => {
+        const mapped = legacyCategoryMap[item] || item
+        const [primary, second] = String(mapped).split("/")
+        if (!categoryTree[primary]) return
+        if (!result.includes(primary)) result.push(primary)
+        if (second && categoryTree[primary].includes(second)) {
+          const full = `${primary}/${second}`
+          if (!result.includes(full)) result.push(full)
+        }
+      })
+      return result
     }
     function normalizeActivities(value) {
       return (Array.isArray(value) ? value : []).map((item, index) => ({
@@ -1042,14 +1071,26 @@
       }
       if (key === "categories") {
         const current = normalizeCategoriesValue(value)
+        const selectedPrimary = current.find(item => categoryTree[item]) || Object.keys(categoryTree)[0]
+        const seconds = categoryTree[selectedPrimary] || []
         return `<label>${label}
-          <div class="category-options" data-key="${key}">
-            ${categoryOptions.map(option => `
+          <select data-category-primary="${key}">
+            ${Object.keys(categoryTree).map(primary => `<option value="${escapeHtml(primary)}" ${selectedPrimary === primary ? "selected" : ""}>${escapeHtml(primary)}</option>`).join("")}
+          </select>
+          <div class="upload-help">一级类目会自动写入；二级类目只显示当前一级类目下的新分类。</div>
+          <div class="category-options" data-key="${key}" data-primary="${escapeHtml(selectedPrimary)}">
+            <span class="category-option">
+              <input type="checkbox" value="${escapeHtml(selectedPrimary)}" checked>
+              ${escapeHtml(selectedPrimary)}
+            </span>
+            ${seconds.map(option => {
+              const full = `${selectedPrimary}/${option}`
+              return `
               <span class="category-option">
-                <input type="checkbox" value="${option}" ${current.includes(option) ? "checked" : ""}>
-                ${option}
-              </span>
-            `).join("")}
+                <input type="checkbox" value="${escapeHtml(full)}" ${current.includes(full) ? "checked" : ""}>
+                ${escapeHtml(option)}
+              </span>`
+            }).join("")}
           </div>
         </label>`
       }
@@ -2078,7 +2119,7 @@
         target[group.dataset.key] = checked ? checked.value : "none"
       })
       $("drawerBody").querySelectorAll(".category-options").forEach(group => {
-        target[group.dataset.key] = Array.from(group.querySelectorAll("input:checked")).map(input => input.value)
+        target[group.dataset.key] = normalizeProductCategoriesForCatalog(Array.from(group.querySelectorAll("input:checked")).map(input => input.value))
       })
       $("drawerBody").querySelectorAll("[data-media-manager]").forEach(manager => {
         const key = manager.dataset.mediaManager
@@ -2498,7 +2539,7 @@
           target[index][group.dataset.key] = checked ? checked.value : "none"
         })
         item.querySelectorAll(".category-options").forEach(group => {
-          target[index][group.dataset.key] = Array.from(group.querySelectorAll("input:checked")).map(input => input.value)
+          target[index][group.dataset.key] = normalizeProductCategoriesForCatalog(Array.from(group.querySelectorAll("input:checked")).map(input => input.value))
         })
       })
     }
@@ -2660,7 +2701,7 @@
       if (event.target.id === "detailDrawer") closeDrawer()
     })
     $("addProductBtn").addEventListener("click", () => {
-      products.unshift({ id: `P${Date.now()}`, name: "新商品", intro: "", price: "0", costPrice: "0", badge: "new", cover: "keyring", imageUrl: "", galleryImages: [], videoUrl: "", detailImages: [], detailText: "", categories: ["潮玩手办/名字礼物"], status: "on", stock: "0", isHot: "false", promotionHot: "false", aiPreviewEnabled: "false", aiPreviewType: "gift", rewardEnabled: "true", firstReward: "0", secondReward: "0" })
+      products.unshift({ id: `P${Date.now()}`, name: "新商品", intro: "", price: "0", costPrice: "0", badge: "new", cover: "keyring", imageUrl: "", galleryImages: [], videoUrl: "", detailImages: [], detailText: "", categories: ["潮玩手办", "潮玩手办/新品上架"], status: "on", stock: "0", isHot: "false", promotionHot: "false", aiPreviewEnabled: "false", aiPreviewType: "gift", rewardEnabled: "true", firstReward: "0", secondReward: "0" })
       renderProducts()
       openProductDrawer(0)
     })
@@ -3251,6 +3292,23 @@
       }
     })
     document.body.addEventListener("change", event => {
+      if (event.target.dataset.categoryPrimary) {
+        const label = event.target.closest("label")
+        const group = label?.querySelector(`.category-options[data-key="${event.target.dataset.categoryPrimary}"]`)
+        const primary = event.target.value
+        const seconds = categoryTree[primary] || []
+        if (group) {
+          group.dataset.primary = primary
+          group.innerHTML = `
+            <span class="category-option">
+              <input type="checkbox" value="${escapeHtml(primary)}" checked>
+              ${escapeHtml(primary)}
+            </span>
+            ${seconds.map(second => `<span class="category-option"><input type="checkbox" value="${escapeHtml(`${primary}/${second}`)}"> ${escapeHtml(second)}</span>`).join("")}
+          `
+        }
+        return
+      }
       if (event.target.dataset.themeKey) {
         collectThemeEditor()
         renderThemePreview(currentEditingTheme())

@@ -803,12 +803,59 @@ const MAX_IMPORT_ZIP_SIZE = 50 * 1024 * 1024
 const IMPORT_PREVIEW_TTL = 30 * 60 * 1000
 const ZIP_ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"])
 const ZIP_BLOCKED_EXTS = new Set([".exe", ".dll", ".dmg", ".pkg", ".app", ".com", ".scr", ".msi", ".html", ".htm", ".php", ".js", ".mjs", ".cjs", ".sh", ".bash", ".zsh", ".bat", ".cmd", ".ps1", ".vbs", ".jar", ".py", ".rb", ".pl"])
+const CATEGORY_TREE = {
+  "激光定制": ["照片雕刻", "刻字礼品", "首饰吊牌", "文具刻字", "手机配件", "自带物品加工", "企业LOGO"],
+  "3D打印": ["模型定制", "来图定制", "尺寸定制", "颜色定制", "批量打印", "企业定制", "配件打印"],
+  "潮玩手办": ["现货手办", "桌面摆件", "解压玩具", "钥匙挂件", "书签文创", "车载摆件", "生日礼物", "新品上架"],
+  "日用好货": ["零食饮料", "家庭纸品", "日化清洁", "个护用品", "厨房用品", "宿舍好物", "特价专区"]
+}
 const PRODUCT_CATEGORIES = [
-  "3D打印", "激光雕刻", "叶雕定制", "名字礼物",
-  "激光定制", "激光定制/亚克力夜灯", "激光定制/木牌雕刻", "激光定制/叶雕纪念",
-  "3D打印/零件加工", "3D打印/工业打样", "3D打印/手办打印",
-  "潮玩手办", "潮玩手办/解压玩具", "潮玩手办/热门手办", "潮玩手办/创意摆件"
+  ...Object.keys(CATEGORY_TREE),
+  ...Object.entries(CATEGORY_TREE).flatMap(([primary, seconds]) => seconds.map(second => `${primary}/${second}`))
 ]
+const LEGACY_CATEGORY_MAP = {
+  "激光雕刻": "激光定制/刻字礼品",
+  "叶雕定制": "激光定制/照片雕刻",
+  "名字礼物": "潮玩手办/钥匙挂件",
+  "激光定制/亚克力夜灯": "激光定制/照片雕刻",
+  "激光定制/木牌雕刻": "激光定制/刻字礼品",
+  "激光定制/叶雕纪念": "激光定制/照片雕刻",
+  "激光定制/叶雕礼物": "激光定制/照片雕刻",
+  "3D打印/零件加工": "3D打印/配件打印",
+  "3D打印/工业打样": "3D打印/企业定制",
+  "3D打印/手办打印": "3D打印/模型定制",
+  "3D打印/宠物摆件": "3D打印/模型定制",
+  "潮玩手办/热门手办": "潮玩手办/现货手办",
+  "潮玩手办/创意摆件": "潮玩手办/桌面摆件",
+  "日用好货/食品饮料": "日用好货/零食饮料",
+  "日用好货/日用百货": "日用好货/家庭纸品",
+  "日用好货/本地好物": "日用好货/特价专区"
+}
+
+function canonicalCategoryCatalog() {
+  return Object.entries(CATEGORY_TREE).map(([name, seconds], index) => ({
+    id: `CAT${index + 1}`,
+    name,
+    sort: index + 1,
+    children: seconds.map((second, secondIndex) => ({
+      id: `CAT${index + 1}-${secondIndex + 1}`,
+      name: second,
+      sort: secondIndex + 1,
+      comingSoon: "false"
+    }))
+  }))
+}
+
+function normalizeCategoryPath(value) {
+  const text = String(value || "").trim()
+  if (!text) return []
+  const mapped = LEGACY_CATEGORY_MAP[text] || text
+  const [primary, second] = mapped.split("/")
+  if (!CATEGORY_TREE[primary]) return []
+  if (!second) return [primary]
+  if (!CATEGORY_TREE[primary].includes(second)) return [primary]
+  return [primary, `${primary}/${second}`]
+}
 
 function readBody(req, maxSize = MAX_IMAGE_SIZE + 1024 * 1024, maxSizeMessage = "请求内容过大") {
   return new Promise((resolve, reject) => {
@@ -897,7 +944,7 @@ const IMPORT_TEMPLATE_ROWS = [
     "库存": "999",
     "商品状态": "上架",
     "一级类目": "3D打印",
-    "二级类目": "宠物摆件",
+    "二级类目": "模型定制",
     "商品标签": "人气",
     "是否热门推荐": "是",
     "是否推广页热门": "是",
@@ -921,7 +968,7 @@ const IMPORT_TEMPLATE_ROWS = [
     "库存": "999",
     "商品状态": "上架",
     "一级类目": "激光定制",
-    "二级类目": "叶雕礼物",
+    "二级类目": "照片雕刻",
     "商品标签": "爆品",
     "是否热门推荐": "是",
     "是否推广页热门": "是",
@@ -1336,30 +1383,7 @@ async function confirmProductImport(token) {
 
 async function syncCategoryCatalogFromProducts(products = []) {
   const settings = await getSettings()
-  const catalog = Array.isArray(settings.categoryCatalog) ? settings.categoryCatalog : []
-  const byName = new Map(catalog.map(item => [item.name, item]))
-  let changed = false
-  for (const product of products) {
-    for (const category of normalizeProductCategories(product.categories, product)) {
-      const [primary, second] = String(category).split("/")
-      if (!primary) continue
-      if (!byName.has(primary)) {
-        const item = { id: `CAT${Date.now()}${crypto.randomBytes(2).toString("hex")}`, name: primary, sort: catalog.length + 1, children: [] }
-        catalog.push(item)
-        byName.set(primary, item)
-        changed = true
-      }
-      if (second) {
-        const parent = byName.get(primary)
-        parent.children = Array.isArray(parent.children) ? parent.children : []
-        if (!parent.children.some(child => child.name === second)) {
-          parent.children.push({ id: `CAT${Date.now()}${crypto.randomBytes(2).toString("hex")}`, name: second, sort: parent.children.length + 1, comingSoon: "false" })
-          changed = true
-        }
-      }
-    }
-  }
-  if (changed) await saveSettings({ ...settings, categoryCatalog: catalog })
+  await saveSettings({ ...settings, categoryCatalog: canonicalCategoryCatalog() })
 }
 
 function defaultAds() {
@@ -1446,7 +1470,7 @@ function normalizeHome(data) {
     { name: "激光定制", desc: "上传照片定制礼物", icon: "◆", imageUrl: "", targetType: "primary", targetValue: "激光定制", visible: "true", sort: "1" },
     { name: "3D打印", desc: "模型文件直接生产", icon: "✦", imageUrl: "", targetType: "primary", targetValue: "3D打印", visible: "true", sort: "2" },
     { name: "潮玩手办", desc: "热门现货直接购买", icon: "＋", imageUrl: "", targetType: "primary", targetValue: "潮玩手办", visible: "true", sort: "3" },
-    { name: "日用好货", desc: "食品饮料 · 日用百货", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
+    { name: "日用好货", desc: "零食饮料 · 家庭纸品", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
   ]
   return {
     banners: (Array.isArray(data.banners) ? data.banners : []).slice(0, 3).map(item => {
@@ -1471,9 +1495,22 @@ function normalizeHome(data) {
         targetValue: item.targetValue || ""
       }
     }),
-    categories: Array.isArray(data.categories) ? data.categories : [],
+    categories: [
+      { icon: "◆", name: "激光定制", desc: "照片雕刻 / 刻字礼品 / 企业LOGO" },
+      { icon: "✦", name: "3D打印", desc: "模型定制 / 来图定制 / 批量打印" },
+      { icon: "＋", name: "潮玩手办", desc: "现货手办 / 桌面摆件 / 解压玩具" },
+      { icon: "货", name: "日用好货", desc: "零食饮料 / 家庭纸品 / 特价专区" }
+    ],
     homeEntries: (Array.isArray(data.homeEntries) && data.homeEntries.length ? data.homeEntries : defaultHomeEntries).slice(0, 4).map((rawItem, index) => {
-      const item = rawItem.name === "联系客服" || rawItem.targetType === "service" ? { ...rawItem, name: "日用好货", desc: rawItem.desc && rawItem.name !== "联系客服" ? rawItem.desc : "食品饮料 · 日用百货", icon: rawItem.icon === "☎" || rawItem.icon === "聊" ? "货" : (rawItem.icon || "货"), targetType: "primary", targetValue: "日用好货" } : rawItem
+      const item = rawItem.name === "联系客服" || rawItem.targetType === "service"
+        ? { ...rawItem, name: "日用好货", desc: rawItem.desc && rawItem.name !== "联系客服" ? rawItem.desc : "零食饮料 · 家庭纸品", icon: rawItem.icon === "☎" || rawItem.icon === "聊" ? "货" : (rawItem.icon || "货"), targetType: "primary", targetValue: "日用好货" }
+        : { ...rawItem }
+      if (item.name === "日用好货" && ["食品饮料 · 日用百货", "食品饮料 / 日用百货"].includes(item.desc)) item.desc = "零食饮料 · 家庭纸品"
+      const normalizedTarget = normalizeCategoryPath(item.targetValue)
+      if (normalizedTarget.length) {
+        item.targetValue = normalizedTarget[normalizedTarget.length - 1]
+        item.targetType = item.targetValue.includes("/") ? "secondary" : "primary"
+      }
       const imageVariants = uploadImageVariants(item.imageUrl)
       return {
       name: item.name || defaultHomeEntries[index]?.name || `入口${index + 1}`,
@@ -1538,10 +1575,16 @@ function inferProductCategories(product) {
   const text = `${product.name || ""} ${product.intro || ""}`
   return PRODUCT_CATEGORIES.filter(category => {
     const rules = {
-      "3D打印": ["3D", "摆件", "建模", "宠物"],
-      "激光雕刻": ["激光", "雕刻", "木", "金属"],
-      "叶雕定制": ["叶雕", "真叶", "天然"],
-      "名字礼物": ["名字", "钥匙扣", "刻字"]
+      "激光定制": ["激光", "雕刻", "刻字", "吊牌", "首饰", "文具", "手机壳", "LOGO", "叶雕"],
+      "激光定制/照片雕刻": ["照片", "叶雕", "真叶"],
+      "激光定制/刻字礼品": ["刻字", "名字", "木牌"],
+      "3D打印": ["3D", "建模", "模型", "打印"],
+      "3D打印/模型定制": ["模型", "建模", "宠物"],
+      "3D打印/配件打印": ["零件", "配件"],
+      "潮玩手办": ["手办", "摆件", "解压", "钥匙扣", "书签", "车载", "生日"],
+      "潮玩手办/解压玩具": ["解压"],
+      "潮玩手办/钥匙挂件": ["钥匙扣", "挂件"],
+      "日用好货": ["零食", "饮料", "纸品", "日化", "清洁", "个护", "厨房", "宿舍", "特价"]
     }
     return (rules[category] || []).some(keyword => text.includes(keyword))
   })
@@ -1558,22 +1601,35 @@ function normalizeProductCategories(value, product) {
     ? secondSource
     : String(secondSource || "").split(/[,，;]/)
   if (primary) {
-    categories.push(primary)
+    categories.push(...normalizeCategoryPath(primary))
     seconds.map(item => String(item || "").trim()).filter(Boolean).forEach(second => {
-      categories.push(second.includes("/") ? second : `${primary}/${second}`)
+      categories.push(...normalizeCategoryPath(second.includes("/") ? second : `${primary}/${second}`))
     })
   }
-  return categories.length ? [...new Set(categories)] : inferProductCategories(product)
+  const normalized = categories.flatMap(normalizeCategoryPath)
+  const unique = [...new Set(normalized)]
+  return unique.length ? unique : inferProductCategories(product)
 }
 
-function productCategoryLevels(categories = []) {
+function productCategoryLevels(categories = [], product = {}) {
   const list = Array.isArray(categories) ? categories.map(item => String(item || "").trim()).filter(Boolean) : []
-  const firstWithSecond = list.find(item => item.includes("/"))
+  const primaryCandidates = list.filter(item => !item.includes("/") && CATEGORY_TREE[item])
+  const text = `${product.name || ""} ${product.intro || ""}`
+  const preferredPrimary =
+    (primaryCandidates.includes("潮玩手办") && /钥匙|挂件|手办|摆件|解压|书签|车载|生日|现货|新品/.test(text) && "潮玩手办") ||
+    (primaryCandidates.includes("日用好货") && /零食|饮料|纸品|日化|清洁|个护|厨房|宿舍|特价/.test(text) && "日用好货") ||
+    (primaryCandidates.includes("3D打印") && /3D|模型|建模|打印|配件|批量/.test(text) && "3D打印") ||
+    (primaryCandidates.includes("激光定制") && /激光|雕刻|刻字|叶雕|照片|LOGO|首饰|文具|手机/.test(text) && "激光定制") ||
+    ""
+  const firstPrimary = preferredPrimary || primaryCandidates[0]
+  const firstWithSecond = firstPrimary
+    ? list.find(item => item.startsWith(`${firstPrimary}/`))
+    : list.find(item => item.includes("/"))
   if (firstWithSecond) {
     const [categoryLevel1, categoryLevel2] = firstWithSecond.split("/")
     return { categoryLevel1, categoryLevel2 }
   }
-  const categoryLevel1 = list[0] || ""
+  const categoryLevel1 = firstPrimary || list[0] || ""
   return { categoryLevel1, categoryLevel2: "" }
 }
 
@@ -1879,7 +1935,7 @@ function normalizeProduct(product, index) {
   const imageUrl = publicAssetUrl(product.mainImage || product.imageUrl || product.image || product.coverImage)
   const imageVariants = uploadImageVariants(imageUrl)
   const categories = normalizeProductCategories(product.categories, product)
-  const levels = productCategoryLevels(categories)
+  const levels = productCategoryLevels(categories, product)
   const productType = String(product.productType || product.product_type || "").toLowerCase() === "normal" ||
     categories.some(category => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(category).includes(keyword))) ? "normal" : "custom"
   const isHot = normalizeBooleanText(product.isHot ?? product.is_hot ?? product.hot ?? product.hotRecommend, false)
@@ -1908,8 +1964,8 @@ function normalizeProduct(product, index) {
     productType,
     needCustom: productType === "normal" ? "false" : "true",
     categories,
-    categoryLevel1: product.categoryLevel1 || levels.categoryLevel1,
-    categoryLevel2: product.categoryLevel2 || levels.categoryLevel2,
+    categoryLevel1: levels.categoryLevel1,
+    categoryLevel2: levels.categoryLevel2,
     status: normalizeProductStatus(product.status),
     stock: String(product.stock || "0"),
     isHot,
@@ -2978,6 +3034,20 @@ async function saveProducts(products) {
   await saveHome(home)
   await saveRewardRules(rewardList)
   return list
+}
+
+async function migrateProductCategoriesToCanonical() {
+  const products = await getProducts()
+  let changed = false
+  const next = products.map(product => {
+    const categories = normalizeProductCategories(product.categories, product)
+    if (JSON.stringify(categories) !== JSON.stringify(product.categories || [])) changed = true
+    return { ...product, categories }
+  })
+  if (changed) await saveProducts(next)
+  const settings = await getSettings()
+  await saveSettings({ ...settings, categoryCatalog: canonicalCategoryCatalog() })
+  return { changed, count: next.length }
 }
 
 async function getOrders(filters = {}) {
@@ -4495,6 +4565,7 @@ async function getPromotionSummary(phone) {
 async function getSettings() {
   const normalize = settings => ({
     ...settings,
+    categoryCatalog: canonicalCategoryCatalog(),
     ...normalizeThemeSettings(settings),
     newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
     newcomerBenefits: normalizeNewcomerBenefits(settings),
@@ -4509,6 +4580,7 @@ async function getSettings() {
 async function saveSettings(settings) {
   settings = {
     ...settings,
+    categoryCatalog: canonicalCategoryCatalog(),
     ...normalizeThemeSettings(settings),
     newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
     newcomerBenefits: normalizeNewcomerBenefits(settings),
@@ -4848,6 +4920,7 @@ async function initDb() {
   if (!settingRows.length) {
     await query("INSERT INTO system_settings (id, data) VALUES (1, :data)", { data: JSON.stringify(readSeed("settings.json", {})) })
   }
+  await migrateProductCategoriesToCanonical()
 }
 
 async function ensureColumn(table, column, definition) {

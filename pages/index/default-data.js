@@ -25,19 +25,20 @@ module.exports = {
       theme: "studio",
       imageUrl: "https://api.feichangjiandan.xyz/uploads/banner-leaf.svg",
       targetType: "secondary",
-      targetValue: "激光定制/叶雕纪念"
+      targetValue: "激光定制/照片雕刻"
     }
   ],
   categories: [
-    { icon: "◆", name: "激光定制", desc: "亚克力夜灯 / 木牌雕刻 / 叶雕纪念" },
-    { icon: "✦", name: "3D打印", desc: "零件加工 / 工业打样 / 手办打印" },
-    { icon: "＋", name: "潮玩手办", desc: "解压玩具 / 热门手办 / 创意摆件" }
+    { icon: "◆", name: "激光定制", desc: "照片雕刻 / 刻字礼品 / 企业LOGO" },
+    { icon: "✦", name: "3D打印", desc: "模型定制 / 来图定制 / 批量打印" },
+    { icon: "＋", name: "潮玩手办", desc: "现货手办 / 桌面摆件 / 解压玩具" },
+    { icon: "货", name: "日用好货", desc: "零食饮料 / 家庭纸品 / 特价专区" }
   ],
   homeEntries: [
     { name: "激光定制", desc: "照片刻成心意礼物", icon: "光", imageUrl: "", targetType: "primary", targetValue: "激光定制", visible: "true", sort: "1" },
     { name: "3D打印", desc: "模型文件直接生产", icon: "模", imageUrl: "", targetType: "primary", targetValue: "3D打印", visible: "true", sort: "2" },
     { name: "潮玩手办", desc: "高颜值现货小物", icon: "潮", imageUrl: "", targetType: "primary", targetValue: "潮玩手办", visible: "true", sort: "3" },
-    { name: "日用好货", desc: "食品饮料 · 日用百货", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
+    { name: "日用好货", desc: "零食饮料 · 家庭纸品", icon: "货", imageUrl: "", targetType: "primary", targetValue: "日用好货", visible: "true", sort: "4" }
   ],
   trustTags: [
     { icon: "人", text: "已服务客户 1286+" },
@@ -54,7 +55,7 @@ module.exports = {
       badge: "best",
       cover: "wood",
       imageUrl: "https://api.feichangjiandan.xyz/uploads/product-leaf.svg",
-      categories: ["激光定制", "激光定制/叶雕纪念", "叶雕定制"]
+      categories: ["激光定制", "激光定制/照片雕刻"]
     },
     {
       id: "P_PET_001",
@@ -64,7 +65,7 @@ module.exports = {
       badge: "hot",
       cover: "pet",
       imageUrl: "https://api.feichangjiandan.xyz/uploads/product-pet.svg",
-      categories: ["3D打印", "3D打印/手办打印"]
+      categories: ["3D打印", "3D打印/模型定制"]
     },
     {
       id: "P_WOOD_001",
@@ -74,7 +75,7 @@ module.exports = {
       badge: "hot",
       cover: "wood",
       imageUrl: "https://api.feichangjiandan.xyz/uploads/product-wood.svg",
-      categories: ["激光定制", "激光定制/木牌雕刻", "激光雕刻"]
+      categories: ["激光定制", "激光定制/刻字礼品"]
     },
     {
       id: "P_KEYRING_001",
@@ -84,7 +85,7 @@ module.exports = {
       badge: "new",
       cover: "keyring",
       imageUrl: "https://api.feichangjiandan.xyz/uploads/product-keyring.svg",
-      categories: ["潮玩手办", "潮玩手办/创意摆件", "名字礼物", "激光雕刻"]
+      categories: ["潮玩手办", "潮玩手办/钥匙挂件"]
     }
   ],
   reviews: [

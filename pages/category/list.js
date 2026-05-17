@@ -52,19 +52,19 @@ function matchesCategory(product, category) {
   if (Array.isArray(product.categories) && product.categories.includes(category)) return true
   const text = `${product.name || ""} ${product.intro || ""}`
   const rules = {
-    "3D打印": ["3D", "摆件", "建模", "宠物"],
-    "激光雕刻": ["激光", "雕刻", "木", "金属"],
-    "叶雕定制": ["叶雕", "真叶", "天然"],
-    "名字礼物": ["名字", "钥匙扣", "刻字"]
+    "激光定制": ["激光", "雕刻", "刻字", "吊牌", "首饰", "文具", "手机配件", "LOGO", "叶雕"],
+    "3D打印": ["3D", "模型", "建模", "打印", "配件"],
+    "潮玩手办": ["手办", "摆件", "解压", "钥匙", "书签", "车载", "生日"],
+    "日用好货": ["零食", "饮料", "纸品", "日化", "清洁", "个护", "厨房", "宿舍", "特价"]
   }
   return (rules[category] || []).some(keyword => text.includes(keyword))
 }
 
 const FALLBACK_SECONDARY = {
-  "激光定制": ["亚克力夜灯", "木牌雕刻", "叶雕纪念"],
-  "3D打印": ["零件加工", "工业打样", "手办打印"],
-  "潮玩手办": ["解压玩具", "热门手办", "创意摆件"],
-  "日用好货": ["食品饮料", "日用百货", "本地好物"]
+  "激光定制": ["照片雕刻", "刻字礼品", "首饰吊牌", "文具刻字", "手机配件", "自带物品加工", "企业LOGO"],
+  "3D打印": ["模型定制", "来图定制", "尺寸定制", "颜色定制", "批量打印", "企业定制", "配件打印"],
+  "潮玩手办": ["现货手办", "桌面摆件", "解压玩具", "钥匙挂件", "书签文创", "车载摆件", "生日礼物", "新品上架"],
+  "日用好货": ["零食饮料", "家庭纸品", "日化清洁", "个护用品", "厨房用品", "宿舍好物", "特价专区"]
 }
 
 function normalizeCategoryCatalog(value) {
@@ -136,7 +136,7 @@ function buildSecondaryNav(products, primary, categoryCatalog) {
       if (category.indexOf(`${primary}/`) === 0) fromProducts.push(category.split("/")[1])
     })
   })
-  return ["全部", ...Array.from(new Set([...fromCatalog, ...(fromCatalog.length ? [] : (FALLBACK_SECONDARY[primary] || [])), ...fromProducts]))]
+  return ["全部", ...Array.from(new Set([...fromCatalog, ...(fromCatalog.length ? [] : (FALLBACK_SECONDARY[primary] || []))]))]
 }
 
 function fallbackCatalog() {

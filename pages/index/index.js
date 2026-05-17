@@ -116,11 +116,14 @@ function buildHomeState(data) {
     .map(item => item.name === "联系客服" || item.targetType === "service" ? {
       ...item,
       name: "日用好货",
-      desc: item.desc && item.name !== "联系客服" ? item.desc : "食品饮料 · 日用百货",
+      desc: item.desc && item.name !== "联系客服" ? item.desc : "零食饮料 · 家庭纸品",
       icon: item.icon === "聊" ? "货" : (item.icon || "货"),
       targetType: "primary",
       targetValue: "日用好货"
-    } : item)
+    } : {
+      ...item,
+      desc: item.name === "日用好货" && ["食品饮料 · 日用百货", "食品饮料 / 日用百货"].includes(item.desc) ? "零食饮料 · 家庭纸品" : item.desc
+    })
     .filter(item => String(item.visible) !== "false")
     .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0))
   return {
@@ -422,7 +425,7 @@ Page({
               badgeText: "新品推荐",
               cover: "keyring",
               imageUrl: data.url,
-              categories: ["名字礼物"]
+              categories: ["激光定制", "激光定制/照片雕刻"]
             }
             wx.navigateTo({
               url: `/pages/checkout/checkout?product=${encodeURIComponent(JSON.stringify(product))}&customImage=${encodeURIComponent(data.url)}`
