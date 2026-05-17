@@ -46,7 +46,7 @@ const testFile = path.join(__dirname, "test.html")
 const uploadsDir = path.join(__dirname, "uploads")
 const productUploadsDir = path.join(uploadsDir, "products")
 const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
-const BRAND_QR_LOGO_VERSION = "orange-v2"
+const BRAND_QR_LOGO_VERSION = "orange-v3"
 const themesDir = path.join(ROOT, "themes")
 const seedDir = path.join(__dirname, "data")
 const importTempDir = path.join(seedDir, "import-temp")
@@ -5278,13 +5278,16 @@ async function applyBrandLogoToQrBuffer(buffer) {
   if (!sharp || !fs.existsSync(brandQrLogoFile)) return buffer
   try {
     const meta = await sharp(buffer).metadata()
-    const badgeSize = Math.max(72, Math.round(Math.min(meta.width || 430, meta.height || 430) * 0.22))
-    const logoSize = Math.round(badgeSize * 0.78)
+    const qrSize = Math.min(meta.width || 430, meta.height || 430)
+    // WeChat mini program codes can already contain a center avatar. The white
+    // backing deliberately covers that full center area so only our brand logo remains.
+    const badgeSize = Math.max(92, Math.round(qrSize * 0.28))
+    const logoSize = Math.round(qrSize * 0.20)
     const logo = await sharp(brandQrLogoFile)
-      .resize(logoSize, logoSize, { fit: "cover" })
+      .resize(logoSize, logoSize, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } })
       .png()
       .toBuffer()
-    const badgeSvg = Buffer.from(`<svg width="${badgeSize}" height="${badgeSize}" xmlns="http://www.w3.org/2000/svg"><rect width="${badgeSize}" height="${badgeSize}" rx="${Math.round(badgeSize * 0.22)}" fill="#fff"/></svg>`)
+    const badgeSvg = Buffer.from(`<svg width="${badgeSize}" height="${badgeSize}" xmlns="http://www.w3.org/2000/svg"><rect width="${badgeSize}" height="${badgeSize}" rx="${Math.round(badgeSize * 0.24)}" fill="#fff"/></svg>`)
     const badge = await sharp(badgeSvg)
       .composite([{ input: logo, left: Math.round((badgeSize - logoSize) / 2), top: Math.round((badgeSize - logoSize) / 2) }])
       .png()
