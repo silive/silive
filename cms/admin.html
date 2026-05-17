@@ -2024,6 +2024,22 @@
     function isAfterSalesActive(order) {
       return ["requested", "refund_pending", "remake", "reship"].includes(normalizedAfterSalesStatus(order))
     }
+    function isOrderPaid(order) {
+      const paymentStatus = String(order.paymentStatus || order.payment_status || order.payStatus || "").trim().toLowerCase()
+      const status = String(order.status || "").trim().toLowerCase()
+      if (["待支付", "未支付", "unpaid", "pending_payment"].includes(paymentStatus) || ["待支付", "未支付", "unpaid", "pending_payment"].includes(status)) return false
+      return order.isPaid === true ||
+        ["已支付", "paid", "success", "支付成功"].includes(paymentStatus) ||
+        ["已支付", "paid", "success", "支付成功"].includes(status) ||
+        !!order.paidAt ||
+        !!order.transactionId
+    }
+    function canShowPickupCode(order) {
+      const pickup = order.deliveryType === "pickup" || order.delivery_type === "pickup" || !!order.pickupStoreId || !!order.pickup_store_id
+      const code = order.pickupCode || order.pickup_code
+      if (order.canShowPickupCode === true) return true
+      return isOrderPaid(order) && pickup && !!code
+    }
     function orderStatusMatchesFilter(order, status) {
       if (!status) return true
       if (status === "售后中") return isAfterSalesActive(order)
@@ -2222,7 +2238,9 @@
             <option value="pickup" ${order.deliveryType === "pickup" ? "selected" : ""}>到店自提</option>
           </select></label>
           <label>自提门店ID<input data-order-key="pickupStoreId" value="${escapeHtml(order.pickupStoreId || "")}"></label>
-          <label>取货码<input data-order-key="pickupCode" value="${escapeHtml(order.pickupCode || "")}"></label>
+          ${canShowPickupCode(order)
+            ? `<label>取货码<input data-order-key="pickupCode" value="${escapeHtml(order.pickupCode || "")}"></label>`
+            : `<label>取货码<input value="未支付，取货码暂不可用" disabled></label>`}
           <label>自提状态<select data-order-key="pickupStatus">
             ${["none", "preparing", "arrived_store", "picked_up"].map(status => `<option value="${status}" ${order.pickupStatus === status ? "selected" : ""}>${({ none: "无", preparing: "备货中", arrived_store: "已到店/待自提", picked_up: "已自提" })[status]}</option>`).join("")}
           </select></label>
@@ -2319,7 +2337,7 @@
           <td><div class="table-title">${escapeHtml(order.id)}</div><div class="table-sub">${escapeHtml(order.productName)}</div></td>
           <td>${escapeHtml(order.customerName)}<div class="muted">${escapeHtml(order.phone)}</div></td>
           <td><strong>${formatMoney(order.amount)}</strong></td>
-          <td><span class="pill">${order.deliveryType === "pickup" ? "到店自提" : "配送/快递"}</span><div class="muted">${escapeHtml(order.pickupStore?.name || "")}</div><div class="muted">${order.pickupCode ? `取货码：${escapeHtml(order.pickupCode)}` : ""}</div></td>
+          <td><span class="pill">${order.deliveryType === "pickup" ? "到店自提" : "配送/快递"}</span><div class="muted">${escapeHtml(order.pickupStore?.name || "")}</div><div class="muted">${canShowPickupCode(order) ? `取货码：${escapeHtml(order.pickupCode)}` : order.deliveryType === "pickup" ? "未支付，取货码暂不可用" : ""}</div></td>
           <td><span class="pill">${escapeHtml(order.paymentStatus || "待支付")}</span></td>
           <td><span class="pill">${escapeHtml(order.status || "待发货")}</span></td>
           <td><span class="pill">${escapeHtml(afterSalesText(order))}</span></td>

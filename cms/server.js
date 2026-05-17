@@ -2235,6 +2235,10 @@ function normalizeOrder(order, index) {
     pickupCode: normalizePickupCode(order.pickupCode || order.pickup_code || ""),
     pickupQrCodeUrl: publicAssetUrl(order.pickupQrCodeUrl || order.pickup_qrcode_url || ""),
     pickupStatus: order.pickupStatus || "none",
+    isPaid: isOrderPaidForPickupCredential(order),
+    isPickup: isPickupOrder(order),
+    canShowPickupCode: canShowPickupCodeForOrder(order),
+    canStoreVerify: canStoreVerifyOrder(order),
     arrivedStoreAt,
     arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(arrivedStoreAt),
     pickedUpAt,
@@ -2260,16 +2264,47 @@ function normalizeOrder(order, index) {
 
 function isOrderPaidForPickupCredential(order = {}) {
   const status = String(order.paymentStatus || order.payment_status || order.payStatus || order.pay_status || "").trim().toLowerCase()
+  const rawStatus = String(order.status || "").trim().toLowerCase()
+  if (["待支付", "未支付", "unpaid", "pending_payment"].includes(status) || ["待支付", "未支付", "unpaid", "pending_payment"].includes(rawStatus)) return false
   return order.isPaid === true ||
     ["已支付", "paid", "success", "支付成功"].includes(status) ||
+    ["已支付", "paid", "success", "支付成功"].includes(rawStatus) ||
     !!order.paidAt ||
     !!order.paid_at ||
     !!order.transactionId ||
     !!order.transaction_id
 }
 
+function isPickupOrder(order = {}) {
+  return order.deliveryType === "pickup" ||
+    order.delivery_type === "pickup" ||
+    !!order.pickupStoreId ||
+    !!order.pickup_store_id
+}
+
+function isOrderBlockedForStoreVerify(order = {}) {
+  const status = String(order.status || "").trim()
+  const paymentStatus = String(order.paymentStatus || order.payment_status || "").trim()
+  const afterSalesStatus = normalizeAfterSalesStatus(order.afterSalesStatus || order.after_sales_status || order.refundStatus || order.refund_status)
+  return ["已取消", "已退款", "退款中"].includes(status) ||
+    ["已退款"].includes(paymentStatus) ||
+    ["requested", "refund_pending", "refunded"].includes(afterSalesStatus)
+}
+
+function canShowPickupCodeForOrder(order = {}) {
+  return isOrderPaidForPickupCredential(order) &&
+    isPickupOrder(order) &&
+    !!normalizePickupCode(order.pickupCode || order.pickup_code)
+}
+
+function canStoreVerifyOrder(order = {}) {
+  return canShowPickupCodeForOrder(order) &&
+    !isOrderBlockedForStoreVerify(order) &&
+    (order.pickupStatus || order.pickup_status) !== "picked_up"
+}
+
 function publicOrderView(order = {}) {
-  if (isOrderPaidForPickupCredential(order)) return order
+  if (canShowPickupCodeForOrder(order)) return order
   return {
     ...order,
     pickupCode: "",
@@ -3612,6 +3647,7 @@ async function requireStoreSession(req, res) {
 }
 
 function storeOrderView(order, mode = "referral") {
+  const showPickupCode = canShowPickupCodeForOrder(order)
   return {
     id: order.id,
     createdAt: order.createdAt,
@@ -3631,9 +3667,13 @@ function storeOrderView(order, mode = "referral") {
     amount: order.amount,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    isPaid: isOrderPaidForPickupCredential(order),
+    isPickup: isPickupOrder(order),
+    canShowPickupCode: showPickupCode,
+    canStoreVerify: canStoreVerifyOrder(order),
     phone: maskPhone(order.phone),
-    pickupCode: order.pickupCode,
-    pickupQrCodeUrl: order.pickupQrCodeUrl || "",
+    pickupCode: showPickupCode ? order.pickupCode : "",
+    pickupQrCodeUrl: showPickupCode ? (order.pickupQrCodeUrl || "") : "",
     pickupStatus: order.pickupStatus,
     arrivedStoreAt: order.arrivedStoreAt,
     arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(order.arrivedStoreAt),
@@ -3651,14 +3691,17 @@ function storeOrderView(order, mode = "referral") {
 function storeCenterStats(store, orders, records) {
   const today = new Date().toISOString().slice(0, 10)
   const month = new Date().toISOString().slice(0, 7)
-  const referralOrders = orders.filter(order => order.referrerStoreId === store.id)
-  const pickupOrders = orders.filter(order => order.pickupStoreId === store.id)
-  const sumByStatus = status => records.filter(record => record.status === status).reduce((sum, record) => sum + Number(record.amount || 0), 0).toFixed(2)
+  const paidOrders = orders.filter(order => isOrderPaidForPickupCredential(order))
+  const paidOrderIds = new Set(paidOrders.map(order => order.id))
+  const referralOrders = paidOrders.filter(order => order.referrerStoreId === store.id)
+  const pickupOrders = paidOrders.filter(order => order.pickupStoreId === store.id && isPickupOrder(order))
+  const validRecords = records.filter(record => !record.orderId || paidOrderIds.has(record.orderId))
+  const sumByStatus = status => validRecords.filter(record => record.status === status).reduce((sum, record) => sum + Number(record.amount || 0), 0).toFixed(2)
   return {
     todayReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
     monthReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(month)).length,
     todayPickupOrders: pickupOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
-    pendingPickupOrders: pickupOrders.filter(order => order.pickupStatus === "arrived_store").length,
+    pendingPickupOrders: pickupOrders.filter(order => order.pickupStatus !== "picked_up").length,
     unsettledAmount: sumByStatus("unsettled"),
     settledAmount: sumByStatus("settled")
   }
@@ -3669,7 +3712,9 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
   const order = orders.find(item => item.id === orderId)
   if (!order) throw httpError(404, "订单不存在")
   if (order.pickupStoreId !== store.id) throw httpError(403, "不能核销其他门店订单")
-  if (order.paymentStatus !== "已支付") throw httpError(400, "订单未支付，暂不能核销")
+  if (!isOrderPaidForPickupCredential(order)) throw httpError(400, "订单未支付，暂不能核销")
+  if (!isPickupOrder(order)) throw httpError(400, "该订单不是到店自提订单")
+  if (isOrderBlockedForStoreVerify(order)) throw httpError(400, "订单售后或退款处理中，暂不能核销")
   if (order.pickupStatus === "picked_up") throw httpError(400, "该订单已核销")
   if (!pickupCode || normalizePickupCode(order.pickupCode) !== normalizePickupCode(pickupCode)) throw httpError(400, "取货码不正确")
   const verifiedAt = formatDateTime(new Date())
@@ -3691,7 +3736,9 @@ async function verifyStorePickupByCode(store, pickupCode) {
   const order = orders.find(item => normalizePickupCode(item.pickupCode) === code)
   if (!order) throw httpError(404, "取货码不存在")
   if (order.pickupStoreId !== store.id) throw httpError(403, "不能核销其他门店订单")
-  if (order.paymentStatus !== "已支付") throw httpError(400, "订单未支付，暂不能核销")
+  if (!isOrderPaidForPickupCredential(order)) throw httpError(400, "订单未支付，暂不能核销")
+  if (!isPickupOrder(order)) throw httpError(400, "该订单不是到店自提订单")
+  if (isOrderBlockedForStoreVerify(order)) throw httpError(400, "订单售后或退款处理中，暂不能核销")
   if (order.pickupStatus === "picked_up") {
     return {
       ok: false,
@@ -3953,6 +4000,7 @@ async function markOrderArrivedStore(orderId) {
   const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
   if (orders[index].deliveryType !== "pickup") throw new Error("该订单不是到店自提订单")
+  if (!isOrderPaidForPickupCredential(orders[index])) throw new Error("订单未支付，暂不能标记到店")
   orders[index] = {
     ...orders[index],
     status: "已到店",
@@ -3969,6 +4017,7 @@ async function markOrderPickedUp(orderId) {
   const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
   if (orders[index].deliveryType !== "pickup") throw new Error("该订单不是到店自提订单")
+  if (!isOrderPaidForPickupCredential(orders[index])) throw new Error("订单未支付，暂不能标记已自提")
   orders[index] = {
     ...orders[index],
     status: "已完成",
@@ -5581,8 +5630,10 @@ async function handle(req, res) {
   if (url.pathname === "/api/store/referral-orders" && req.method === "GET") {
     const storeSession = await requireStoreSession(req, res)
     if (!storeSession) return
-    const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id)
-    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "store_referral_commission" })
+    const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id && isOrderPaidForPickupCredential(order))
+    const paidOrderIds = new Set(orders.map(order => order.id))
+    const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "store_referral_commission" }))
+      .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
     const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const today = new Date().toISOString().slice(0, 10)
@@ -5603,7 +5654,7 @@ async function handle(req, res) {
   if (url.pathname === "/api/store/pickup-orders" && req.method === "GET") {
     const storeSession = await requireStoreSession(req, res)
     if (!storeSession) return
-    const orders = (await getOrders()).filter(order => order.pickupStoreId === storeSession.store.id)
+    const orders = (await getOrders()).filter(order => order.pickupStoreId === storeSession.store.id && isPickupOrder(order) && isOrderPaidForPickupCredential(order))
     sendJson(res, 200, { storeInfo: storePrivateView(storeSession.store), orders: orders.map(order => storeOrderView(order, "pickup")) })
     return
   }
@@ -5611,7 +5662,9 @@ async function handle(req, res) {
   if (url.pathname === "/api/store/settlements" && req.method === "GET") {
     const storeSession = await requireStoreSession(req, res)
     if (!storeSession) return
-    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id })
+    const paidOrderIds = new Set((await getOrders()).filter(order => isOrderPaidForPickupCredential(order)).map(order => order.id))
+    const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id }))
+      .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
     const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const referral = records.filter(record => isStoreReferralSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
