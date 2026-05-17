@@ -196,6 +196,7 @@ function normalizeProduct(product) {
 
 function normalizeOrder(order, products = []) {
   const product = products.find(item => item.id === order.productId || item.name === order.productName) || {}
+  const detailProductId = resolveOrderProductId(order, product)
   const display = displayStatus(order)
   const quote = isQuoteOrder(order)
   return {
@@ -203,6 +204,7 @@ function normalizeOrder(order, products = []) {
     productImage: getOrderProductImage(order, product),
     productIntro: product.intro || "",
     product,
+    detailProductId,
     categories: Array.isArray(product.categories) ? product.categories : [],
     createdAtDisplay: order.createdAtText || order.createdAt || "",
     paidAtDisplay: order.paidAtText || order.paidAt || "",
@@ -233,6 +235,22 @@ function normalizeOrder(order, products = []) {
     refundLine: afterSalesText(order) || (order.refundStatus ? `${order.refundStatus}${order.refundAmount && Number(order.refundAmount) > 0 ? ` · ¥${order.refundAmount}` : ""}` : ""),
     canRefund: canApplyAfterSales(order)
   }
+}
+
+function resolveOrderProductId(order = {}, product = {}) {
+  const candidates = [
+    order.detailProductId,
+    order.firstProductId,
+    order.itemProductId,
+    order.productId,
+    order.product_id,
+    product.id
+  ].filter(Boolean).map(value => String(value).trim())
+  const id = candidates.find(value => value && value !== "CART_ORDER" && value !== "CUSTOM_UPLOAD")
+  if (id) return id
+  const items = Array.isArray(order.items) ? order.items : []
+  const item = items.find(entry => entry && (entry.productId || entry.product_id || entry.id))
+  return item ? String(item.productId || item.product_id || item.id || "").trim() : ""
 }
 
 function statusMatches(order, key) {
@@ -413,11 +431,12 @@ Page({
   openOrderProduct(event) {
     const order = this.data.recentOrders[event.currentTarget.dataset.index]
     if (!order) return
-    if (order.productId) {
-      wx.navigateTo({ url: `/pages/product/detail?id=${encodeURIComponent(order.productId)}` })
+    const productId = resolveOrderProductId(order, order.product || {})
+    if (productId) {
+      wx.navigateTo({ url: `/pages/product/detail?id=${encodeURIComponent(productId)}` })
       return
     }
-    wx.showToast({ title: "商品已下架，可联系客服", icon: "none" })
+    wx.showToast({ title: "该历史订单暂无法查看商品详情", icon: "none" })
   },
 
   reorder(event) {

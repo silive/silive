@@ -1,5 +1,5 @@
 <view class="page {{themeClass}}" style="{{themeStyle}}" wx:if="{{product}}">
-  <view class="summary" style="{{cardStyle}}">
+  <view wx:if="{{!normalMode}}" class="summary" style="{{cardStyle}}">
     <view class="summary-cover cover-{{product.cover}}">
       <image wx:if="{{product.cartThumbUrl || product.thumbUrl || product.optimizedUrl || product.imageUrl}}" class="summary-image" src="{{product.cartThumbUrl || product.thumbUrl || product.optimizedUrl || product.imageUrl}}" mode="aspectFill" />
     </view>

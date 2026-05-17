@@ -232,7 +232,7 @@ Page({
               this.rememberShareProduct(normalized)
               return
             }
-            wx.showToast({ title: "商品加载失败", icon: "none" })
+            wx.showToast({ title: "商品暂时无法查看，可联系客服", icon: "none" })
             this.setData({ loading: false })
           })
         })

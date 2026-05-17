@@ -2086,7 +2086,9 @@ function findProductForOrder(order = {}, products = []) {
   const productId = String(order.productId || order.product_id || "").trim()
   const productName = String(order.productName || order.product_name || "").trim()
   const remark = String(order.remark || order.customRequest || order.custom_request || "")
+  const cartItemId = (remark.match(/购物车商品ID[:：]\s*([\w-]+)/) || [])[1] || ""
   return products.find(product => productId && product.id === productId) ||
+    products.find(product => cartItemId && product.id === cartItemId) ||
     products.find(product => productName && product.name === productName) ||
     products.find(product => productId === "CART_ORDER" && productName && productName.startsWith(product.name)) ||
     products.find(product => productId === "CART_ORDER" && remark.includes(`${product.name}x`)) ||
@@ -2118,6 +2120,8 @@ function hydrateOrderProductImages(order = {}, products = []) {
   const product = findProductForOrder(order, products)
   return {
     ...order,
+    detailProductId: order.detailProductId || order.detail_product_id || (order.productId && order.productId !== "CART_ORDER" ? order.productId : "") || product.id || "",
+    firstProductId: order.firstProductId || order.first_product_id || product.id || "",
     ...orderProductImageFields(order, product)
   }
 }
@@ -3941,6 +3945,7 @@ async function createOrder(data) {
     remark: [
       data.remark || "",
       cartItems.length ? `购物车：${cartItems.map(item => `${item.product.name}x${item.quantity}`).join("，")}` : "",
+      cartItems.length ? `购物车商品ID：${cartItems.map(item => `${item.product.id}x${item.quantity}`).join("，")}` : "",
       !cartItems.length && productType === "normal" ? `普通商品：${product.name}x${quantity}` : "",
       data.newcomerBenefitText ? `新人福利：${data.newcomerBenefitText}` : ""
     ].filter(Boolean).join("\n"),

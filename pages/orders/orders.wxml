@@ -39,14 +39,14 @@
 
   <view wx:if="{{loggedIn && recentOrders.length}}" class="order-list">
     <view class="order-card" style="{{cardStyle}}" wx:for="{{recentOrders}}" wx:key="id">
-      <view class="order-main" bindtap="openOrderProduct" data-index="{{index}}">
-        <view class="order-cover cover-{{item.product.cover}}">
+      <view class="order-main">
+        <view class="order-cover cover-{{item.product.cover}}" bindtap="openOrderProduct" data-index="{{index}}">
           <image wx:if="{{item.productImage}}" class="order-image" src="{{item.productImage}}" mode="aspectFill" lazy-load />
           <view wx:else class="order-placeholder">非常智造</view>
         </view>
         <view class="order-info">
           <view class="order-head">
-            <view class="product-name">{{item.productName}}</view>
+            <view class="product-name" bindtap="openOrderProduct" data-index="{{index}}">{{item.productName}}</view>
             <view class="status" style="{{tagStyle}}">{{item.displayStatus}}</view>
           </view>
           <view class="muted" style="{{mutedTextStyle}}">{{item.createdAtDisplay}}</view>
