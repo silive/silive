@@ -1028,13 +1028,15 @@
       const v = escapeHtml(value || "")
       if (key === "imageUrl" || key === "posterUrl") {
         const isBanner = label.includes("Banner") || label.includes("海报")
+        const isProductMainImage = label.includes("商品主图")
         const sizeText = isBanner ? "Banner图：1200x500 像素，建议300KB以内" : "商品图：800x800 像素，建议300KB以内"
+        const productMainImageTip = isProductMainImage ? "<br>商品主图建议 800×800 像素，重要文字和主体距离边缘至少 80px，避免不同设备显示时被裁切。" : ""
         return `<label>${label}
           <div class="upload-row">
             <input data-key="${key}" value="${v}">
             <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-upload-key="${key}">
           </div>
-          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB<br>系统会自动生成前台压缩图，原图仅作备份${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}</div>
+          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB<br>系统会自动生成前台压缩图，原图仅作备份${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}${productMainImageTip}</div>
           <img class="image-preview ${v ? "show" : ""}" src="${v}" alt="图片预览">
         </label>`
       }

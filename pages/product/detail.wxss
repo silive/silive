@@ -11,10 +11,10 @@
 
 .detail-swiper {
   position: relative;
-  height: 520rpx;
+  height: 720rpx;
   border-radius: 26rpx;
   overflow: hidden;
-  background: #eef6ff;
+  background: #f5f7fb;
   box-shadow: 0 24rpx 56rpx rgba(63, 45, 42, .16);
   animation: detailFadeUp .34s ease both;
 }
@@ -22,20 +22,23 @@
 .detail-cover {
   position: relative;
   width: 100%;
-  height: 520rpx;
-  background: #eef6ff;
+  height: 720rpx;
+  background: #f5f7fb;
 }
 
 .detail-image {
   width: 100%;
   height: 100%;
   display: block;
-  background: #eef6ff;
+  border-radius: 24rpx;
+  background: #f5f7fb;
   transition: opacity .22s ease;
+  position: relative;
+  z-index: 1;
 }
 
 .detail-image.is-loading {
-  opacity: 0;
+  opacity: 1;
 }
 
 .detail-image.is-loaded {
@@ -46,6 +49,8 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 58%, #f8fbff 100%);
+  z-index: 0;
+  pointer-events: none;
 }
 
 .detail-image-placeholder::after {
@@ -63,7 +68,7 @@
 
 .detail-video {
   width: 100%;
-  height: 520rpx;
+  height: 720rpx;
   display: block;
 }
 

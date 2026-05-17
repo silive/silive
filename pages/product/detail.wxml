@@ -6,7 +6,7 @@
     <swiper-item wx:for="{{product.mediaImages}}" wx:key="*this">
       <view class="detail-cover">
         <view wx:if="{{index === 0 && !mainImageLoaded}}" class="detail-image-placeholder"></view>
-        <image class="detail-image {{index === 0 ? (mainImageLoaded ? 'is-loaded' : 'is-loading') : 'is-loaded'}}" src="{{item}}" mode="aspectFill" lazy-load="{{index > 0}}" data-index="{{index}}" bindload="onMainImageLoad" binderror="onMainImageError" />
+        <image class="detail-image {{index === 0 ? (mainImageLoaded ? 'is-loaded' : 'is-loading') : 'is-loaded'}}" src="{{item}}" mode="aspectFit" lazy-load="{{index > 0}}" data-index="{{index}}" bindload="onMainImageLoad" binderror="onMainImageError" />
       </view>
     </swiper-item>
   </swiper>
