@@ -813,6 +813,7 @@ const PRODUCT_CATEGORIES = [
   ...Object.keys(CATEGORY_TREE),
   ...Object.entries(CATEGORY_TREE).flatMap(([primary, seconds]) => seconds.map(second => `${primary}/${second}`))
 ]
+let activeCategoryTree = { ...CATEGORY_TREE }
 const LEGACY_CATEGORY_MAP = {
   "激光雕刻": "激光定制/刻字礼品",
   "叶雕定制": "激光定制/照片雕刻",
@@ -836,14 +837,81 @@ function canonicalCategoryCatalog() {
   return Object.entries(CATEGORY_TREE).map(([name, seconds], index) => ({
     id: `CAT${index + 1}`,
     name,
+    subtitle: "",
+    imageUrl: "",
     sort: index + 1,
+    sortOrder: index + 1,
+    enabled: "true",
+    visible: "true",
     children: seconds.map((second, secondIndex) => ({
       id: `CAT${index + 1}-${secondIndex + 1}`,
       name: second,
       sort: secondIndex + 1,
+      sortOrder: secondIndex + 1,
+      enabled: "true",
       comingSoon: "false"
     }))
   }))
+}
+
+function isCategoryEnabled(value) {
+  if (value == null || value === "") return true
+  return !["false", "0", "off", "disabled", "hidden", "停用", "隐藏", "否"].includes(String(value).trim().toLowerCase())
+}
+
+function normalizeCategoryCatalog(value) {
+  const source = Array.isArray(value) && value.length ? value : canonicalCategoryCatalog()
+  return source
+    .map((item, index) => {
+      const enabled = isCategoryEnabled(item.enabled ?? item.visible)
+      const childrenSource = Array.isArray(item.children) ? item.children : Array.isArray(item.seconds) ? item.seconds : []
+      return {
+        id: item.id || `CAT${index + 1}`,
+        name: String(item.name || `一级类目${index + 1}`).trim(),
+        subtitle: item.subtitle || item.desc || "",
+        imageUrl: item.imageUrl ? publicAssetUrl(item.imageUrl) : "",
+        icon: item.icon || "",
+        sort: Number(item.sortOrder || item.sort || index + 1),
+        sortOrder: Number(item.sortOrder || item.sort || index + 1),
+        enabled: enabled ? "true" : "false",
+        visible: enabled ? "true" : "false",
+        children: childrenSource
+          .map((child, childIndex) => {
+            const childValue = typeof child === "string" ? { name: child } : child || {}
+            const childEnabled = isCategoryEnabled(childValue.enabled)
+            return {
+              id: childValue.id || `CAT${index + 1}-${childIndex + 1}`,
+              name: String(childValue.name || `二级类目${childIndex + 1}`).trim(),
+              sort: Number(childValue.sortOrder || childValue.sort || childIndex + 1),
+              sortOrder: Number(childValue.sortOrder || childValue.sort || childIndex + 1),
+              enabled: childEnabled ? "true" : "false",
+              comingSoon: String(childValue.comingSoon == null ? "false" : childValue.comingSoon)
+            }
+          })
+          .filter(child => child.name)
+          .sort((a, b) => a.sort - b.sort)
+      }
+    })
+    .filter(item => item.name)
+    .sort((a, b) => a.sort - b.sort)
+}
+
+function updateActiveCategoryTree(catalog) {
+  const normalized = normalizeCategoryCatalog(catalog)
+  activeCategoryTree = Object.fromEntries(normalized.map(item => [
+    item.name,
+    (item.children || []).map(child => child.name)
+  ]))
+  return normalized
+}
+
+function publicCategoryCatalog(catalog) {
+  return normalizeCategoryCatalog(catalog)
+    .filter(item => isCategoryEnabled(item.enabled ?? item.visible))
+    .map(item => ({
+      ...item,
+      children: (item.children || []).filter(child => isCategoryEnabled(child.enabled))
+    }))
 }
 
 function normalizeCategoryPath(value) {
@@ -851,9 +919,10 @@ function normalizeCategoryPath(value) {
   if (!text) return []
   const mapped = LEGACY_CATEGORY_MAP[text] || text
   const [primary, second] = mapped.split("/")
-  if (!CATEGORY_TREE[primary]) return []
+  const tree = activeCategoryTree && Object.keys(activeCategoryTree).length ? activeCategoryTree : CATEGORY_TREE
+  if (!tree[primary]) return []
   if (!second) return [primary]
-  if (!CATEGORY_TREE[primary].includes(second)) return [primary]
+  if (!tree[primary].includes(second)) return [primary]
   return [primary, `${primary}/${second}`]
 }
 
@@ -1383,7 +1452,7 @@ async function confirmProductImport(token) {
 
 async function syncCategoryCatalogFromProducts(products = []) {
   const settings = await getSettings()
-  await saveSettings({ ...settings, categoryCatalog: canonicalCategoryCatalog() })
+  await saveSettings({ ...settings, categoryCatalog: settings.categoryCatalog })
 }
 
 function defaultAds() {
@@ -1613,7 +1682,8 @@ function normalizeProductCategories(value, product) {
 
 function productCategoryLevels(categories = [], product = {}) {
   const list = Array.isArray(categories) ? categories.map(item => String(item || "").trim()).filter(Boolean) : []
-  const primaryCandidates = list.filter(item => !item.includes("/") && CATEGORY_TREE[item])
+  const tree = activeCategoryTree && Object.keys(activeCategoryTree).length ? activeCategoryTree : CATEGORY_TREE
+  const primaryCandidates = list.filter(item => !item.includes("/") && tree[item])
   const text = `${product.name || ""} ${product.intro || ""}`
   const preferredPrimary =
     (primaryCandidates.includes("潮玩手办") && /钥匙|挂件|手办|摆件|解压|书签|车载|生日|现货|新品/.test(text) && "潮玩手办") ||
@@ -2724,6 +2794,7 @@ async function saveHome(data) {
 }
 
 async function getProducts() {
+  await getSettings().catch(() => null)
   if (!pool) {
     const rules = readJsonFile(rewardRulesFile, []).map(normalizeRewardRule)
     return (readJsonFile(homeFile, {}).products || []).map(normalizeProduct).map(product => {
@@ -3038,6 +3109,8 @@ async function saveProducts(products) {
 
 async function migrateProductCategoriesToCanonical() {
   const products = await getProducts()
+  const settings = await getSettings()
+  updateActiveCategoryTree(settings.categoryCatalog)
   let changed = false
   const next = products.map(product => {
     const categories = normalizeProductCategories(product.categories, product)
@@ -3045,8 +3118,7 @@ async function migrateProductCategoriesToCanonical() {
     return { ...product, categories }
   })
   if (changed) await saveProducts(next)
-  const settings = await getSettings()
-  await saveSettings({ ...settings, categoryCatalog: canonicalCategoryCatalog() })
+  await saveSettings({ ...settings, categoryCatalog: settings.categoryCatalog })
   return { changed, count: next.length }
 }
 
@@ -4563,24 +4635,28 @@ async function getPromotionSummary(phone) {
 }
 
 async function getSettings() {
-  const normalize = settings => ({
-    ...settings,
-    categoryCatalog: canonicalCategoryCatalog(),
-    ...normalizeThemeSettings(settings),
-    newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
-    newcomerBenefits: normalizeNewcomerBenefits(settings),
-    helpArticles: normalizeHelpArticles(settings.helpArticles),
-    ...normalizeContactSettings(settings)
-  })
+  const normalize = settings => {
+    const categoryCatalog = updateActiveCategoryTree(settings.categoryCatalog)
+    return {
+      ...settings,
+      categoryCatalog,
+      ...normalizeThemeSettings(settings),
+      newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
+      newcomerBenefits: normalizeNewcomerBenefits(settings),
+      helpArticles: normalizeHelpArticles(settings.helpArticles),
+      ...normalizeContactSettings(settings)
+    }
+  }
   if (!pool) return normalize(readJsonFile(settingsFile, {}))
   const rows = await query("SELECT data FROM system_settings WHERE id = 1")
   return normalize(parseJsonValue(rows[0]?.data, {}))
 }
 
 async function saveSettings(settings) {
+  const categoryCatalog = updateActiveCategoryTree(settings.categoryCatalog)
   settings = {
     ...settings,
-    categoryCatalog: canonicalCategoryCatalog(),
+    categoryCatalog,
     ...normalizeThemeSettings(settings),
     newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
     newcomerBenefits: normalizeNewcomerBenefits(settings),
@@ -5402,9 +5478,18 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/home" && req.method === "GET") {
     const [home, settings, products] = await Promise.all([getHome(), getSettings(), getProducts()])
+    const categoryCatalog = publicCategoryCatalog(settings.categoryCatalog)
+    const enabledPrimaryNames = new Set(categoryCatalog.map(item => item.name))
+    const publicHomeEntries = (Array.isArray(home.homeEntries) ? home.homeEntries : []).filter(entry => {
+      if (entry.targetType === "primary" || enabledPrimaryNames.has(entry.name)) {
+        return enabledPrimaryNames.has(entry.targetValue || entry.name)
+      }
+      return true
+    })
     console.log("[api-home-banner]", bannerSummaryForLog(home.banners?.[0] || {}, 0))
     sendJson(res, 200, {
       ...home,
+      homeEntries: publicHomeEntries,
       products: homepageRecommendedProducts(products),
       hotProducts: homepageBurstProducts(products),
       homepageProductRules: {
@@ -5414,7 +5499,7 @@ async function handle(req, res) {
         burstSource: "badge=best 且未勾选首页推荐，双列网格，每行2个"
       },
       theme: currentThemeFromSettings(settings),
-      categoryCatalog: Array.isArray(settings.categoryCatalog) ? settings.categoryCatalog : [],
+      categoryCatalog,
       activities: Array.isArray(settings.activities) ? settings.activities : []
     })
     return

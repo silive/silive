@@ -72,16 +72,20 @@ function normalizeCategoryCatalog(value) {
     .map((item, index) => ({
       name: item.name || "",
       sort: Number(item.sort || index + 1),
+      enabled: String(item.enabled == null && item.visible == null ? "true" : item.enabled || item.visible),
       children: (Array.isArray(item.children) ? item.children : [])
         .map((child, childIndex) => ({
           name: typeof child === "string" ? child : child.name || "",
           sort: Number((typeof child === "string" ? childIndex + 1 : child.sort) || childIndex + 1),
+          enabled: typeof child === "string" ? "true" : String(child.enabled == null ? "true" : child.enabled),
           comingSoon: typeof child === "string" ? "false" : String(child.comingSoon == null ? "false" : child.comingSoon)
         }))
         .filter(child => child.name)
+        .filter(child => String(child.enabled) !== "false")
         .sort((a, b) => a.sort - b.sort)
     }))
     .filter(item => item.name)
+    .filter(item => String(item.enabled) !== "false")
     .sort((a, b) => a.sort - b.sort)
 }
 
@@ -89,7 +93,8 @@ function catalogVersion(catalog) {
   return JSON.stringify(catalog.map(item => ({
     name: item.name,
     sort: item.sort,
-    children: item.children.map(child => `${child.name}:${child.sort}:${child.comingSoon}`)
+    enabled: item.enabled,
+    children: item.children.map(child => `${child.name}:${child.sort}:${child.enabled}:${child.comingSoon}`)
   })))
 }
 

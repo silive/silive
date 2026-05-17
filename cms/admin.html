@@ -775,6 +775,10 @@
       <h3 id="categoryModalTitle">新增二级类目</h3>
       <p class="muted" id="categoryModalDesc">输入名称后立即创建，可继续拖动排序。</p>
       <label>类目名称<input id="categoryModalName" placeholder="例如：照片雕刻"></label>
+      <div id="primaryCategoryExtra" style="display:none">
+        <label>副标题<input id="categoryModalSubtitle" placeholder="例如：上传照片定制礼物"></label>
+        <label>图标/图片地址<input id="categoryModalImageUrl" placeholder="/uploads/category.png"></label>
+      </div>
       <div class="modal-actions">
         <button class="secondary" id="cancelCategoryModal">取消</button>
         <button class="primary" id="confirmCategoryModal">确认</button>
@@ -858,20 +862,34 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
     }
+    function isCategoryEnabled(value) {
+      if (value == null || value === "") return true
+      return !["false", "0", "off", "disabled", "hidden", "停用", "隐藏", "否"].includes(String(value).trim().toLowerCase())
+    }
     function toCategoryCatalog(value) {
-      const source = Object.entries(defaultCategoryTree).map(([name, seconds], index) => ({
+      const fallback = Object.entries(defaultCategoryTree).map(([name, seconds], index) => ({
             id: `CAT${index + 1}`,
             name,
             sort: index + 1,
-            children: seconds.map((second, secondIndex) => ({ id: `CAT${index + 1}-${secondIndex + 1}`, name: second, sort: secondIndex + 1, comingSoon: "false" }))
+            sortOrder: index + 1,
+            enabled: "true",
+            visible: "true",
+            children: seconds.map((second, secondIndex) => ({ id: `CAT${index + 1}-${secondIndex + 1}`, name: second, sort: secondIndex + 1, sortOrder: secondIndex + 1, enabled: "true", comingSoon: "false" }))
           }))
+      const source = Array.isArray(value) && value.length ? value : fallback
       return source.map((item, index) => ({
         id: item.id || `CAT${Date.now()}${index}`,
         name: item.name || `一级类目${index + 1}`,
-        sort: Number(item.sort || index + 1),
+        subtitle: item.subtitle || item.desc || "",
+        imageUrl: item.imageUrl || "",
+        icon: item.icon || "",
+        sort: Number(item.sortOrder || item.sort || index + 1),
+        sortOrder: Number(item.sortOrder || item.sort || index + 1),
+        enabled: isCategoryEnabled(item.enabled ?? item.visible) ? "true" : "false",
+        visible: isCategoryEnabled(item.enabled ?? item.visible) ? "true" : "false",
         children: (Array.isArray(item.children) ? item.children : Array.isArray(item.seconds) ? item.seconds : []).map((child, childIndex) => typeof child === "string"
-          ? { id: `CAT${index + 1}-${childIndex + 1}`, name: child, sort: childIndex + 1, comingSoon: "false" }
-          : { id: child.id || `CAT${index + 1}-${childIndex + 1}`, name: child.name || `二级类目${childIndex + 1}`, sort: Number(child.sort || childIndex + 1), comingSoon: String(child.comingSoon == null ? "false" : child.comingSoon) })
+          ? { id: `CAT${index + 1}-${childIndex + 1}`, name: child, sort: childIndex + 1, sortOrder: childIndex + 1, enabled: "true", comingSoon: "false" }
+          : { id: child.id || `CAT${index + 1}-${childIndex + 1}`, name: child.name || `二级类目${childIndex + 1}`, sort: Number(child.sortOrder || child.sort || childIndex + 1), sortOrder: Number(child.sortOrder || child.sort || childIndex + 1), enabled: isCategoryEnabled(child.enabled) ? "true" : "false", comingSoon: String(child.comingSoon == null ? "false" : child.comingSoon) })
       })).sort((a, b) => a.sort - b.sort)
     }
     function rebuildCategoryOptions() {
@@ -950,7 +968,11 @@
     function resequenceCategories() {
       categoryCatalog.forEach((category, index) => {
         category.sort = index + 1
-        ;(category.children || []).forEach((child, childIndex) => { child.sort = childIndex + 1 })
+        category.sortOrder = index + 1
+        ;(category.children || []).forEach((child, childIndex) => {
+          child.sort = childIndex + 1
+          child.sortOrder = childIndex + 1
+        })
       })
       settings.categoryCatalog = categoryCatalog
       rebuildCategoryOptions()
@@ -970,6 +992,9 @@
       if (mode === "add-primary") $("categoryModalTitle").textContent = "新增一级类目"
       $("categoryModalDesc").textContent = mode === "add-primary" ? "创建后会自动排到最后，可拖动调整顺序。" : mode === "add-second" ? `添加到「${primary?.name || ""}」下方。` : "修改名称后立即保存。"
       $("categoryModalName").value = mode === "edit-primary" ? primary?.name || "" : mode === "edit-second" ? second?.name || "" : ""
+      $("primaryCategoryExtra").style.display = mode === "edit-primary" || mode === "add-primary" ? "block" : "none"
+      $("categoryModalSubtitle").value = mode === "edit-primary" ? primary?.subtitle || "" : ""
+      $("categoryModalImageUrl").value = mode === "edit-primary" ? primary?.imageUrl || "" : ""
       $("categoryModal").classList.add("show")
       setTimeout(() => $("categoryModalName").focus(), 30)
     }
@@ -983,16 +1008,20 @@
       collectCategoryManager()
       const { mode, primaryIndex, secondIndex } = categoryModal
       if (mode === "add-primary") {
-        categoryCatalog.push({ id: `CAT${Date.now()}`, name, sort: categoryCatalog.length + 1, children: [] })
+        categoryCatalog.push({ id: `CAT${Date.now()}`, name, subtitle: $("categoryModalSubtitle").value.trim(), imageUrl: $("categoryModalImageUrl").value.trim(), sort: categoryCatalog.length + 1, sortOrder: categoryCatalog.length + 1, enabled: "true", visible: "true", children: [] })
         closeCategoryModal()
         persistCategoryCatalog("一级类目已新增")
         return
       }
       if (!categoryCatalog[primaryIndex]) return closeCategoryModal()
       if (mode === "add-second") {
-        categoryCatalog[primaryIndex].children.push({ id: `CAT${Date.now()}S`, name, sort: categoryCatalog[primaryIndex].children.length + 1 })
+        categoryCatalog[primaryIndex].children.push({ id: `CAT${Date.now()}S`, name, sort: categoryCatalog[primaryIndex].children.length + 1, sortOrder: categoryCatalog[primaryIndex].children.length + 1, enabled: "true", comingSoon: "false" })
       }
-      if (mode === "edit-primary" && categoryCatalog[primaryIndex]) categoryCatalog[primaryIndex].name = name
+      if (mode === "edit-primary" && categoryCatalog[primaryIndex]) {
+        categoryCatalog[primaryIndex].name = name
+        categoryCatalog[primaryIndex].subtitle = $("categoryModalSubtitle").value.trim()
+        categoryCatalog[primaryIndex].imageUrl = $("categoryModalImageUrl").value.trim()
+      }
       if (mode === "edit-second" && categoryCatalog[primaryIndex]?.children?.[secondIndex]) categoryCatalog[primaryIndex].children[secondIndex].name = name
       closeCategoryModal()
       persistCategoryCatalog("类目已保存")
@@ -1072,23 +1101,25 @@
       if (key === "categories") {
         const current = normalizeCategoriesValue(value)
         const selectedPrimary = current.find(item => categoryTree[item]) || Object.keys(categoryTree)[0]
-        const seconds = categoryTree[selectedPrimary] || []
+        const primaryMeta = categoryCatalog.find(category => category.name === selectedPrimary) || categoryCatalog[0] || { name: selectedPrimary, children: [] }
+        const seconds = primaryMeta.children || []
         return `<label>${label}
           <select data-category-primary="${key}">
-            ${Object.keys(categoryTree).map(primary => `<option value="${escapeHtml(primary)}" ${selectedPrimary === primary ? "selected" : ""}>${escapeHtml(primary)}</option>`).join("")}
+            ${categoryCatalog.map(category => `<option value="${escapeHtml(category.name)}" ${selectedPrimary === category.name ? "selected" : ""}>${escapeHtml(category.name)}${isCategoryEnabled(category.enabled ?? category.visible) ? "" : "（已隐藏）"}</option>`).join("")}
           </select>
-          <div class="upload-help">一级类目会自动写入；二级类目只显示当前一级类目下的新分类。</div>
+          <div class="upload-help">一级类目会自动写入；已停用二级类目会保留旧商品归属，前台筛选不显示。</div>
           <div class="category-options" data-key="${key}" data-primary="${escapeHtml(selectedPrimary)}">
             <span class="category-option">
               <input type="checkbox" value="${escapeHtml(selectedPrimary)}" checked>
               ${escapeHtml(selectedPrimary)}
             </span>
-            ${seconds.map(option => {
+            ${seconds.map(child => {
+              const option = child.name || child
               const full = `${selectedPrimary}/${option}`
               return `
               <span class="category-option">
                 <input type="checkbox" value="${escapeHtml(full)}" ${current.includes(full) ? "checked" : ""}>
-                ${escapeHtml(option)}
+                ${escapeHtml(option)}${isCategoryEnabled(child.enabled) ? "" : "（已停用）"}
               </span>`
             }).join("")}
           </div>
@@ -1678,6 +1709,7 @@
         const originIndex = categoryCatalog.findIndex(item => item.id === category.id)
         const collapsed = categorySearch ? false : collapsedCategories[category.id] === true || (Object.keys(collapsedCategories).length === 0 && originIndex > 0)
         const primaryCount = productCountForCategory(category.name)
+        const primaryEnabled = isCategoryEnabled(category.enabled ?? category.visible)
         const children = (category.children || []).sort((a, b) => a.sort - b.sort).filter(child => {
           if (!keyword) return true
           return category.name.toLowerCase().includes(keyword) || child.name.toLowerCase().includes(keyword) || productNameHitsForSecond(category.name, child.name)
@@ -1686,8 +1718,8 @@
           <div class="category-card-head">
             <div class="drag-handle" title="拖动排序">⋮⋮</div>
             <div>
-              <div class="category-name">${escapeHtml(category.name)}</div>
-              <div class="category-meta">排序 ${originIndex + 1}</div>
+              <div class="category-name">${escapeHtml(category.name)} ${primaryEnabled ? "" : `<span class="mini-tag">已隐藏</span>`}</div>
+              <div class="category-meta">排序 ${originIndex + 1}${category.subtitle ? ` · ${escapeHtml(category.subtitle)}` : ""}</div>
             </div>
             <div class="category-sort">排序 ${originIndex + 1}</div>
             <span class="pill category-count">${primaryCount} 商品</span>
@@ -1695,18 +1727,20 @@
               <button class="icon-btn dark" data-action="add-second-category" data-index="${originIndex}">+ 新增二级类目</button>
               <button class="icon-btn" data-action="toggle-category" data-id="${escapeHtml(category.id)}">${collapsed ? "展开" : "收起"}</button>
               <button class="icon-btn" data-action="edit-primary-category" data-index="${originIndex}">编辑</button>
-              <button class="icon-btn danger" data-action="remove-primary-category" data-index="${originIndex}">删除</button>
+              <button class="icon-btn ${primaryEnabled ? "danger" : ""}" data-action="toggle-primary-enabled" data-index="${originIndex}">${primaryEnabled ? "隐藏" : "显示"}</button>
             </div>
           </div>
           <div class="secondary-list ${collapsed ? "collapsed" : ""}">${children.map(child => {
             const childIndex = category.children.findIndex(item => item.id === child.id)
             const count = productCountForCategory(category.name, child.name)
+            const childEnabled = isCategoryEnabled(child.enabled)
             return `<div class="secondary-row" data-second-index="${childIndex}" data-parent-index="${originIndex}" draggable="true">
               <div class="drag-handle" title="拖动排序">⋮⋮</div>
-              <div class="secondary-name">${escapeHtml(child.name)} ${String(child.comingSoon) === "true" ? `<span class="mini-tag">即将上线</span>` : ""}</div>
+              <div class="secondary-name">${escapeHtml(child.name)} ${childEnabled ? "" : `<span class="mini-tag">已停用</span>`} ${String(child.comingSoon) === "true" ? `<span class="mini-tag">即将上线</span>` : ""}</div>
               <div>排序 ${childIndex + 1}</div>
               <span class="pill">${count} 商品</span>
               <div class="category-actions">
+                <button class="icon-btn ${childEnabled ? "danger" : ""}" data-action="toggle-second-enabled" data-index="${originIndex}" data-second="${childIndex}">${childEnabled ? "停用" : "启用"}</button>
                 <button class="icon-btn" data-action="toggle-coming-soon" data-index="${originIndex}" data-second="${childIndex}">${String(child.comingSoon) === "true" ? "取消上线标签" : "即将上线"}</button>
                 <button class="icon-btn" data-action="edit-second-category" data-index="${originIndex}" data-second="${childIndex}">编辑</button>
                 <button class="icon-btn" data-action="move-second-up" data-index="${originIndex}" data-second="${childIndex}">上移</button>
@@ -2512,7 +2546,16 @@
         .map((category, index) => ({
           ...category,
           sort: Number(category.sort || index + 1),
-          children: (category.children || []).filter(child => child.name).map((child, childIndex) => ({ ...child, sort: Number(child.sort || childIndex + 1), comingSoon: String(child.comingSoon == null ? "false" : child.comingSoon) }))
+          sortOrder: Number(category.sortOrder || category.sort || index + 1),
+          enabled: isCategoryEnabled(category.enabled ?? category.visible) ? "true" : "false",
+          visible: isCategoryEnabled(category.enabled ?? category.visible) ? "true" : "false",
+          children: (category.children || []).filter(child => child.name).map((child, childIndex) => ({
+            ...child,
+            sort: Number(child.sort || childIndex + 1),
+            sortOrder: Number(child.sortOrder || child.sort || childIndex + 1),
+            enabled: isCategoryEnabled(child.enabled) ? "true" : "false",
+            comingSoon: String(child.comingSoon == null ? "false" : child.comingSoon)
+          }))
         }))
       settings.categoryCatalog = categoryCatalog
       rebuildCategoryOptions()
@@ -2706,7 +2749,7 @@
       openProductDrawer(0)
     })
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
-      openCategoryModal("add-primary", -1)
+      setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
     })
     $("searchCategoryBtn").addEventListener("click", () => {
       collectCategoryManager()
@@ -2932,24 +2975,46 @@
       if (event.target.dataset.action === "edit-second-category") {
         openCategoryModal("edit-second", Number(event.target.dataset.index), Number(event.target.dataset.second))
       }
-      if (event.target.dataset.action === "remove-primary-category") {
+      if (event.target.dataset.action === "toggle-primary-enabled") {
         const index = Number(event.target.dataset.index)
-        if (!confirm("确认删除该一级类目？商品中的旧类目不会被删除，可后续重新归类。")) return
         collectCategoryManager()
-        categoryCatalog.splice(index, 1)
+        const category = categoryCatalog[index]
+        if (!category) return
+        const enabled = isCategoryEnabled(category.enabled ?? category.visible)
+        if (enabled) {
+          const count = productCountForCategory(category.name)
+          if (count > 0) return setStatus(`该类目下仍有 ${count} 个商品，请先迁移商品或下架商品后再隐藏。`)
+          if (!confirm("确认隐藏该一级类目？隐藏后前台不再显示，但不会删除商品。")) return
+        }
+        category.enabled = enabled ? "false" : "true"
+        category.visible = category.enabled
         settings.categoryCatalog = categoryCatalog
         rebuildCategoryOptions()
-        persistCategoryCatalog("一级类目已删除")
+        persistCategoryCatalog(enabled ? "一级类目已隐藏" : "一级类目已显示")
       }
       if (event.target.dataset.action === "remove-second-category") {
         const index = Number(event.target.dataset.index)
         const second = Number(event.target.dataset.second)
-        if (!confirm("确认删除该二级类目？")) return
         collectCategoryManager()
+        const child = categoryCatalog[index]?.children?.[second]
+        if (!child) return
+        const count = productCountForCategory(categoryCatalog[index].name, child.name)
+        if (count > 0) return setStatus(`该类目下仍有 ${count} 个商品，请先迁移商品到其他类目，或使用“停用”。`)
+        if (!confirm("确认删除该二级类目？删除后不可恢复。")) return
         categoryCatalog[index].children.splice(second, 1)
         settings.categoryCatalog = categoryCatalog
         rebuildCategoryOptions()
         persistCategoryCatalog("二级类目已删除")
+      }
+      if (event.target.dataset.action === "toggle-second-enabled") {
+        collectCategoryManager()
+        const index = Number(event.target.dataset.index)
+        const second = Number(event.target.dataset.second)
+        const child = categoryCatalog[index]?.children?.[second]
+        if (!child) return
+        const enabled = isCategoryEnabled(child.enabled)
+        child.enabled = enabled ? "false" : "true"
+        persistCategoryCatalog(enabled ? "二级类目已停用" : "二级类目已启用")
       }
       if (event.target.dataset.action === "move-second-up" || event.target.dataset.action === "move-second-down") {
         collectCategoryManager()
@@ -3296,7 +3361,8 @@
         const label = event.target.closest("label")
         const group = label?.querySelector(`.category-options[data-key="${event.target.dataset.categoryPrimary}"]`)
         const primary = event.target.value
-        const seconds = categoryTree[primary] || []
+        const primaryMeta = categoryCatalog.find(category => category.name === primary) || { children: [] }
+        const seconds = primaryMeta.children || []
         if (group) {
           group.dataset.primary = primary
           group.innerHTML = `
@@ -3304,7 +3370,10 @@
               <input type="checkbox" value="${escapeHtml(primary)}" checked>
               ${escapeHtml(primary)}
             </span>
-            ${seconds.map(second => `<span class="category-option"><input type="checkbox" value="${escapeHtml(`${primary}/${second}`)}"> ${escapeHtml(second)}</span>`).join("")}
+            ${seconds.map(child => {
+              const name = child.name || child
+              return `<span class="category-option"><input type="checkbox" value="${escapeHtml(`${primary}/${name}`)}"> ${escapeHtml(name)}${isCategoryEnabled(child.enabled) ? "" : "（已停用）"}</span>`
+            }).join("")}
           `
         }
         return
