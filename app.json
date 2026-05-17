@@ -5,6 +5,7 @@
     "pages/poster/poster",
     "pages/product/detail",
     "pages/checkout/checkout",
+    "pages/checkout/pickup-stores/pickup-stores",
     "pages/cart/cart",
     "pages/promotion/promotion",
     "pages/store/center/center",

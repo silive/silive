@@ -1,4 +1,4 @@
-<view class="page {{themeClass}} {{product.isNormalProduct ? 'has-fixed-actions' : ''}}" style="{{themeStyle}}" wx:if="{{product}}">
+<view class="page {{themeClass}} has-fixed-actions" style="{{themeStyle}}" wx:if="{{product}}">
   <swiper class="detail-swiper cover-{{product.cover}}" circular indicator-dots="{{product.mediaImages.length > 1 || product.videoUrl}}" indicator-color="rgba(255,255,255,.55)" indicator-active-color="#ffffff">
     <swiper-item wx:if="{{product.videoUrl}}">
       <video class="detail-video" src="{{product.videoUrl}}" controls object-fit="cover" poster="{{product.mediaImages[0] || product.displayImage || product.listImage || product.imageUrl}}"></video>
@@ -34,20 +34,11 @@
     <view class="benefit-item" wx:for="{{newcomerBenefits}}" wx:key="text">新人首单{{item.text}}</view>
   </view>
 
-  <view wx:if="{{product.isNormalProduct}}" class="normal-action-panel" style="{{cardStyle}}">
-    <view class="normal-action-row">
-      <view class="normal-action-wrap normal-cart-action">
-        <button class="normal-action-btn normal-add-btn" bindtap="addToCart">加入购物车</button>
-      </view>
-      <view class="normal-action-wrap normal-buy-action">
-        <button class="normal-action-btn normal-buy-btn" bindtap="buyNow">立即购买</button>
-      </view>
-    </view>
+  <view wx:if="{{product.isNormalProduct}}" class="normal-action-panel share-only-panel" style="{{cardStyle}}">
     <button class="normal-share-btn" open-type="share">推荐给朋友</button>
   </view>
 
-  <view wx:if="{{!product.isNormalProduct}}" class="top-actions">
-    <button class="primary-btn compact" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
+  <view wx:if="{{!product.isNormalProduct}}" class="top-actions share-only-panel" style="{{cardStyle}}">
     <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
   </view>
 
@@ -72,8 +63,6 @@
     </view>
     <button class="detail-contact-btn" open-type="contact">联系客服</button>
   </view>
-
-  <button wx:if="{{!product.isNormalProduct}}" class="primary-btn" style="{{primaryButtonStyle}}" bindtap="goCheckout">立即定制</button>
 </view>
 
 <view wx:if="{{product && product.isNormalProduct}}" class="floating-cart" bindtap="openCart" aria-label="购物车">
@@ -86,12 +75,15 @@
   <text wx:if="{{cartCount > 0}}" class="cart-badge">{{cartCount > 99 ? '99+' : cartCount}}</text>
 </view>
 
-<view wx:if="{{product && product.isNormalProduct}}" class="fixed-action-bar">
-  <view class="action-btn-wrap action-cart-wrap">
+<view wx:if="{{product}}" class="fixed-action-bar {{product.isNormalProduct ? '' : 'custom-action-bar'}}">
+  <view wx:if="{{product.isNormalProduct}}" class="action-btn-wrap action-cart-wrap">
     <button class="action-btn add-cart-btn" bindtap="addToCart">加入购物车</button>
   </view>
-  <view class="action-btn-wrap action-buy-wrap">
+  <view wx:if="{{product.isNormalProduct}}" class="action-btn-wrap action-buy-wrap">
     <button class="action-btn buy-btn" bindtap="buyNow">立即购买</button>
+  </view>
+  <view wx:else class="action-btn-wrap action-custom-wrap">
+    <button class="action-btn buy-btn" bindtap="goCheckout">立即定制</button>
   </view>
 </view>
 

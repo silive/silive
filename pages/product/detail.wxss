@@ -237,9 +237,7 @@
 }
 
 .top-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18rpx;
+  display: block;
   margin-top: 26rpx;
 }
 
@@ -279,6 +277,10 @@
   box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
   animation: detailFadeUp .4s ease .06s both;
   box-sizing: border-box;
+}
+
+.share-only-panel {
+  padding: 18rpx 22rpx;
 }
 
 .normal-action-row {
@@ -468,6 +470,10 @@
 
 .action-buy-wrap {
   flex: 58 0 0;
+}
+
+.action-custom-wrap {
+  flex: 1;
 }
 
 .action-btn {

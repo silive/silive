@@ -76,6 +76,7 @@ Page({
     uploadedImages: [],
     deliveryType: "delivery",
     pickupStores: [],
+    visiblePickupStores: [],
     selectedPickupStoreId: "",
     selectedPickupStore: null,
     locationStatus: "",
@@ -126,6 +127,7 @@ Page({
 
   onShow() {
     applyTheme(this)
+    this.applyPendingPickupSelection()
     if (this.data.product && !getLoginState().loggedIn && !this.data.loginVisible) this.promptLogin()
   },
 
@@ -166,6 +168,7 @@ Page({
       phoneTip: this.getPhoneTipState(storedPhone || this.data.form.phone).text,
       phoneTipType: this.getPhoneTipState(storedPhone || this.data.form.phone).type
     })
+    this.applyPendingPickupSelection()
     if (options.customImage) {
       this.setData({
         "form.customRequest": "我已上传照片，请根据照片沟通定制方案。"
@@ -386,7 +389,10 @@ Page({
       if (b.distance == null) return -1
       return a.distance - b.distance
     }).map((store, index) => ({ ...store, nearest: index === 0 && store.distance != null }))
-    this.setData({ pickupStores: stores })
+    this.setData({
+      pickupStores: stores,
+      visiblePickupStores: this.getVisiblePickupStores(stores, this.data.selectedPickupStoreId)
+    })
   },
 
   loadPickupStores() {
@@ -397,7 +403,10 @@ Page({
         distanceText: "",
         nearest: false
       }))
-      this.setData({ pickupStores: list })
+      this.setData({
+        pickupStores: list,
+        visiblePickupStores: this.getVisiblePickupStores(list, this.data.selectedPickupStoreId)
+      })
       if (this.data.userLocation) this.applyPickupDistances(this.data.userLocation)
     }).catch(error => {
       wx.showToast({ title: error.message || "自提门店读取失败", icon: "none" })
@@ -410,7 +419,34 @@ Page({
     if (!store) return
     this.setData({
       selectedPickupStoreId: id,
-      selectedPickupStore: store
+      selectedPickupStore: store,
+      visiblePickupStores: this.getVisiblePickupStores(this.data.pickupStores, id)
+    })
+  },
+
+  getVisiblePickupStores(stores = [], selectedId = "") {
+    const list = Array.isArray(stores) ? stores : []
+    const selected = selectedId ? list.find(item => item.id === selectedId) : null
+    if (selected) return [selected]
+    const nearest = list.find(item => item.nearest) || list[0]
+    return nearest ? [nearest] : []
+  },
+
+  openPickupStoreSelector() {
+    wx.setStorageSync("checkoutPickupStores", this.data.pickupStores || [])
+    wx.setStorageSync("checkoutSelectedPickupStoreId", this.data.selectedPickupStoreId || "")
+    wx.navigateTo({ url: "/pages/checkout/pickup-stores/pickup-stores" })
+  },
+
+  applyPendingPickupSelection() {
+    const selectedId = wx.getStorageSync("checkoutSelectedPickupStoreId") || ""
+    if (!selectedId || selectedId === this.data.selectedPickupStoreId) return
+    const store = (this.data.pickupStores || []).find(item => item.id === selectedId)
+    if (!store) return
+    this.setData({
+      selectedPickupStoreId: selectedId,
+      selectedPickupStore: store,
+      visiblePickupStores: this.getVisiblePickupStores(this.data.pickupStores, selectedId)
     })
   },
 

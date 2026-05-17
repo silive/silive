@@ -68,7 +68,7 @@
         <view class="pickup-tip warn" wx:elif="{{locationStatus === 'failed'}}">暂时无法获取位置，请手动选择自提门店</view>
         <view class="pickup-tip" style="{{mutedTextStyle}}" wx:else>选择到店自提后，商品到店会通知你领取。</view>
         <view class="pickup-store-list">
-          <view class="pickup-store {{selectedPickupStoreId === item.id ? 'selected' : ''}}" wx:for="{{pickupStores}}" wx:key="id">
+          <view class="pickup-store {{selectedPickupStoreId === item.id ? 'selected' : ''}}" wx:for="{{visiblePickupStores}}" wx:key="id">
             <view class="pickup-store-main">
               <view class="pickup-store-title">
                 <text>{{item.name}}</text>
@@ -82,6 +82,7 @@
             <button class="pickup-select" data-id="{{item.id}}" bindtap="selectPickupStore">{{selectedPickupStoreId === item.id ? '已选择' : '选择该门店'}}</button>
           </view>
         </view>
+        <button wx:if="{{pickupStores.length > 1}}" class="pickup-more-btn" bindtap="openPickupStoreSelector">更换自提点</button>
       </view>
     </view>
     <view class="field upload-field" wx:if="{{!normalMode}}">

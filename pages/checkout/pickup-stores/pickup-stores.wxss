@@ -1,0 +1,113 @@
+.page {
+  min-height: 100vh;
+  padding: 28rpx;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #FFF9F3 0%, #ffffff 56%, #FFF3E8 100%);
+}
+
+.page-head {
+  padding: 28rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(83, 69, 64, .08);
+}
+
+.title {
+  color: #1F2933;
+  font-size: 36rpx;
+  font-weight: 950;
+}
+
+.subtitle {
+  margin-top: 10rpx;
+  color: #6b7280;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.store-list {
+  display: grid;
+  gap: 18rpx;
+  margin-top: 22rpx;
+}
+
+.store-card {
+  padding: 22rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255,106,0,.16);
+  box-shadow: 0 12rpx 30rpx rgba(255,106,0,.07);
+  box-sizing: border-box;
+}
+
+.store-card.selected {
+  border-color: #FFD21A;
+  box-shadow: 0 16rpx 36rpx rgba(255,106,0,.12);
+}
+
+.store-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  color: #1F2933;
+  font-size: 29rpx;
+  font-weight: 950;
+}
+
+.tag {
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
+  color: #ffffff;
+  font-size: 18rpx;
+  font-weight: 900;
+}
+
+.tag.soft {
+  background: #FFF3E8;
+  color: #FF5A00;
+}
+
+.line {
+  margin-top: 10rpx;
+  color: #6b7280;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.distance {
+  margin-top: 10rpx;
+  color: #FF4D00;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.select-state {
+  height: 72rpx;
+  margin-top: 18rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 25rpx;
+  font-weight: 950;
+}
+
+.store-card:not(.selected) .select-state {
+  background: #ffffff;
+  color: #FF5A00;
+  border: 1rpx solid rgba(255,106,0,.24);
+}
+
+.empty {
+  margin-top: 40rpx;
+  padding: 42rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  color: #6b7280;
+  text-align: center;
+  font-size: 26rpx;
+}
