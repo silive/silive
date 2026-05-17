@@ -6,7 +6,7 @@
 }
 
 .page.has-fixed-actions {
-  padding-bottom: 260rpx;
+  padding-bottom: 320rpx;
 }
 
 .detail-swiper {
@@ -345,9 +345,9 @@
 .floating-cart {
   position: fixed;
   right: 28rpx;
-  bottom: 300rpx;
-  bottom: calc(300rpx + constant(safe-area-inset-bottom));
-  bottom: calc(300rpx + env(safe-area-inset-bottom));
+  bottom: 380rpx;
+  bottom: calc(380rpx + constant(safe-area-inset-bottom));
+  bottom: calc(380rpx + env(safe-area-inset-bottom));
   z-index: 998;
   width: 96rpx;
   height: 96rpx;
