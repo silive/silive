@@ -2262,6 +2262,9 @@
           <label>售后状态<input value="${escapeHtml(afterSalesText(order))}" disabled></label>
           <label>售后类型<input data-order-key="afterSalesType" value="${escapeHtml(order.afterSalesType || order.refundType || "")}"></label>
           <label>退款状态<input data-order-key="refundStatus" value="${escapeHtml(order.refundStatus || "无退款")}"></label>
+          <label>申请次数<input value="${escapeHtml(order.afterSalesApplyCount || order.after_sales_apply_count || 0)}" disabled></label>
+          <label>最近申请时间<input value="${escapeHtml(order.afterSalesRequestedAt || order.after_sales_requested_at || "-")}" disabled></label>
+          <label>最近处理时间<input value="${escapeHtml(order.afterSalesHandledAt || order.after_sales_handled_at || "-")}" disabled></label>
           <label>退款金额<input data-order-key="refundAmount" value="${escapeHtml(order.refundAmount || "")}"></label>
           <label>售后原因<textarea data-order-key="afterSalesReason">${escapeHtml(order.afterSalesReason || order.refundReason || "")}</textarea></label>
           <label>问题说明<textarea data-order-key="afterSalesDesc">${escapeHtml(order.afterSalesDesc || order.refundRemark || "")}</textarea></label>

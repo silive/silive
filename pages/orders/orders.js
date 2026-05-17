@@ -90,6 +90,14 @@ function afterSalesText(order) {
   })[afterSalesStatus(order)] || ""
 }
 
+function afterSalesRejectReason(order = {}) {
+  return order.afterSalesRejectReason ||
+    order.after_sales_reject_reason ||
+    order.rejectReason ||
+    order.refundRejectReason ||
+    "请联系客服了解详情"
+}
+
 function displayStatus(order) {
   const status = order.status || "待发货"
   if (isQuoteOrder(order)) return "待报价"
@@ -165,9 +173,16 @@ function isCompletedWithinAfterSaleWindow(order) {
 
 function canApplyAfterSales(order) {
   if (!isPaid(order) || isQuoteOrder(order) || isUnpaid(order) || isRefunded(order) || isRefunding(order)) return false
+  if (afterSalesStatus(order) === "rejected") return canReapplyAfterSales(order)
   const display = displayStatus(order)
   if (["待收货", "待自提", "制作中", "待确认"].includes(display)) return true
   return isCompletedWithinAfterSaleWindow(order)
+}
+
+function canReapplyAfterSales(order) {
+  if (afterSalesStatus(order) !== "rejected") return false
+  const applyCount = Number(order.afterSalesApplyCount || order.after_sales_apply_count || 0)
+  return applyCount < 2 && isPaid(order) && !isQuoteOrder(order) && !isUnpaid(order) && !isRefunded(order)
 }
 
 function normalizeProduct(product) {
@@ -196,12 +211,14 @@ function normalizeOrder(order, products = []) {
     displayStatus: display,
     afterSalesStatus: afterSalesStatus(order),
     afterSalesText: afterSalesText(order),
+    afterSalesRejectReason: afterSalesStatus(order) === "rejected" ? afterSalesRejectReason(order) : "",
+    canReapplyAfterSales: order.canReapplyAfterSales === true || canReapplyAfterSales(order),
     isQuoteOrder: quote,
     isUnpaidOrder: isUnpaid(order),
     isRefundingOrder: isRefunding(order),
     isRefundedOrder: isRefunded(order),
     canPay: isUnpaid(order) && !quote,
-    canContact: ["待报价", "待确认", "制作中", "待自提"].includes(display),
+    canContact: ["待报价", "待确认", "制作中", "待自提", "售后已拒绝"].includes(display),
     canViewDetail: display === "待收货",
     canShowPickupCode: canShowPickupCode(order),
     canConfirmReceive: display === "待收货",
@@ -595,7 +612,7 @@ Page({
         ...this.data.refundForm
       }
     }).then(() => {
-      wx.showToast({ title: "已提交退款申请", icon: "success" })
+      wx.showToast({ title: "已提交售后申请", icon: "success" })
       this.closeRefund()
       this.loadPage()
     }).catch(error => {

@@ -2203,6 +2203,7 @@ function normalizeOrder(order, index) {
     refundImageUrl: order.refundImageUrl || "",
     refundRejectReason: order.refundRejectReason || order.afterSalesRejectReason || "",
     afterSalesRejectReason: order.afterSalesRejectReason || order.refundRejectReason || "",
+    after_sales_reject_reason: order.afterSalesRejectReason || order.refundRejectReason || "",
     refundReviewedAt: order.refundReviewedAt || null,
     afterSalesStatus,
     after_sales_status: afterSalesStatus,
@@ -2219,6 +2220,10 @@ function normalizeOrder(order, index) {
     after_sales_requested_at: order.afterSalesRequestedAt || null,
     afterSalesHandledAt: order.afterSalesHandledAt || null,
     after_sales_handled_at: order.afterSalesHandledAt || null,
+    afterSalesApplyCount: Number(order.afterSalesApplyCount || order.after_sales_apply_count || 0),
+    after_sales_apply_count: Number(order.afterSalesApplyCount || order.after_sales_apply_count || 0),
+    canApplyAfterSales: canApplyAfterSales(order),
+    canReapplyAfterSales: canReapplyAfterSales(order),
     refund_status: order.refundStatus || "",
     refundNo: order.refundNo || "",
     refundId: order.refundId || "",
@@ -3279,6 +3284,7 @@ async function getOrders(filters = {}) {
     refundImageUrl: row.refund_image_url || "",
     refundRejectReason: row.refund_reject_reason || row.after_sales_reject_reason || "",
     afterSalesRejectReason: row.after_sales_reject_reason || row.refund_reject_reason || "",
+    after_sales_reject_reason: row.after_sales_reject_reason || row.refund_reject_reason || "",
     refundReviewedAt: formatChinaDatetime(row.refund_reviewed_at),
     afterSalesStatus: normalizeAfterSalesStatus(row.after_sales_status || row.refund_status),
     after_sales_status: normalizeAfterSalesStatus(row.after_sales_status || row.refund_status),
@@ -3295,6 +3301,8 @@ async function getOrders(filters = {}) {
     after_sales_requested_at: formatChinaDatetime(row.after_sales_requested_at),
     afterSalesHandledAt: formatChinaDatetime(row.after_sales_handled_at),
     after_sales_handled_at: formatChinaDatetime(row.after_sales_handled_at),
+    afterSalesApplyCount: Number(row.after_sales_apply_count || 0),
+    after_sales_apply_count: Number(row.after_sales_apply_count || 0),
     refund_status: row.refund_status || "",
     refundNo: row.refund_no || "",
     refundId: row.refund_id || "",
@@ -3364,8 +3372,8 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -3401,6 +3409,8 @@ async function saveOrders(orders) {
        after_sales_images = VALUES(after_sales_images),
        after_sales_requested_at = VALUES(after_sales_requested_at),
        after_sales_handled_at = VALUES(after_sales_handled_at),
+       after_sales_reject_reason = VALUES(after_sales_reject_reason),
+       after_sales_apply_count = VALUES(after_sales_apply_count),
        refund_no = VALUES(refund_no),
        refund_id = VALUES(refund_id),
        refund_success_at = VALUES(refund_success_at),
@@ -4042,6 +4052,9 @@ function canApplyAfterSales(order = {}) {
   if (!isOrderPaidForAfterSales(order)) return false
   if (isOrderRefunded(order)) return false
   if (order.paymentStatus === "待报价" || order.status === "待客服确认" || order.status === "待支付") return false
+  if (normalizeAfterSalesStatus(order.afterSalesStatus || order.after_sales_status || order.refundStatus) === "rejected") {
+    return canReapplyAfterSales(order)
+  }
   const status = String(order.status || "")
   const pickupStatus = String(order.pickupStatus || "")
   if (["已发货", "退款中", "制作中", "待发货"].includes(status)) return true
@@ -4052,6 +4065,15 @@ function canApplyAfterSales(order = {}) {
     return !!completedAt && Date.now() - completedAt.getTime() <= 7 * 24 * 60 * 60 * 1000
   }
   return false
+}
+
+function canReapplyAfterSales(order = {}) {
+  const afterSalesStatus = normalizeAfterSalesStatus(order.afterSalesStatus || order.after_sales_status || order.refundStatus)
+  const applyCount = Number(order.afterSalesApplyCount || order.after_sales_apply_count || 0)
+  if (afterSalesStatus !== "rejected") return false
+  if (applyCount >= 2) return false
+  if (!isOrderPaidForAfterSales(order) || isOrderRefunded(order)) return false
+  return true
 }
 
 function normalizeAfterSalesType(value) {
@@ -4079,13 +4101,15 @@ async function applyAfterSalesRequest(data) {
   if (index < 0) throw new Error("订单不存在")
   if (!orderBelongsToIdentity(orders[index], data)) throw new Error("无权操作该订单")
   if (!canApplyAfterSales(orders[index])) throw httpError(400, "当前订单暂不支持申请售后")
-  if (["requested", "approved", "refund_pending"].includes(orders[index].afterSalesStatus) || ["待审核", "退款处理中", "售后处理中"].includes(orders[index].refundStatus)) {
+  const currentAfterSalesStatus = normalizeAfterSalesStatus(orders[index].afterSalesStatus || orders[index].refundStatus)
+  if (["requested", "approved", "refund_pending"].includes(currentAfterSalesStatus) || ["待审核", "退款处理中", "售后处理中"].includes(orders[index].refundStatus)) {
     throw httpError(400, "该订单已有售后申请，请勿重复提交")
   }
   const type = normalizeAfterSalesType(data.afterSalesType || data.refundType)
   const images = normalizeAfterSalesImagesInput(data.afterSalesImages || data.images || data.refundImageUrl)
   const now = formatDateTime(new Date())
   const refundAmount = afterSalesRefundAmount(orders[index], type)
+  const nextApplyCount = Number(orders[index].afterSalesApplyCount || orders[index].after_sales_apply_count || 0) + 1
   orders[index] = {
     ...orders[index],
     status: orders[index].status,
@@ -4096,6 +4120,7 @@ async function applyAfterSalesRequest(data) {
     refundRemark: data.afterSalesDesc || data.refundRemark || "",
     refundImageUrl: images[0] || "",
     refundRejectReason: "",
+    afterSalesRejectReason: "",
     refundReviewedAt: null,
     afterSalesStatus: "requested",
     afterSalesType: type,
@@ -4103,7 +4128,8 @@ async function applyAfterSalesRequest(data) {
     afterSalesDesc: data.afterSalesDesc || data.refundRemark || "",
     afterSalesImages: images,
     afterSalesRequestedAt: now,
-    afterSalesHandledAt: null
+    afterSalesHandledAt: null,
+    afterSalesApplyCount: nextApplyCount
   }
   await saveOrders([orders[index]])
   return orders[index]
@@ -4887,6 +4913,8 @@ async function initDb() {
   await ensureColumn("orders", "after_sales_images", "JSON")
   await ensureColumn("orders", "after_sales_requested_at", "DATETIME")
   await ensureColumn("orders", "after_sales_handled_at", "DATETIME")
+  await ensureColumn("orders", "after_sales_reject_reason", "VARCHAR(255)")
+  await ensureColumn("orders", "after_sales_apply_count", "INT DEFAULT 0")
   await ensureColumn("orders", "refund_no", "VARCHAR(80)")
   await ensureColumn("orders", "refund_id", "VARCHAR(120)")
   await ensureColumn("orders", "refund_success_at", "DATETIME")

@@ -321,6 +321,10 @@
   line-height: 1.4;
 }
 
+.reject-reason {
+  color: #F59E0B;
+}
+
 .load-more-btn {
   width: 260rpx;
   height: 68rpx;
