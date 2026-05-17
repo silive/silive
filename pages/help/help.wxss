@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 36rpx 28rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
+  background: linear-gradient(180deg, #FFF9F3 0%, #ffffff 52%, #FFF3E8 100%);
 }
 
 .hero {
@@ -13,7 +13,7 @@
 }
 
 .eyebrow {
-  color: #b96f67;
+  color: #E94B00;
   font-size: 21rpx;
   font-weight: 900;
   letter-spacing: 0;
@@ -21,7 +21,7 @@
 
 .title {
   margin-top: 8rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 42rpx;
   font-weight: 900;
 }
@@ -40,8 +40,8 @@
   padding: 0;
   border-radius: 28rpx;
   overflow: hidden;
-  background: #eef6ff;
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
+  background: #FFF3E8;
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
   text-align: left;
   line-height: normal;
 }
@@ -99,7 +99,7 @@
 }
 
 .article-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 29rpx;
   font-weight: 900;
 }
@@ -115,8 +115,8 @@
   width: 52rpx;
   height: 52rpx;
   border-radius: 50%;
-  background: #f4f9ff;
-  color: #8d5a54;
+  background: #FFF9F3;
+  color: #E94B00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -127,7 +127,7 @@
 
 .article-body {
   margin-top: 20rpx;
-  color: #5f5753;
+  color: #6B7280;
   font-size: 25rpx;
   line-height: 1.7;
 }
@@ -139,7 +139,7 @@
 }
 
 .article-content {
-  color: #5f5753;
+  color: #6B7280;
   font-size: 25rpx;
   line-height: 1.7;
 }
@@ -154,7 +154,7 @@
 }
 
 .empty-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 30rpx;
   font-weight: 900;
 }
@@ -170,7 +170,7 @@
   height: 74rpx;
   margin: 24rpx auto 0;
   border-radius: 999rpx;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -185,7 +185,7 @@
   margin-top: 28rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   box-shadow: 0 18rpx 42rpx rgba(32, 32, 32, .14);
 }
 
@@ -228,7 +228,7 @@
 .help-page {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 126, 159, .18), transparent 28%),
-    linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
+    linear-gradient(180deg, #FFF9F3 0%, #ffffff 50%, #ffffff 100%);
   animation: pageFade .34s ease both;
 }
 
@@ -238,23 +238,23 @@
 }
 
 .eyebrow {
-  color: #36cfc9;
+  color: #FFD21A;
 }
 
 .hero,
 .article-card,
 .empty-card {
-  border: 1rpx solid rgba(22,119,255,.14);
+  border: 1rpx solid rgba(255,106,0,.14);
   border-radius: 30rpx;
   background: rgba(255, 255, 255, .86);
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
   backdrop-filter: blur(18rpx);
 }
 
 .title,
 .article-title,
 .empty-title {
-  color: #1f2937;
+  color: #1F2933;
   font-weight: 950;
 }
 
@@ -268,14 +268,14 @@
 
 .article-arrow,
 .contact-btn {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
-  box-shadow: 0 14rpx 30rpx rgba(22,119,255,.14);
+  box-shadow: 0 14rpx 30rpx rgba(255,106,0,.14);
 }
 
 .help-banner {
   border-radius: 30rpx;
-  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.14);
+  box-shadow: 0 24rpx 56rpx rgba(255,106,0,.14);
 }
 
 .banner-copy,
@@ -285,7 +285,7 @@
 
 /* Runtime theme variables */
 .help-page {
-  background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
+  background: linear-gradient(180deg, var(--page-top-color, #FFF9F3) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .hero,
@@ -293,22 +293,22 @@
 .empty-card {
   border-radius: var(--card-radius, 30rpx);
   background: var(--card-color, rgba(255,255,255,.86));
-  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(22,119,255,.10));
+  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(255,106,0,.10));
 }
 
 .article-arrow,
 .contact-btn {
-  background: linear-gradient(135deg, var(--button-start, #1677ff), var(--button-end, #36cfc9));
+  background: linear-gradient(135deg, var(--button-start, #FF7A00), var(--button-end, #FF4D00));
 }
 
 .eyebrow {
-  color: var(--accent-color, #36cfc9);
+  color: var(--accent-color, #FFD21A);
 }
 
 .title,
 .article-title,
 .empty-title {
-  color: var(--text-color, #1f2937);
+  color: var(--text-color, #1F2933);
 }
 
 .subtitle,

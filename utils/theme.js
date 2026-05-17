@@ -3,38 +3,38 @@ const ENABLE_REMOTE_THEME = false
 const DEFAULT_THEME = {
   skinId: "skin01",
   skin: "skin01",
-  name: "Skin01 蓝白清爽科技风",
+  name: "Skin01 橙色活力品牌风",
   version: 1,
   updatedAt: "",
   colors: {
-    primaryColor: "#1677FF",
-    accentColor: "#36CFC9",
-    lightBg: "#EEF6FF",
-    pageTopColor: "#F4F9FF",
+    primaryColor: "#FF5A00",
+    accentColor: "#FFD21A",
+    lightBg: "#FFF3E8",
+    pageTopColor: "#FFF9F3",
     pageBottomColor: "#FFFFFF",
     cardColor: "#FFFFFF",
     textColor: "#1F2937",
     mutedTextColor: "#6B7280",
-    priceColor: "#FF6B35",
+    priceColor: "#FF4D00",
     successColor: "#22C55E",
     warningColor: "#F59E0B",
-    borderColor: "#DCEBFF",
-    buttonGradientStart: "#1677FF",
-    buttonGradientEnd: "#36CFC9",
-    shadowColor: "rgba(22,119,255,.10)"
+    borderColor: "#FFD9BF",
+    buttonGradientStart: "#FF7A00",
+    buttonGradientEnd: "#FF4D00",
+    shadowColor: "rgba(255,106,0,.10)"
   },
   radius: {
     cardRadius: 28,
     buttonRadius: 999
   },
   tabbar: {
-    activeColor: "#1677FF",
+    activeColor: "#FF5A00",
     inactiveColor: "#999999",
     backgroundColor: "#FFFFFF"
   },
   navigationBar: {
     frontColor: "#000000",
-    backgroundColor: "#F4F9FF"
+    backgroundColor: "#FFF9F3"
   },
   banners: {},
   icons: {},
@@ -133,7 +133,7 @@ function buildThemeStyle(theme = DEFAULT_THEME) {
     `--price-color:${c.priceColor}`,
     `--success-color:${c.successColor || "#22C55E"}`,
     `--warning-color:${c.warningColor || "#F59E0B"}`,
-    `--border-color:${c.borderColor || "#DCEBFF"}`,
+    `--border-color:${c.borderColor || "#FFD9BF"}`,
     `--button-start:${c.buttonGradientStart}`,
     `--button-end:${c.buttonGradientEnd}`,
     `--card-radius:${next.radius.cardRadius}rpx`,
@@ -152,7 +152,7 @@ function buildThemeStyles(theme = DEFAULT_THEME) {
   return {
     themeStyle: buildThemeStyle(next),
     pageStyle: buildThemeStyle(next),
-    cardStyle: `border-radius:${next.radius.cardRadius}rpx;background:${c.cardColor};border:1rpx solid ${c.borderColor || "#DCEBFF"};box-shadow:0 12rpx 32rpx ${c.shadowColor}`,
+    cardStyle: `border-radius:${next.radius.cardRadius}rpx;background:${c.cardColor};border:1rpx solid ${c.borderColor || "#FFD9BF"};box-shadow:0 12rpx 32rpx ${c.shadowColor}`,
     primaryButtonStyle: `background:${gradient};border-radius:${next.radius.buttonRadius}rpx;color:#fff`,
     secondaryButtonStyle: `background:${c.cardColor};border:1rpx solid ${c.borderColor || c.lightBg};border-radius:${next.radius.buttonRadius}rpx;color:${c.primaryColor}`,
     bannerStyle: `background:${bannerGradient};border-radius:${next.radius.cardRadius}rpx;box-shadow:0 12rpx 32rpx ${c.shadowColor}`,

@@ -62,7 +62,7 @@ function normalizeBannersWithVersion(banners = [], homeUpdatedAt = "") {
       preloadUrl: index > 0 ? (item.bannerThumbUrl || item.thumbUrl || item.bannerUrl || "") : "",
       loaded: true,
       failed: false,
-      placeholderColor: "#eef6ff"
+      placeholderColor: "#FFF3E8"
     }
   })
 }

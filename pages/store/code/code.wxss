@@ -5,8 +5,8 @@
   padding: 30rpx;
   border-radius: 28rpx;
   background: #fff;
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
-  border: 1rpx solid rgba(22,119,255,.14);
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
+  border: 1rpx solid rgba(255,106,0,.14);
 }
 
 .store-code {
@@ -15,14 +15,14 @@
   height: 420rpx;
   margin: 20rpx auto;
   border-radius: 28rpx;
-  background: #f4f9ff;
+  background: #FFF9F3;
 }
 
 .code-tip {
   margin-top: 18rpx;
   padding: 18rpx;
   border-radius: 18rpx;
-  background: #eef6ff;
+  background: #FFF3E8;
   color: #6b7280;
   font-size: 22rpx;
   line-height: 1.45;
@@ -46,8 +46,8 @@
   margin-top: 18rpx;
   padding: 0 24rpx;
   border-radius: 999rpx;
-  background: #eef6ff;
-  color: #1677ff;
+  background: #FFF3E8;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;

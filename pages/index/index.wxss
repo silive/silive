@@ -4,7 +4,7 @@
   box-sizing: border-box;
   background:
     radial-gradient(circle at 18% 0%, rgba(255, 176, 166, .26), transparent 28%),
-    linear-gradient(180deg, #f4f9ff 0%, #ffffff 46%, #eef6ff 100%);
+    linear-gradient(180deg, #FFF9F3 0%, #ffffff 46%, #FFF3E8 100%);
 }
 
 .header {
@@ -15,7 +15,7 @@
 }
 
 .eyebrow {
-  color: #b96f67;
+  color: #E94B00;
   font-size: 20rpx;
   letter-spacing: 2rpx;
   font-weight: 700;
@@ -38,8 +38,8 @@
   margin: 0;
   border-radius: 50%;
   border: 0;
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   flex: 0 0 64rpx;
   display: inline-flex;
   align-items: center;
@@ -72,7 +72,7 @@
 
 .hero-skeleton {
   position: relative;
-  background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 52%, #f8fbff 100%);
+  background: linear-gradient(135deg, #f5f7fb 0%, #FFF3E8 52%, #f8fbff 100%);
 }
 
 .hero {
@@ -81,7 +81,7 @@
   padding: 36rpx;
   box-sizing: border-box;
   overflow: hidden;
-  background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 100%);
+  background: linear-gradient(135deg, #f5f7fb 0%, #FFF3E8 100%);
 }
 
 .hero-image,
@@ -95,7 +95,7 @@
 .hero-placeholder {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 52%, #f8fbff 100%);
+  background: linear-gradient(135deg, #f5f7fb 0%, #FFF3E8 52%, #f8fbff 100%);
   opacity: 1;
   transition: opacity .22s ease;
   z-index: 0;
@@ -140,15 +140,15 @@
 }
 
 .hero-print {
-  background: linear-gradient(135deg, #1f2937 0%, #1677ff 54%, #36cfc9 100%);
+  background: linear-gradient(135deg, #FF7A00 0%, #FF5A00 54%, #FFD21A 100%);
 }
 
 .hero-laser {
-  background: linear-gradient(135deg, #1f2937 0%, #36cfc9 56%, #36cfc9 100%);
+  background: linear-gradient(135deg, #FF7A00 0%, #FFD21A 56%, #FFD21A 100%);
 }
 
 .hero-studio {
-  background: linear-gradient(135deg, #1f2937 0%, #1677ff 52%, #36cfc9 100%);
+  background: linear-gradient(135deg, #FF7A00 0%, #FF5A00 52%, #FFD21A 100%);
 }
 
 .hero-copy {
@@ -202,7 +202,7 @@
 }
 
 .search-icon {
-  color: #b96f67;
+  color: #E94B00;
   font-size: 28rpx;
   font-weight: 850;
 }
@@ -211,13 +211,13 @@
   flex: 1;
   min-width: 0;
   height: 78rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 25rpx;
   font-weight: 700;
 }
 
 .search-placeholder {
-  color: #aaa19d;
+  color: #9CA3AF;
   font-weight: 500;
 }
 
@@ -225,8 +225,8 @@
   width: 46rpx;
   height: 46rpx;
   border-radius: 50%;
-  background: #f4f9ff;
-  color: #8d5a54;
+  background: #FFF9F3;
+  color: #E94B00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -247,13 +247,13 @@
 }
 
 .search-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 28rpx;
   font-weight: 850;
 }
 
 .search-count {
-  color: #b96f67;
+  color: #E94B00;
   font-size: 22rpx;
   font-weight: 800;
 }
@@ -278,8 +278,8 @@
   margin: 22rpx auto 0;
   padding: 0;
   border-radius: 999rpx;
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -331,7 +331,7 @@
   width: 226rpx;
   height: 4rpx;
   border-radius: 999rpx;
-  background: linear-gradient(90deg, transparent, #ffffff, #36cfc9);
+  background: linear-gradient(90deg, transparent, #ffffff, #FFD21A);
   transform: rotate(-28deg);
   box-shadow: 0 0 18rpx rgba(246, 200, 106, .86);
 }
@@ -381,8 +381,8 @@
   width: 42rpx;
   height: 42rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #eef6ff, #eef6ff);
-  color: #8d5a54;
+  background: linear-gradient(135deg, #FFF3E8, #FFF3E8);
+  color: #E94B00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -393,7 +393,7 @@
 
 .trust-text {
   width: 100%;
-  color: #5f5753;
+  color: #6B7280;
   font-size: 19rpx;
   font-weight: 700;
   line-height: 1.28;
@@ -427,8 +427,8 @@
   min-width: 96rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #eef6ff;
-  color: #1677ff;
+  background: #FFF3E8;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -447,7 +447,7 @@
 }
 
 .entry-name {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 28rpx;
   line-height: 1.25;
   font-weight: 950;
@@ -496,7 +496,7 @@
 
 .category-name {
   margin-top: 14rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 28rpx;
   font-weight: 800;
 }
@@ -528,7 +528,7 @@
 .upload-btn {
   padding: 0 26rpx;
   gap: 20rpx;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #ffffff;
   box-shadow: 0 18rpx 40rpx rgba(32, 32, 32, .18);
   text-align: left;
@@ -538,8 +538,8 @@
   width: 54rpx;
   height: 54rpx;
   border-radius: 50%;
-  background: #8ec5ff;
-  color: #1f2937;
+  background: #FFD21A;
+  color: #1F2933;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -563,7 +563,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 10rpx;
-  background: #e6f7ff;
+  background: #FFF3E8;
   color: #24302d;
   font-size: 24rpx;
   font-weight: 800;
@@ -575,7 +575,7 @@
 
 .case-line {
   margin-top: 38rpx;
-  color: #8d5a54;
+  color: #E94B00;
   font-size: 24rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
@@ -589,7 +589,7 @@
 }
 
 .section-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 34rpx;
   font-weight: 850;
 }
@@ -601,7 +601,7 @@
 }
 
 .section-more {
-  color: #b96f67;
+  color: #E94B00;
   font-size: 24rpx;
   font-weight: 800;
 }
@@ -623,7 +623,7 @@
   padding: 16rpx;
   border-radius: 24rpx;
   background: rgba(255, 255, 255, .94);
-  box-shadow: 0 12rpx 30rpx rgba(20, 60, 100, .06);
+  box-shadow: 0 12rpx 30rpx rgba(255, 106, 0, .06);
   box-sizing: border-box;
 }
 
@@ -645,19 +645,19 @@
 .cover-keyring {
   background:
     radial-gradient(circle at 58% 42%, #ffffff 0 15%, transparent 16%),
-    linear-gradient(135deg, #8ec5ff, #1677ff);
+    linear-gradient(135deg, #FFD21A, #FF5A00);
 }
 
 .cover-pet {
   background:
-    radial-gradient(circle at 48% 38%, #e6f7ff 0 18%, transparent 19%),
-    linear-gradient(135deg, #e6f7ff, #1677ff);
+    radial-gradient(circle at 48% 38%, #FFF3E8 0 18%, transparent 19%),
+    linear-gradient(135deg, #FFF3E8, #FF5A00);
 }
 
 .cover-wood {
   background:
     repeating-linear-gradient(35deg, rgba(255,255,255,.18) 0 10rpx, transparent 10rpx 22rpx),
-    linear-gradient(135deg, #1677ff, #1677ff);
+    linear-gradient(135deg, #FF5A00, #FF5A00);
 }
 
 .product-badge {
@@ -668,7 +668,7 @@
   padding: 0 14rpx;
   border-radius: 999rpx;
   background: rgba(255, 255, 255, .9);
-  color: #1677ff;
+  color: #FF5A00;
   font-size: 18rpx;
   font-weight: 800;
   display: flex;
@@ -677,17 +677,17 @@
 
 .badge-new {
   background: rgba(255, 255, 255, .92);
-  color: #8d5a54;
+  color: #E94B00;
 }
 
 .badge-hot {
-  background: #eef6ff;
-  color: #1677ff;
+  background: #FFF3E8;
+  color: #FF5A00;
 }
 
 .badge-best {
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
 }
 
 .product-info {
@@ -698,7 +698,7 @@
 }
 
 .product-name {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 30rpx;
   font-weight: 850;
   line-height: 1.32;
@@ -711,7 +711,7 @@
 
 .product-intro {
   margin-top: 8rpx;
-  color: #958d89;
+  color: #6B7280;
   font-size: 23rpx;
   line-height: 1.35;
   overflow: hidden;
@@ -725,8 +725,8 @@
   height: 34rpx;
   padding: 0 14rpx;
   border-radius: 999rpx;
-  background: #f4f9ff;
-  color: #8d5a54;
+  background: #FFF9F3;
+  color: #E94B00;
   display: flex;
   align-items: center;
   font-size: 19rpx;
@@ -741,7 +741,7 @@
 }
 
 .price {
-  color: #1677ff;
+  color: #FF5A00;
   font-size: 34rpx;
   font-weight: 850;
 }
@@ -772,8 +772,8 @@
   width: 64rpx;
   height: 64rpx;
   border-radius: 50%;
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -782,7 +782,7 @@
 }
 
 .review-name {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 26rpx;
   font-weight: 850;
 }
@@ -795,7 +795,7 @@
 
 .review-text {
   margin-top: 18rpx;
-  color: #5f5753;
+  color: #6B7280;
   font-size: 25rpx;
   line-height: 1.55;
 }
@@ -808,8 +808,8 @@
   margin-top: 42rpx;
   padding: 28rpx;
   border-radius: 24rpx;
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   box-shadow: 0 20rpx 48rpx rgba(32, 32, 32, .18);
 }
 
@@ -830,7 +830,7 @@
   height: 68rpx;
   border-radius: 999rpx;
   background: #f8fbff;
-  color: #1f2937;
+  color: #1F2933;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -842,9 +842,9 @@
 .page {
   padding: 30rpx 28rpx 52rpx;
   background:
-    radial-gradient(circle at 8% 2%, rgba(22,119,255,.14), transparent 28%),
-    radial-gradient(circle at 96% 18%, rgba(54,207,201,.14), transparent 30%),
-    linear-gradient(180deg, #f4f9ff 0%, #ffffff 44%, #ffffff 100%);
+    radial-gradient(circle at 8% 2%, rgba(255,106,0,.14), transparent 28%),
+    radial-gradient(circle at 96% 18%, rgba(255,210,26,.14), transparent 30%),
+    linear-gradient(180deg, #FFF9F3 0%, #ffffff 44%, #ffffff 100%);
   animation: pageFade .36s ease both;
 }
 
@@ -856,7 +856,7 @@
 .eyebrow,
 .section-more,
 .search-count {
-  color: #36cfc9;
+  color: #FFD21A;
   letter-spacing: 1rpx;
 }
 
@@ -867,15 +867,15 @@
 }
 
 .header-mark {
-  background: linear-gradient(135deg, #1677ff 0%, #36cfc9 100%);
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #fff;
-  box-shadow: 0 18rpx 36rpx rgba(22,119,255,.18);
+  box-shadow: 0 18rpx 36rpx rgba(255,106,0,.18);
 }
 
 .hero-swiper {
   height: 330rpx;
   border-radius: 34rpx;
-  box-shadow: 0 28rpx 68rpx rgba(22,119,255,.16);
+  box-shadow: 0 28rpx 68rpx rgba(255,106,0,.16);
 }
 
 .hero {
@@ -894,7 +894,7 @@
 .hero-print,
 .hero-laser,
 .hero-studio {
-  background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 52%, #f8fbff 100%);
+  background: linear-gradient(135deg, #f5f7fb 0%, #FFF3E8 52%, #f8fbff 100%);
 }
 
 .hero-tag {
@@ -918,10 +918,10 @@
 .product-card,
 .review-card,
 .search-empty {
-  border: 1rpx solid rgba(22,119,255,.14);
+  border: 1rpx solid rgba(255,106,0,.14);
   border-radius: 28rpx;
   background: rgba(255, 255, 255, .84);
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
   backdrop-filter: blur(18rpx);
 }
 
@@ -931,7 +931,7 @@
 }
 
 .search-icon {
-  color: #36cfc9;
+  color: #FFD21A;
 }
 
 .entry-grid {
@@ -954,8 +954,8 @@
   height: 96rpx;
   min-width: 96rpx;
   border-radius: 24rpx;
-  background: linear-gradient(135deg, #eef6ff, #e6f4ff);
-  color: #1677ff;
+  background: linear-gradient(135deg, #FFF3E8, #FFF3E8);
+  color: #FF5A00;
   box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, .9);
 }
 
@@ -963,7 +963,7 @@
 .section-title,
 .product-name,
 .review-name {
-  color: #1f2937;
+  color: #1F2933;
   font-weight: 950;
 }
 
@@ -982,9 +982,9 @@
 }
 
 .trust-icon {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
-  box-shadow: 0 10rpx 22rpx rgba(22,119,255,.14);
+  box-shadow: 0 10rpx 22rpx rgba(255,106,0,.14);
 }
 
 .cover-keyring,
@@ -992,57 +992,57 @@
 .cover-wood {
   background:
     radial-gradient(circle at 28% 20%, rgba(255, 255, 255, .75), transparent 22%),
-    linear-gradient(135deg, #dcecff, #36cfc9 52%, #1677ff);
+    linear-gradient(135deg, #FFF0DB, #FFD21A 52%, #FF5A00);
 }
 
 .product-badge,
 .badge-new,
 .badge-hot {
   background: rgba(255, 255, 255, .92);
-  color: #1677ff;
+  color: #FF5A00;
 }
 
 .badge-best {
-  background: linear-gradient(135deg, #1f2937, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FFD21A);
   color: #fff;
 }
 
 .product-proof {
-  background: #eef6ff;
-  color: #1677ff;
+  background: #FFF3E8;
+  color: #FF5A00;
 }
 
 .price {
-  color: #ff6b35;
+  color: #FF4D00;
   font-weight: 950;
 }
 
 .search-service,
 .contact-btn {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
-  box-shadow: 0 14rpx 30rpx rgba(22,119,255,.14);
+  box-shadow: 0 14rpx 30rpx rgba(255,106,0,.14);
 }
 
 .review-avatar {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
-  box-shadow: 0 10rpx 24rpx rgba(22,119,255,.14);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
+  box-shadow: 0 10rpx 24rpx rgba(255,106,0,.14);
 }
 
 .contact-panel {
   border-radius: 30rpx;
   background:
     radial-gradient(circle at 88% 0%, rgba(255, 255, 255, .24), transparent 30%),
-    linear-gradient(135deg, #1f2937 0%, #36cfc9 100%);
-  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.13);
+    linear-gradient(135deg, #FF7A00 0%, #FFD21A 100%);
+  box-shadow: 0 24rpx 56rpx rgba(255,106,0,.13);
 }
 
 /* Runtime theme variables */
 .page {
   background:
-    radial-gradient(circle at 8% 2%, var(--soft-color, rgba(22,119,255,.14)), transparent 28%),
-    radial-gradient(circle at 96% 18%, var(--accent-color, rgba(54,207,201,.14)), transparent 30%),
-    linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 44%, var(--page-bottom-color, #ffffff) 100%);
+    radial-gradient(circle at 8% 2%, var(--soft-color, rgba(255,106,0,.14)), transparent 28%),
+    radial-gradient(circle at 96% 18%, var(--accent-color, rgba(255,210,26,.14)), transparent 30%),
+    linear-gradient(180deg, var(--page-top-color, #FFF9F3) 0%, #ffffff 44%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .header-mark,
@@ -1050,7 +1050,7 @@
 .contact-btn,
 .trust-icon,
 .review-avatar {
-  background: linear-gradient(135deg, var(--button-start, #1677ff), var(--button-end, #36cfc9));
+  background: linear-gradient(135deg, var(--button-start, #FF7A00), var(--button-end, #FF4D00));
 }
 
 .search-box,
@@ -1061,7 +1061,7 @@
 .search-empty {
   border-radius: var(--card-radius, 28rpx);
   background: var(--card-color, rgba(255,255,255,.86));
-  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(22,119,255,.10));
+  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(255,106,0,.10));
 }
 
 .eyebrow,
@@ -1070,7 +1070,7 @@
 .search-count,
 .product-proof,
 .entry-icon {
-  color: var(--accent-color, #1677ff);
+  color: var(--accent-color, #FF5A00);
 }
 
 .brand,
@@ -1078,7 +1078,7 @@
 .entry-name,
 .product-name,
 .review-name {
-  color: var(--text-color, #1f2937);
+  color: var(--text-color, #1F2933);
 }
 
 .section-subtitle,
@@ -1091,9 +1091,9 @@
 }
 
 .price {
-  color: var(--price-color, #ff6b35);
+  color: var(--price-color, #FF4D00);
 }
 
 .product-proof {
-  background: var(--soft-color, #eef6ff);
+  background: var(--soft-color, #FFF3E8);
 }

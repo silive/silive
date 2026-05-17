@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 32rpx 28rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
+  background: linear-gradient(180deg, #FFF9F3 0%, #ffffff 50%, #ffffff 100%);
 }
 
 .store-card,
@@ -13,8 +13,8 @@
 .verify-card {
   border-radius: 28rpx;
   background: rgba(255, 255, 255, .88);
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
-  border: 1rpx solid rgba(22,119,255,.14);
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
+  border: 1rpx solid rgba(255,106,0,.14);
 }
 
 .store-card,
@@ -24,14 +24,14 @@
 }
 
 .eyebrow {
-  color: #1677ff;
+  color: #FF5A00;
   font-size: 20rpx;
   font-weight: 950;
 }
 
 .store-name {
   margin-top: 8rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 40rpx;
   font-weight: 950;
 }
@@ -60,7 +60,7 @@
 }
 
 .stat-value {
-  color: #ff6b35;
+  color: #FF4D00;
   font-size: 38rpx;
   font-weight: 950;
 }
@@ -89,7 +89,7 @@
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
   display: flex;
   align-items: center;
@@ -100,7 +100,7 @@
 .entry-title,
 .section-title {
   margin-top: 12rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 27rpx;
   font-weight: 950;
 }
@@ -127,7 +127,7 @@
   height: 112rpx;
   border-radius: 18rpx;
   overflow: hidden;
-  background: #eef6ff;
+  background: #FFF3E8;
   flex-shrink: 0;
 }
 
@@ -135,13 +135,13 @@
   width: 100%;
   height: 100%;
   display: block;
-  background: #eef6ff;
+  background: #FFF3E8;
 }
 
 .store-order-placeholder {
   width: 100%;
   height: 100%;
-  color: #1677ff;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,7 +162,7 @@
 }
 
 .order-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 27rpx;
   font-weight: 950;
 }
@@ -171,15 +171,15 @@
   display: inline-flex;
   padding: 6rpx 14rpx;
   border-radius: 999rpx;
-  background: #eef6ff;
-  color: #ff6b35;
+  background: #FFF3E8;
+  color: #FF4D00;
   font-size: 20rpx;
   font-weight: 900;
 }
 
 .amount {
   margin-top: 10rpx;
-  color: #ff6b35;
+  color: #FF4D00;
   font-size: 30rpx;
   font-weight: 950;
 }
@@ -208,7 +208,7 @@
 }
 
 .tab.active {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
 }
 
@@ -219,7 +219,7 @@
   padding: 0 22rpx;
   border-radius: 22rpx;
   background: #ffffff;
-  border: 1rpx solid rgba(22,119,255,.16);
+  border: 1rpx solid rgba(255,106,0,.16);
   box-sizing: border-box;
 }
 
@@ -228,7 +228,7 @@
   margin-top: 20rpx;
   padding: 0 28rpx;
   border-radius: 999rpx;
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
   display: flex;
   align-items: center;

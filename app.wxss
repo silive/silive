@@ -1,7 +1,7 @@
 page {
   min-height: 100%;
-  background: #f4f9ff;
-  color: #1f2937;
+  background: #FFF9F3;
+  color: #1F2933;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 

@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 36rpx 28rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 52%, #eef6ff 100%);
+  background: linear-gradient(180deg, #FFF9F3 0%, #ffffff 52%, #FFF3E8 100%);
 }
 
 .user-card {
@@ -27,8 +27,8 @@
 }
 
 .placeholder {
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -37,7 +37,7 @@
 }
 
 .user-name {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 32rpx;
   font-weight: 850;
 }
@@ -53,7 +53,7 @@
   min-width: 112rpx;
   padding: 0 20rpx;
   border-radius: 999rpx;
-  background: #e6f7ff;
+  background: #FFF3E8;
   color: #24302d;
   font-size: 23rpx;
   font-weight: 850;
@@ -69,16 +69,16 @@
   height: 64rpx;
   padding: 0 22rpx;
   border-radius: 999rpx;
-  border: 1rpx solid #dcebff;
+  border: 1rpx solid #FFD9BF;
   background: #ffffff;
-  color: #1677ff;
+  color: #FF5A00;
   font-size: 23rpx;
   font-weight: 900;
   line-height: 64rpx;
   text-align: center;
   white-space: nowrap;
   box-sizing: border-box;
-  box-shadow: 0 8rpx 20rpx rgba(22, 119, 255, .08);
+  box-shadow: 0 8rpx 20rpx rgba(255, 106, 0, .08);
 }
 
 .avatar-btn::after {
@@ -86,7 +86,7 @@
 }
 
 .avatar-btn:active {
-  background: #eef6ff;
+  background: #FFF3E8;
   transform: scale(.98);
 }
 
@@ -94,7 +94,7 @@
   width: 220rpx;
   height: 72rpx;
   padding: 0 28rpx;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 900;
@@ -116,8 +116,8 @@
   margin-top: 28rpx;
   padding: 26rpx;
   border-radius: 22rpx;
-  background: #1f2937;
-  color: #f8fbff;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   box-shadow: 0 18rpx 42rpx rgba(32, 32, 32, .16);
 }
 
@@ -150,21 +150,21 @@
   padding: 24rpx;
   border-radius: 26rpx;
   background: rgba(255, 255, 255, .9);
-  border: 1rpx solid rgba(22,119,255,.14);
+  border: 1rpx solid rgba(255,106,0,.14);
   box-shadow: 0 14rpx 36rpx rgba(83, 69, 64, .08);
 }
 
 .store-entry-card:active {
   transform: scale(.985);
-  background: #eef6ff;
+  background: #FFF3E8;
 }
 
 .store-entry-icon {
   width: 72rpx;
   height: 72rpx;
   border-radius: 24rpx;
-  background: linear-gradient(135deg, #eef6ff, #e6f4ff);
-  color: #1677ff;
+  background: linear-gradient(135deg, #FFF3E8, #FFF3E8);
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -177,7 +177,7 @@
 }
 
 .store-entry-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 28rpx;
   font-weight: 950;
 }
@@ -196,7 +196,7 @@
   padding: 6rpx 14rpx;
   border-radius: 999rpx;
   background: rgba(255, 125, 116, .12);
-  color: #1677ff;
+  color: #FF5A00;
   font-size: 20rpx;
   font-weight: 850;
   box-sizing: border-box;
@@ -244,19 +244,19 @@
   padding: 20rpx 10rpx 18rpx;
   border-radius: 22rpx;
   background: #ffffff;
-  color: #1f2937;
+  color: #1F2933;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 1rpx solid #dcebff;
+  border: 1rpx solid #FFD9BF;
   box-sizing: border-box;
   flex-shrink: 0;
   box-shadow: 0 8rpx 22rpx rgba(83, 69, 64, .05);
 }
 
 .feature-card:active {
-  background: #e6f4ff;
+  background: #FFF3E8;
   transform: scale(.985);
 }
 
@@ -264,8 +264,8 @@
   width: 52rpx;
   height: 52rpx;
   border-radius: 50%;
-  background: #eef6ff;
-  color: #5f5753;
+  background: #FFF3E8;
+  color: #6B7280;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -276,7 +276,7 @@
 
 .feature-title {
   margin-top: 14rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 24rpx;
   font-weight: 900;
   line-height: 1.2;
@@ -300,7 +300,7 @@
   height: 38rpx;
   padding: 0 10rpx;
   border-radius: 999rpx;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -316,7 +316,7 @@
   right: 12rpx;
   padding: 5rpx 12rpx;
   border-radius: 999rpx;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #ffffff;
   font-size: 18rpx;
   font-weight: 900;
@@ -329,7 +329,7 @@
   width: 14rpx;
   height: 14rpx;
   border-radius: 50%;
-  background: #1677ff;
+  background: #FF5A00;
   box-shadow: 0 0 0 6rpx rgba(211, 95, 85, .12);
 }
 
@@ -341,7 +341,7 @@
   padding: 0;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #1f2937;
+  background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   box-shadow: 0 18rpx 42rpx rgba(32, 32, 32, .14);
   text-align: left;
   line-height: normal;
@@ -360,7 +360,7 @@
 .profile-banner-mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(22,119,255,.08));
+  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(255,106,0,.08));
 }
 
 .profile-banner-copy {
@@ -395,7 +395,7 @@
 .copyright {
   margin-top: 34rpx;
   background: transparent;
-  color: #aaa19d;
+  color: #9CA3AF;
   font-size: 22rpx;
   font-weight: 600;
   line-height: 1.6;
@@ -406,7 +406,7 @@
 .profile-page {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 126, 159, .18), transparent 28%),
-    linear-gradient(180deg, #f4f9ff 0%, #ffffff 50%, #ffffff 100%);
+    linear-gradient(180deg, #FFF9F3 0%, #ffffff 50%, #ffffff 100%);
   animation: pageFade .34s ease both;
 }
 
@@ -417,10 +417,10 @@
 
 .user-card,
 .feature-panel {
-  border: 1rpx solid rgba(22,119,255,.14);
+  border: 1rpx solid rgba(255,106,0,.14);
   border-radius: 30rpx;
   background: rgba(255, 255, 255, .86);
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.10);
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.10);
   backdrop-filter: blur(18rpx);
 }
 
@@ -428,20 +428,20 @@
 .login-auth-btn,
 .feature-badge,
 .online-pill {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #fff;
-  box-shadow: 0 14rpx 30rpx rgba(22,119,255,.14);
+  box-shadow: 0 14rpx 30rpx rgba(255,106,0,.14);
 }
 
 .auth-btn {
-  background: #eef6ff;
-  color: #1677ff;
+  background: #FFF3E8;
+  color: #FF5A00;
 }
 
 .user-name,
 .feature-title,
 .profile-banner-title {
-  color: #1f2937;
+  color: #1F2933;
   font-weight: 950;
 }
 
@@ -455,24 +455,24 @@
   border-radius: 30rpx;
   background:
     radial-gradient(circle at 86% 0%, rgba(255, 255, 255, .24), transparent 30%),
-    linear-gradient(135deg, #1f2937 0%, #36cfc9 100%);
-  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.13);
+    linear-gradient(135deg, #FF7A00 0%, #FFD21A 100%);
+  box-shadow: 0 24rpx 56rpx rgba(255,106,0,.13);
 }
 
 .feature-card {
-  border-color: rgba(22,119,255,.14);
+  border-color: rgba(255,106,0,.14);
   border-radius: 26rpx;
   background: #ffffff;
-  box-shadow: 0 10rpx 24rpx rgba(22,119,255,.08);
+  box-shadow: 0 10rpx 24rpx rgba(255,106,0,.08);
 }
 
 .feature-card:active {
-  background: #eef6ff;
+  background: #FFF3E8;
 }
 
 .feature-icon {
-  background: linear-gradient(135deg, #eef6ff, #e6f4ff);
-  color: #1677ff;
+  background: linear-gradient(135deg, #FFF3E8, #FFF3E8);
+  color: #FF5A00;
 }
 
 .red-dot {
@@ -482,11 +482,11 @@
 
 .profile-banner {
   border-radius: 30rpx;
-  box-shadow: 0 24rpx 56rpx rgba(22,119,255,.14);
+  box-shadow: 0 24rpx 56rpx rgba(255,106,0,.14);
 }
 
 .profile-banner-mask {
-  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(22,119,255,.10));
+  background: linear-gradient(90deg, rgba(31,41,55,.72), rgba(255,106,0,.10));
 }
 
 .profile-banner-copy,
@@ -496,14 +496,14 @@
 
 /* Runtime theme variables */
 .profile-page {
-  background: linear-gradient(180deg, var(--page-top-color, #f4f9ff) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
+  background: linear-gradient(180deg, var(--page-top-color, #FFF9F3) 0%, #ffffff 50%, var(--page-bottom-color, #ffffff) 100%);
 }
 
 .user-card,
 .feature-panel {
   border-radius: var(--card-radius, 30rpx);
   background: var(--card-color, rgba(255,255,255,.86));
-  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(22,119,255,.10));
+  box-shadow: 0 18rpx 48rpx var(--theme-shadow, rgba(255,106,0,.10));
 }
 
 .placeholder,
@@ -511,31 +511,31 @@
 .feature-badge,
 .online-pill {
   border-radius: var(--button-radius, 999rpx);
-  background: linear-gradient(135deg, var(--button-start, #1677ff), var(--button-end, #36cfc9));
+  background: linear-gradient(135deg, var(--button-start, #FF7A00), var(--button-end, #FF4D00));
 }
 
 .wallet-card {
   background:
     radial-gradient(circle at 86% 0%, rgba(255, 255, 255, .24), transparent 30%),
-    linear-gradient(135deg, var(--button-start, #1f2937), var(--button-end, #36cfc9));
-  box-shadow: 0 24rpx 56rpx var(--theme-shadow, rgba(22,119,255,.13));
+    linear-gradient(135deg, var(--button-start, #FF7A00), var(--button-end, #FF4D00));
+  box-shadow: 0 24rpx 56rpx var(--theme-shadow, rgba(255,106,0,.13));
 }
 
 .auth-btn,
 .feature-icon {
-  background: var(--soft-color, #eef6ff);
-  color: var(--accent-color, #1677ff);
+  background: var(--soft-color, #FFF3E8);
+  color: var(--accent-color, #FF5A00);
 }
 
 .avatar-btn {
   background: #ffffff;
-  color: var(--accent-color, #1677ff);
-  border-color: var(--border-color, #dcebff);
+  color: var(--accent-color, #FF5A00);
+  border-color: var(--border-color, #FFD9BF);
 }
 
 .user-name,
 .feature-title {
-  color: var(--text-color, #1f2937);
+  color: var(--text-color, #1F2933);
 }
 
 .user-desc,

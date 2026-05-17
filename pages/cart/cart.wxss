@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 30rpx 28rpx 150rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 54%, #eef6ff 100%);
+  background: linear-gradient(180deg, #FFF9F3 0%, #ffffff 54%, #FFF3E8 100%);
 }
 
 .page-head {
@@ -12,14 +12,14 @@
 }
 
 .eyebrow {
-  color: #36cfc9;
+  color: #FFD21A;
   font-size: 20rpx;
   font-weight: 900;
 }
 
 .title {
   margin-top: 8rpx;
-  color: #1f2937;
+  color: #1F2933;
   font-size: 42rpx;
   font-weight: 950;
 }
@@ -29,12 +29,12 @@
   height: 54rpx;
   border-radius: 999rpx;
   background: #ffffff;
-  color: #1677ff;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 900;
-  box-shadow: 0 12rpx 30rpx rgba(22,119,255,.10);
+  box-shadow: 0 12rpx 30rpx rgba(255,106,0,.10);
 }
 
 .cart-list {
@@ -51,7 +51,7 @@
   padding: 20rpx;
   border-radius: 28rpx;
   background: #ffffff;
-  box-shadow: 0 14rpx 36rpx rgba(22,119,255,.10);
+  box-shadow: 0 14rpx 36rpx rgba(255,106,0,.10);
   box-sizing: border-box;
 }
 
@@ -65,9 +65,9 @@
   margin: 42rpx 0 0 !important;
   padding: 0 !important;
   border-radius: 50%;
-  background: #eef6ff;
-  border: 2rpx solid #dcebff;
-  color: #1677ff;
+  background: #FFF3E8;
+  border: 2rpx solid #FFD9BF;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -89,8 +89,8 @@
   margin: 0 !important;
   padding: 0 !important;
   border-radius: 50%;
-  background: #eef6ff;
-  color: #1677ff;
+  background: #FFF3E8;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -111,7 +111,7 @@
 }
 
 .check.checked {
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   border-color: transparent;
   color: #ffffff;
 }
@@ -124,14 +124,14 @@
   min-height: 120rpx;
   max-height: 120rpx;
   border-radius: 20rpx;
-  background: #eef6ff;
+  background: #FFF3E8;
   display: block;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .placeholder {
-  color: #1677ff;
+  color: #FF5A00;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -145,7 +145,7 @@
 }
 
 .name {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 28rpx;
   font-weight: 900;
 }
@@ -153,7 +153,7 @@
 .price,
 .total {
   margin-top: 8rpx;
-  color: #ff6b35;
+  color: #FF4D00;
   font-size: 28rpx;
   font-weight: 950;
 }
@@ -169,7 +169,7 @@
 .qty-num {
   width: 56rpx;
   min-width: 56rpx;
-  color: #1f2937;
+  color: #1F2933;
   text-align: center;
   font-weight: 900;
   line-height: 56rpx;
@@ -180,7 +180,7 @@
   margin: 0;
   padding: 0 18rpx;
   border-radius: 999rpx;
-  background: #f4f9ff;
+  background: #FFF9F3;
   color: #6b7280;
   display: flex;
   align-items: center;
@@ -197,11 +197,11 @@
   justify-content: space-between;
   gap: 16rpx;
   padding-top: 12rpx;
-  border-top: 1rpx solid #eef6ff;
+  border-top: 1rpx solid #FFF3E8;
 }
 
 .subtotal {
-  color: #ff6b35;
+  color: #FF4D00;
   font-size: 24rpx;
   font-weight: 950;
 }
@@ -211,12 +211,12 @@
   padding: 58rpx 30rpx;
   border-radius: 28rpx;
   background: #ffffff;
-  box-shadow: 0 14rpx 36rpx rgba(22,119,255,.10);
+  box-shadow: 0 14rpx 36rpx rgba(255,106,0,.10);
   text-align: center;
 }
 
 .empty-title {
-  color: #1f2937;
+  color: #1F2933;
   font-size: 32rpx;
   font-weight: 950;
 }
@@ -233,7 +233,7 @@
   height: 68rpx;
   margin: 28rpx auto 0;
   border-radius: 999rpx;
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -251,7 +251,7 @@
   padding: 14rpx 22rpx;
   border-radius: 999rpx;
   background: #ffffff;
-  box-shadow: 0 18rpx 48rpx rgba(22,119,255,.16);
+  box-shadow: 0 18rpx 48rpx rgba(255,106,0,.16);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -267,7 +267,7 @@
   min-width: 220rpx;
   height: 76rpx;
   border-radius: 999rpx;
-  background: linear-gradient(135deg, #1677ff, #36cfc9);
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
   color: #ffffff;
   display: flex;
   align-items: center;
