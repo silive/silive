@@ -70,6 +70,11 @@
   box-shadow: 0 22rpx 52rpx rgba(63, 45, 42, .14);
 }
 
+.hero-skeleton {
+  position: relative;
+  background: linear-gradient(135deg, #f5f7fb 0%, #eef6ff 52%, #f8fbff 100%);
+}
+
 .hero {
   position: relative;
   height: 304rpx;

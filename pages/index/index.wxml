@@ -10,7 +10,11 @@
     </button>
   </view>
 
-  <swiper class="hero-swiper" autoplay circular interval="3600" duration="650" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
+  <view wx:if="{{bannerLoading && !banners.length}}" class="hero-swiper hero-skeleton">
+    <view class="hero-placeholder"></view>
+  </view>
+
+  <swiper wx:elif="{{banners.length}}" class="hero-swiper" autoplay circular interval="3600" duration="650" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
     <swiper-item wx:for="{{banners}}" wx:key="title">
       <view class="hero hero-{{item.theme}}" style="{{bannerStyle}}" bindtap="openBanner" data-index="{{index}}">
         <view class="hero-placeholder {{item.loaded ? 'is-hidden' : ''}}"></view>
@@ -24,6 +28,10 @@
       </view>
     </swiper-item>
   </swiper>
+
+  <view wx:else class="hero-swiper hero-skeleton">
+    <view class="hero-placeholder"></view>
+  </view>
 
   <view class="search-panel">
     <view class="search-box">

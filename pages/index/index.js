@@ -146,15 +146,20 @@ function buildHomeState(data) {
   }
 }
 
+const initialHomeState = buildHomeState({ ...defaultData, banners: [] })
+
 Page({
   data: {
-    ...buildHomeState(defaultData),
+    ...initialHomeState,
     themeStyle: "",
     themeClass: "theme-skin01",
     cmsStatus: "local",
     headerAvatar: "",
     headerMarkText: "我",
-    preloadBannerThumbCount: 0
+    preloadBannerThumbCount: 0,
+    bannerLoading: true,
+    bannerLoaded: false,
+    bannerError: false
   },
 
   onLoad(options = {}) {
@@ -200,11 +205,17 @@ Page({
     if (this.homeLoading && !force) return
     this.homeLoading = true
     this.lastHomeLoadAt = Date.now()
+    if (!(this.data.banners || []).length) {
+      this.setData({ bannerLoading: true, bannerLoaded: false, bannerError: false })
+    }
     request(`/api/home?_t=${Date.now()}`, { timeout: 8000 })
       .then(data => {
-        const nextHome = buildHomeState(data || defaultData)
+        const nextHome = buildHomeState(data || {})
         const oldBanners = this.data.banners || []
         nextHome.banners = mergeBannerLoadedState(nextHome.banners || [], oldBanners)
+        if (nextHome.banners.length) {
+          wx.setStorageSync("homeBannersCache", nextHome.banners)
+        }
         const firstBanner = nextHome.banners && nextHome.banners[0] ? nextHome.banners[0] : {}
         const preloadBannerThumbCount = this.preloadBannerThumbs(nextHome.banners || [])
         const oldBannerKeys = oldBanners.map(getBannerImageKey).join("|")
@@ -235,15 +246,42 @@ Page({
         this.setData({
           ...nextHome,
           cmsStatus: "online",
-          preloadBannerThumbCount
+          preloadBannerThumbCount,
+          bannerLoading: false,
+          bannerLoaded: !!nextHome.banners.length,
+          bannerError: false
+        })
+        console.log("[home-banner-init-debug]", {
+          initialBannersLength: oldBanners.length,
+          bannerLoading: false,
+          usingCacheBanner: false,
+          usingDefaultFallback: false,
+          apiBannerCount: nextHome.banners.length,
+          firstApiBannerTitle: firstBanner.title || ""
         })
         this.returnedFromHidden = false
         this.homeLoading = false
       })
       .catch(() => {
+        const cachedBanners = wx.getStorageSync("homeBannersCache") || []
+        const hasCache = Array.isArray(cachedBanners) && cachedBanners.length > 0
+        const fallbackHome = hasCache
+          ? buildHomeState({ ...defaultData, banners: cachedBanners })
+          : buildHomeState(defaultData)
         this.setData({
-          ...buildHomeState(defaultData),
-          cmsStatus: "local"
+          ...fallbackHome,
+          cmsStatus: "local",
+          bannerLoading: false,
+          bannerLoaded: hasCache || !!fallbackHome.banners.length,
+          bannerError: true
+        })
+        console.log("[home-banner-init-debug]", {
+          initialBannersLength: (this.data.banners || []).length,
+          bannerLoading: false,
+          usingCacheBanner: hasCache,
+          usingDefaultFallback: !hasCache,
+          apiBannerCount: 0,
+          firstApiBannerTitle: fallbackHome.banners?.[0]?.title || ""
         })
         this.homeLoading = false
       })

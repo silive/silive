@@ -201,6 +201,7 @@ Page({
     themeStyle: "",
     themeClass: "theme-skin01",
     loading: true,
+    loaded: false,
     showCartEntry: false,
     cartCount: 0
   },
@@ -232,6 +233,7 @@ Page({
   },
 
   loadProducts(primary, secondary = "全部", ids = "") {
+    this.setData({ loading: true, loaded: false })
     Promise.all([
       request(`/api/home?t=${Date.now()}`, { timeout: 8000 }),
       request(`/api/products?t=${Date.now()}`, { timeout: 8000 })
@@ -254,7 +256,8 @@ Page({
         secondary: nextSecondary,
         products: filterProducts(allProducts, primary, nextSecondary, ids, normalizeKeyword(this.data.searchKeyword)),
         showCartEntry: this.shouldShowCartEntry(allProducts, primary),
-        loading: false
+        loading: false,
+        loaded: true
       })
       this.loadCartCount()
     }).catch(() => {
@@ -269,7 +272,8 @@ Page({
           secondaryItems: buildSecondaryItems(allProducts, primary, secondaryNav, categoryCatalog),
           products: filterProducts(allProducts, primary, secondaryNav.includes(secondary) ? secondary : "全部", ids, normalizeKeyword(this.data.searchKeyword)),
           showCartEntry: this.shouldShowCartEntry(allProducts, primary),
-          loading: false
+          loading: false,
+          loaded: true
         })
         this.loadCartCount()
       }).catch(() => {
@@ -283,7 +287,8 @@ Page({
           secondaryItems: buildSecondaryItems(allProducts, primary, secondaryNav, categoryCatalog),
           products: filterProducts(allProducts, primary, secondaryNav.includes(secondary) ? secondary : "全部", ids, normalizeKeyword(this.data.searchKeyword)),
           showCartEntry: this.shouldShowCartEntry(allProducts, primary),
-          loading: false
+          loading: false,
+          loaded: true
         })
         this.loadCartCount()
       })

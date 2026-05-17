@@ -19,7 +19,18 @@
     </view>
   </view>
 
-  <view class="product-list" wx:if="{{products.length}}">
+  <view class="category-loading" wx:if="{{loading}}">
+    <view class="loading-card" wx:for="{{[1,2,3,4]}}" wx:key="*this">
+      <view class="loading-cover"></view>
+      <view class="loading-lines">
+        <view class="loading-line wide"></view>
+        <view class="loading-line"></view>
+        <view class="loading-line short"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="product-list" wx:elif="{{products.length}}">
     <view class="product-card" wx:for="{{products}}" wx:key="id" bindtap="openProduct" data-index="{{index}}">
       <view class="product-cover cover-{{item.cover}}">
         <image wx:if="{{item.displayImage || item.imageUrl}}" class="product-image" src="{{item.displayImage || item.imageUrl}}" mode="aspectFill" lazy-load />
@@ -41,7 +52,7 @@
     </view>
   </view>
 
-  <view class="empty-card" wx:else>
+  <view class="empty-card" wx:elif="{{loaded && !loading}}">
     <view class="empty-mark">NEW</view>
     <view class="empty-title">{{searchKeyword ? '暂无相关商品' : '新品正在上架中'}}</view>
     <view class="empty-desc">可联系客服先定制</view>
