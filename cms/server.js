@@ -2480,6 +2480,15 @@ function calculateStoreAmount(amount, type, value) {
   return "0.00"
 }
 
+function calculatePickupServiceFee(amount, type, value) {
+  const paid = Number(amount || 0)
+  const num = Math.max(0, Number(value || 0))
+  if (!paid || type === "none") return "0.00"
+  if (type === "percent") return money(paid * num / 100)
+  if (type === "fixed") return money(num)
+  return "0.00"
+}
+
 function normalizePickupCode(value) {
   return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)
 }
@@ -3497,7 +3506,7 @@ async function calculateOrderStoreIncome(data, amount) {
     ? calculateStoreAmount(amount, referrerStore.referralCommissionType, referrerStore.referralCommissionValue)
     : "0.00"
   const pickupServiceFee = pickupStore
-    ? calculateStoreAmount(amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
+    ? calculatePickupServiceFee(amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
     : "0.00"
   return { referrerStore, pickupStore, referralCommission, pickupServiceFee }
 }
@@ -3556,12 +3565,33 @@ async function resolvePersonalOrderAttribution(phone) {
 
 async function createStoreSettlementRecordsForOrder(order) {
   const existing = await getStoreSettlementRecords()
-  const next = existing.filter(record => order.id !== record.orderId)
+  if (!isOrderPaidForPickupCredential(order)) return existing.filter(record => record.orderId === order.id)
+  const next = [...existing]
   const referrerStore = await getPartnerStore(order.referrerStoreId)
   const pickupStore = await getPartnerStore(order.pickupStoreId)
   const createdAt = formatDateTime(new Date())
+  const upsertSettlementRecord = incoming => {
+    const normalized = normalizeSettlementRecord(incoming)
+    const index = next.findIndex(record => record.id === normalized.id || (record.orderId === normalized.orderId && record.type === normalized.type))
+    if (index >= 0) {
+      next[index] = normalizeSettlementRecord({
+        ...next[index],
+        ...normalized,
+        status: next[index].status || normalized.status,
+        settledAt: next[index].settledAt || normalized.settledAt,
+        settledBy: next[index].settledBy || normalized.settledBy,
+        settleNote: next[index].settleNote || normalized.settleNote,
+        cancelReason: next[index].cancelReason || normalized.cancelReason,
+        batchId: next[index].batchId || normalized.batchId,
+        createdAt: next[index].createdAt || normalized.createdAt,
+        updatedAt: formatDateTime(new Date())
+      }, index)
+      return
+    }
+    next.push(normalized)
+  }
   if (referrerStore && Number(order.referralCommission || 0) > 0) {
-    next.push(normalizeSettlementRecord({
+    upsertSettlementRecord({
       id: `SSR${order.id}REF`,
       storeId: referrerStore.id,
       orderId: order.id,
@@ -3573,10 +3603,10 @@ async function createStoreSettlementRecordsForOrder(order) {
       status: order.storeSettlementStatus || "unsettled",
       description: `推广佣金：${order.productName}`,
       createdAt
-    }))
+    })
   }
   if (pickupStore && Number(order.pickupServiceFee || 0) > 0) {
-    next.push(normalizeSettlementRecord({
+    upsertSettlementRecord({
       id: `SSR${order.id}PIC`,
       storeId: pickupStore.id,
       orderId: order.id,
@@ -3588,10 +3618,20 @@ async function createStoreSettlementRecordsForOrder(order) {
       status: order.storeSettlementStatus || "unsettled",
       description: `自提服务费：${order.productName}`,
       createdAt
-    }))
+    })
   }
-  await saveStoreSettlementRecords(next)
-  return next.filter(record => record.orderId === order.id)
+  const deduped = []
+  const seenOrderTypes = new Set()
+  for (const record of next) {
+    const key = record.orderId ? `${record.orderId}:${record.type}` : ""
+    if (record.orderId === order.id && key) {
+      if (seenOrderTypes.has(key)) continue
+      seenOrderTypes.add(key)
+    }
+    deduped.push(record)
+  }
+  await saveStoreSettlementRecords(deduped)
+  return deduped.filter(record => record.orderId === order.id)
 }
 
 async function sendPickupArrivedNotice(orderId) {
