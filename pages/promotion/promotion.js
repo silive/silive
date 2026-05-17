@@ -12,6 +12,10 @@ function pickOne(list) {
   return list[Math.floor(Math.random() * list.length)]
 }
 
+function productListImage(product = {}) {
+  return product.cartThumbUrl || product.cart_thumb_url || product.thumbUrl || product.thumb_url || product.listImage || product.list_image || product.optimizedUrl || product.optimized_url || product.imageUrl || product.image_url || ""
+}
+
 Page({
   data: {
     phone: "",
@@ -133,7 +137,12 @@ Page({
         const selected = onlineProducts.filter(item => String(item.promotionHot) === "true")
         const fallback = onlineProducts.filter(item => ["hot", "best"].includes(item.badge))
         const source = selected.length ? selected : (fallback.length ? fallback : onlineProducts)
-        this.setData({ hotProducts: source.slice(0, 3) })
+        this.setData({ hotProducts: source.slice(0, 3).map(item => ({ ...item, displayImage: productListImage(item) })) })
+        console.log("[promotion-hot-image]", {
+          firstProduct: source[0]?.name || "",
+          field: source[0] ? (source[0].cartThumbUrl ? "cartThumbUrl" : source[0].thumbUrl ? "thumbUrl" : source[0].listImage ? "listImage" : source[0].optimizedUrl ? "optimizedUrl" : "imageUrl") : "",
+          hasImage: !!productListImage(source[0] || {})
+        })
       })
       .catch(() => {})
   },

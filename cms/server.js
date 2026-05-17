@@ -45,6 +45,8 @@ const loginFile = path.join(__dirname, "login.html")
 const testFile = path.join(__dirname, "test.html")
 const uploadsDir = path.join(__dirname, "uploads")
 const productUploadsDir = path.join(uploadsDir, "products")
+const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
+const BRAND_QR_LOGO_VERSION = "orange-v2"
 const themesDir = path.join(ROOT, "themes")
 const seedDir = path.join(__dirname, "data")
 const importTempDir = path.join(seedDir, "import-temp")
@@ -2444,6 +2446,7 @@ function normalizePartnerStore(store = {}, index = 0) {
 function normalizeSettlementRecord(record = {}, index = 0) {
   const createdAt = record.createdAt || record.created_at || formatDateTime(new Date())
   const settledAt = record.settledAt || record.settled_at || ""
+  const status = normalizeSettlementStatus(record.status)
   return {
     id: String(record.id || `SSR${Date.now()}${index}`),
     storeId: record.storeId || record.store_id || "",
@@ -2453,12 +2456,18 @@ function normalizeSettlementRecord(record = {}, index = 0) {
     commissionType: normalizeCommissionType(record.commissionType || record.commission_type || "none"),
     commissionValue: money(record.commissionValue ?? record.commission_value ?? 0),
     orderPaidAmount: money(record.orderPaidAmount ?? record.order_paid_amount ?? 0),
-    status: record.status === "settled" ? "settled" : "unsettled",
+    status,
+    statusText: settlementStatusText(status),
     description: record.description || "",
+    settledBy: record.settledBy || record.settled_by || "",
+    settleNote: record.settleNote || record.settle_note || "",
+    cancelReason: record.cancelReason || record.cancel_reason || "",
+    batchId: record.batchId || record.batch_id || "",
     createdAt,
     createdAtText: record.createdAtText || formatChinaDatetime(createdAt),
     settledAt,
-    settledAtText: record.settledAtText || formatChinaDatetime(settledAt)
+    settledAtText: record.settledAtText || formatChinaDatetime(settledAt),
+    updatedAt: record.updatedAt || record.updated_at || ""
   }
 }
 
@@ -2783,6 +2792,7 @@ function normalizeRewardRule(rule, index) {
 }
 
 function normalizeRewardRecord(record, index) {
+  const status = normalizeRewardStatus(record.status)
   return {
     id: record.id || `RW${Date.now()}${index}`,
     orderId: record.orderId || "",
@@ -2792,11 +2802,45 @@ function normalizeRewardRecord(record, index) {
     promoterName: record.promoterName || "",
     level: Number(record.level || 1),
     amount: String(record.amount || "0"),
-    status: record.status || "待发放",
+    type: record.type || record.rewardType || (Number(record.level || 1) === 2 ? "level2" : "level1"),
+    status,
+    statusText: rewardStatusText(status),
     releaseAt: record.releaseAt || "",
+    settledAt: record.settledAt || record.settled_at || "",
+    settledAtText: record.settledAtText || formatChinaDatetime(record.settledAt || record.settled_at || ""),
+    settledBy: record.settledBy || record.settled_by || "",
+    settleNote: record.settleNote || record.settle_note || "",
+    cancelReason: record.cancelReason || record.cancel_reason || "",
+    batchId: record.batchId || record.batch_id || "",
     createdAt: record.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
     updatedAt: record.updatedAt || ""
   }
+}
+
+function normalizeRewardStatus(status) {
+  const text = String(status || "").trim()
+  if (["settled", "已结算", "已发放"].includes(text)) return "settled"
+  if (["cancelled", "canceled", "已取消", "已扣回", "扣回"].includes(text)) return "cancelled"
+  return "unsettled"
+}
+
+function rewardStatusText(status) {
+  if (status === "settled") return "已结算"
+  if (status === "cancelled") return "已取消"
+  return "未结算"
+}
+
+function normalizeSettlementStatus(status) {
+  const text = String(status || "").trim()
+  if (["settled", "已结算"].includes(text)) return "settled"
+  if (["cancelled", "canceled", "已取消", "invalid", "失效"].includes(text)) return "cancelled"
+  return "unsettled"
+}
+
+function settlementStatusText(status) {
+  if (status === "settled") return "已结算"
+  if (status === "cancelled") return "已取消"
+  return "未结算"
 }
 
 async function query(sql, params) {
@@ -3104,12 +3148,13 @@ async function saveStoreSettlementRecords(records) {
     const params = {
       ...record,
       createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
-      settledAt: toMysqlDatetime(record.settledAt)
+      settledAt: toMysqlDatetime(record.settledAt),
+      updatedAt: toMysqlDatetime(record.updatedAt, nowMysqlDatetime())
     }
     await query(
-      `INSERT INTO store_settlement_records (id, store_id, order_id, type, amount, commission_type, commission_value, order_paid_amount, status, description, created_at, settled_at)
-       VALUES (:id, :storeId, :orderId, :type, :amount, :commissionType, :commissionValue, :orderPaidAmount, :status, :description, :createdAt, :settledAt)
-       ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), amount = VALUES(amount), description = VALUES(description)`,
+      `INSERT INTO store_settlement_records (id, store_id, order_id, type, amount, commission_type, commission_value, order_paid_amount, status, description, created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, updated_at)
+       VALUES (:id, :storeId, :orderId, :type, :amount, :commissionType, :commissionValue, :orderPaidAmount, :status, :description, :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :updatedAt)
+       ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), settled_by = VALUES(settled_by), settle_note = VALUES(settle_note), cancel_reason = VALUES(cancel_reason), batch_id = VALUES(batch_id), updated_at = VALUES(updated_at), amount = VALUES(amount), description = VALUES(description)`,
       params
     )
   }
@@ -3570,12 +3615,13 @@ async function getStoreSettlementSummary(filters = {}) {
   const targetStores = filters.storeId ? stores.filter(store => store.id === filters.storeId) : stores
   const summary = targetStores.map(store => {
     const storeRecords = records.filter(record => record.storeId === store.id)
+    const activeStoreRecords = storeRecords.filter(record => record.status !== "cancelled")
     const referralRecords = storeRecords.filter(record => isStoreReferralSettlement(record.type))
     const pickupRecords = storeRecords.filter(record => isPickupServiceSettlement(record.type))
     const supplierRecords = storeRecords.filter(record => record.type === "supplier")
     const customRecords = storeRecords.filter(record => record.type === "custom")
     const settled = storeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const total = storeRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const total = activeStoreRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)
     return {
       storeId: store.id,
       storeName: store.name,
@@ -4294,8 +4340,9 @@ async function rollbackRewardsForOrder(orderId) {
   const records = await getRewardRecords()
   let changed = false
   for (const record of records) {
-    if (record.orderId === orderId && record.status !== "已扣回") {
-      record.status = "已扣回"
+    if (record.orderId === orderId && record.status !== "cancelled") {
+      record.status = "cancelled"
+      record.cancelReason = record.cancelReason || "订单退款成功，推广奖励失效"
       record.updatedAt = formatDateTime(new Date())
       changed = true
     }
@@ -4315,8 +4362,9 @@ async function invalidateStoreSettlementRecordsForOrder(orderId) {
       changed = true
       continue
     }
-    if (record.status !== "invalid") {
-      record.status = "invalid"
+    if (record.status !== "cancelled") {
+      record.status = "cancelled"
+      record.cancelReason = record.cancelReason || "订单退款成功，结算失效"
       record.description = `${record.description || ""}；订单退款成功，结算失效`.trim()
       record.settledAt = now
       changed = true
@@ -4575,8 +4623,14 @@ async function getRewardRecords() {
     promoterName: row.promoter_name,
     level: row.level,
     amount: row.amount,
+    type: row.type,
     status: row.status,
     releaseAt: row.release_at ? formatDateTime(new Date(row.release_at)) : "",
+    settledAt: row.settled_at ? formatDateTime(new Date(row.settled_at)) : "",
+    settledBy: row.settled_by || "",
+    settleNote: row.settle_note || "",
+    cancelReason: row.cancel_reason || "",
+    batchId: row.batch_id || "",
     createdAt: row.created_at ? formatDateTime(new Date(row.created_at)) : "",
     updatedAt: row.updated_at ? formatDateTime(new Date(row.updated_at)) : ""
   }, 0))
@@ -4591,10 +4645,11 @@ async function saveRewardRecords(records) {
   await query("DELETE FROM reward_records")
   for (const record of list) {
     await query(
-      "INSERT INTO reward_records (id, order_id, product_name, buyer_phone, promoter_phone, promoter_name, level, amount, status, release_at, created_at, updated_at) VALUES (:id, :orderId, :productName, :buyerPhone, :promoterPhone, :promoterName, :level, :amount, :status, :releaseAt, :createdAt, :updatedAt)",
+      "INSERT INTO reward_records (id, order_id, product_name, buyer_phone, promoter_phone, promoter_name, level, amount, type, status, release_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, created_at, updated_at) VALUES (:id, :orderId, :productName, :buyerPhone, :promoterPhone, :promoterName, :level, :amount, :type, :status, :releaseAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :createdAt, :updatedAt)",
       {
         ...record,
         releaseAt: toMysqlDatetime(record.releaseAt),
+        settledAt: toMysqlDatetime(record.settledAt),
         createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
         updatedAt: toMysqlDatetime(record.updatedAt, nowMysqlDatetime())
       }
@@ -4630,7 +4685,7 @@ async function createRewardsForOrder(order) {
       promoterName: promoter.name || "",
       level,
       amount,
-      status: "待发放",
+      status: "unsettled",
       releaseAt: "",
       createdAt: formatDateTime(new Date())
     }, existing.length)
@@ -4651,21 +4706,16 @@ async function processRewardState() {
     const order = orders.find(item => item.id === record.orderId)
     if (!order) continue
     const refunded = order.status === "已退款" || order.paymentStatus === "已退款" || order.afterSalesStatus === "refunded"
-    if (refunded && record.status !== "已扣回") {
-      record.status = "已扣回"
+    if (refunded && record.status !== "cancelled") {
+      record.status = "cancelled"
+      record.cancelReason = record.cancelReason || "订单已退款，推广奖励失效"
       record.updatedAt = formatDateTime(now)
       changed = true
       continue
     }
-    if (record.status === "待发放" && order.status === "已完成") {
+    if (record.status === "unsettled" && order.status === "已完成") {
       if (!record.releaseAt) {
         record.releaseAt = addDays(order.completedAt || now, 7)
-        record.updatedAt = formatDateTime(now)
-        changed = true
-      }
-      const releaseDate = parseDateValue(record.releaseAt)
-      if (releaseDate && releaseDate <= now) {
-        record.status = "已发放"
         record.updatedAt = formatDateTime(now)
         changed = true
       }
@@ -4685,11 +4735,11 @@ async function getPromotionSummary(phone) {
   const orders = await getOrders()
   const inviteCode = customer.inviteCode || inviteCodeFor(phone)
   const myRewards = records.filter(item => normalizePhone(item.promoterPhone) === phone)
-  const rewardOrderIds = new Set(myRewards.map(item => item.orderId))
+  const rewardOrderIds = new Set(myRewards.filter(item => item.orderId).map(item => item.orderId))
   const rewardOrders = orders.filter(order => rewardOrderIds.has(order.id) && !order.referrerStoreId)
   const inviteAmount = rewardOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
-  const available = myRewards.filter(item => item.status === "已发放").reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  const pending = myRewards.filter(item => item.status === "待发放").reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const available = myRewards.filter(item => item.status === "settled").reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const pending = myRewards.filter(item => item.status === "unsettled").reduce((sum, item) => sum + Number(item.amount || 0), 0)
   return {
     profile: {
       name: customer.name,
@@ -4704,7 +4754,7 @@ async function getPromotionSummary(phone) {
       inviteQrText: `非常智造 邀请码：${inviteCode}`
     },
     invited,
-    rewards: myRewards,
+    rewards: myRewards.map(item => ({ ...item, statusText: rewardStatusText(item.status) })),
     orders: rewardOrders
   }
 }
@@ -4989,6 +5039,11 @@ async function initDb() {
     INDEX idx_store_status (store_id, status),
     INDEX idx_order_id (order_id)
   )`)
+  await ensureColumn("store_settlement_records", "settled_by", "VARCHAR(80)")
+  await ensureColumn("store_settlement_records", "settle_note", "TEXT")
+  await ensureColumn("store_settlement_records", "cancel_reason", "TEXT")
+  await ensureColumn("store_settlement_records", "batch_id", "VARCHAR(80)")
+  await ensureColumn("store_settlement_records", "updated_at", "DATETIME")
   await query(`CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -5046,6 +5101,12 @@ async function initDb() {
     created_at DATETIME,
     updated_at DATETIME
   )`)
+  await ensureColumn("reward_records", "type", "VARCHAR(40) DEFAULT 'level1'")
+  await ensureColumn("reward_records", "settled_at", "DATETIME")
+  await ensureColumn("reward_records", "settled_by", "VARCHAR(80)")
+  await ensureColumn("reward_records", "settle_note", "TEXT")
+  await ensureColumn("reward_records", "cancel_reason", "TEXT")
+  await ensureColumn("reward_records", "batch_id", "VARCHAR(80)")
   await query(`CREATE TABLE IF NOT EXISTS system_settings (
     id INT PRIMARY KEY,
     data JSON NOT NULL,
@@ -5173,11 +5234,36 @@ async function getAccessToken() {
   return accessTokenCache.token
 }
 
+async function applyBrandLogoToQrBuffer(buffer) {
+  if (!sharp || !fs.existsSync(brandQrLogoFile)) return buffer
+  try {
+    const meta = await sharp(buffer).metadata()
+    const badgeSize = Math.max(72, Math.round(Math.min(meta.width || 430, meta.height || 430) * 0.22))
+    const logoSize = Math.round(badgeSize * 0.78)
+    const logo = await sharp(brandQrLogoFile)
+      .resize(logoSize, logoSize, { fit: "cover" })
+      .png()
+      .toBuffer()
+    const badgeSvg = Buffer.from(`<svg width="${badgeSize}" height="${badgeSize}" xmlns="http://www.w3.org/2000/svg"><rect width="${badgeSize}" height="${badgeSize}" rx="${Math.round(badgeSize * 0.22)}" fill="#fff"/></svg>`)
+    const badge = await sharp(badgeSvg)
+      .composite([{ input: logo, left: Math.round((badgeSize - logoSize) / 2), top: Math.round((badgeSize - logoSize) / 2) }])
+      .png()
+      .toBuffer()
+    return await sharp(buffer)
+      .composite([{ input: badge, left: Math.round(((meta.width || badgeSize) - badgeSize) / 2), top: Math.round(((meta.height || badgeSize) - badgeSize) / 2) }])
+      .png()
+      .toBuffer()
+  } catch (error) {
+    console.warn("[qr-logo] overlay skipped", { message: error.message })
+    return buffer
+  }
+}
+
 async function generatePromotionWxacode(inviteCode) {
   const safeInvite = String(inviteCode || "").replace(/[^\w-]/g, "").slice(0, 24) || "VSCUSTOM"
-  const outputFile = path.join(uploadsDir, `promotion-code-${safeInvite}.png`)
+  const outputFile = path.join(uploadsDir, `promotion-code-${safeInvite}-${BRAND_QR_LOGO_VERSION}.png`)
   if (fs.existsSync(outputFile)) {
-    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true }
+    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, logoVersion: BRAND_QR_LOGO_VERSION }
   }
   const accessToken = await getAccessToken()
   const body = JSON.stringify({
@@ -5205,17 +5291,17 @@ async function generatePromotionWxacode(inviteCode) {
     throw wechatApiError("wxacode_empty", "微信未返回小程序码图片", "微信小程序码接口")
   }
   fs.mkdirSync(uploadsDir, { recursive: true })
-  fs.writeFileSync(outputFile, result.data)
-  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false }
+  fs.writeFileSync(outputFile, await applyBrandLogoToQrBuffer(result.data))
+  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, logoVersion: BRAND_QR_LOGO_VERSION }
 }
 
 async function generateStoreWxacode(store) {
   if (!store?.id) throw httpError(404, "门店不存在")
   if (!isStoreEnabled(store)) throw httpError(400, "门店已停用，暂不能生成二维码")
   const safeStoreId = String(store.id || "").replace(/[^\w-]/g, "").slice(0, 24)
-  const outputFile = path.join(uploadsDir, `store-code-${safeStoreId}.png`)
+  const outputFile = path.join(uploadsDir, `store-code-${safeStoreId}-${BRAND_QR_LOGO_VERSION}.png`)
   if (fs.existsSync(outputFile)) {
-    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, scene: `store_id=${safeStoreId}` }
+    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, scene: `store_id=${safeStoreId}`, logoVersion: BRAND_QR_LOGO_VERSION }
   }
   const accessToken = await getAccessToken()
   const body = JSON.stringify({
@@ -5243,8 +5329,8 @@ async function generateStoreWxacode(store) {
     throw wechatApiError("wxacode_empty", "微信未返回小程序码图片", "微信小程序码接口")
   }
   fs.mkdirSync(uploadsDir, { recursive: true })
-  fs.writeFileSync(outputFile, result.data)
-  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, scene: `store_id=${safeStoreId}` }
+  fs.writeFileSync(outputFile, await applyBrandLogoToQrBuffer(result.data))
+  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, scene: `store_id=${safeStoreId}`, logoVersion: BRAND_QR_LOGO_VERSION }
 }
 
 async function getWechatPhoneNumber(code) {
@@ -5693,14 +5779,15 @@ async function handle(req, res) {
     const paidOrderIds = new Set((await getOrders()).filter(order => isOrderPaidForPickupCredential(order)).map(order => order.id))
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id }))
       .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
-    const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const referral = records.filter(record => isStoreReferralSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const pickup = records.filter(record => isPickupServiceSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const activeRecords = records.filter(record => record.status !== "cancelled")
+    const unsettled = activeRecords.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const settled = activeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const referral = activeRecords.filter(record => isStoreReferralSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const pickup = activeRecords.filter(record => isPickupServiceSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
     sendJson(res, 200, {
       storeInfo: storePrivateView(storeSession.store),
       summary: { unsettledAmount: money(unsettled), settledAmount: money(settled), referralAmount: money(referral), pickupAmount: money(pickup) },
-      records: records.map(record => ({ ...record, typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type }))
+      records: records.map(record => ({ ...record, statusText: settlementStatusText(record.status), typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type === "adjustment" ? "手动调整" : record.type }))
     })
     return
   }
@@ -6139,7 +6226,7 @@ async function handle(req, res) {
       if (order.refundAmount) return sum + Number(order.refundAmount || 0)
       return sum + Number(order.amount || 0)
     }, 0)
-    const rewardPaid = rewards.filter(record => record.status === "已发放").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const rewardPaid = rewards.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const estimatedProfit = salesAmount - productCost - refundAmount - rewardPaid
     const inviteOrders = paidOrders.filter(order => order.inviterCode).length
     const inviteAmount = paidOrders.filter(order => order.inviterCode).reduce((sum, order) => sum + Number(order.amount || 0), 0)
@@ -6320,13 +6407,110 @@ async function handle(req, res) {
     const records = await getStoreSettlementRecords()
     const now = formatDateTime(new Date())
     records.forEach(record => {
-      if (ids.includes(record.id)) {
+      if (ids.includes(record.id) && record.status === "unsettled") {
         record.status = "settled"
         record.settledAt = now
+        record.settledBy = "admin"
+        record.settleNote = body.note || record.settleNote || "后台批量标记已结算"
+        record.updatedAt = now
       }
     })
     await saveStoreSettlementRecords(records)
     sendJson(res, 200, { ok: true, data: await getStoreSettlementSummary({}) })
+    return
+  }
+
+  if ((url.pathname === "/api/admin/store-earnings" || url.pathname === "/api/admin/store-settlements/records") && req.method === "GET") {
+    sendJson(res, 200, await getStoreSettlementSummary({
+      storeId: url.searchParams.get("storeId") || "",
+      status: url.searchParams.get("status") || "",
+      type: url.searchParams.get("type") || "",
+      startAt: url.searchParams.get("startAt") || "",
+      endAt: url.searchParams.get("endAt") || ""
+    }))
+    return
+  }
+
+  const storeEarningMatch = url.pathname.match(/^\/api\/admin\/store-earnings\/([^/]+)\/(settle|cancel)$/)
+  if (storeEarningMatch && req.method === "POST") {
+    const [, id, action] = storeEarningMatch
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const records = await getStoreSettlementRecords()
+    const record = records.find(item => item.id === decodeURIComponent(id))
+    if (!record) throw httpError(404, "收益记录不存在")
+    if (action === "settle") {
+      if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
+      if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
+      record.status = "settled"
+      record.settledAt = formatDateTime(new Date())
+      record.settledBy = "admin"
+      record.settleNote = body.note || body.settleNote || ""
+    } else {
+      if (record.status === "cancelled") throw httpError(400, "该记录已取消。")
+      record.status = "cancelled"
+      record.cancelReason = body.reason || body.cancelReason || "后台取消收益"
+    }
+    record.updatedAt = formatDateTime(new Date())
+    await saveStoreSettlementRecords(records)
+    sendJson(res, 200, { ok: true, data: record })
+    return
+  }
+
+  if (url.pathname === "/api/admin/store-earnings/adjustment" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const amount = money(body.amount)
+    if (!body.storeId) throw httpError(400, "请选择门店")
+    if (Number(amount) === 0) throw httpError(400, "调整金额不能为 0")
+    const records = await getStoreSettlementRecords()
+    const now = formatDateTime(new Date())
+    records.unshift(normalizeSettlementRecord({
+      id: `SSA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+      storeId: body.storeId,
+      orderId: "",
+      type: "adjustment",
+      amount,
+      commissionType: "none",
+      commissionValue: "0.00",
+      orderPaidAmount: "0.00",
+      status: body.status === "settled" ? "settled" : "unsettled",
+      description: body.note || body.description || "后台手动调整",
+      settledAt: body.status === "settled" ? now : "",
+      settledBy: body.status === "settled" ? "admin" : "",
+      settleNote: body.note || "",
+      createdAt: now,
+      updatedAt: now
+    }))
+    await saveStoreSettlementRecords(records)
+    sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === "/api/admin/store-earnings/batch-settle" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const batchId = `BATCH${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+    const records = await getStoreSettlementRecords({
+      storeId: body.storeId || "",
+      status: "unsettled",
+      type: body.type || "",
+      startAt: body.startAt || "",
+      endAt: body.endAt || ""
+    })
+    const allRecords = await getStoreSettlementRecords()
+    const ids = new Set(records.map(item => item.id))
+    const now = formatDateTime(new Date())
+    let count = 0
+    allRecords.forEach(record => {
+      if (!ids.has(record.id) || record.status !== "unsettled") return
+      record.status = "settled"
+      record.settledAt = now
+      record.settledBy = "admin"
+      record.settleNote = body.note || "后台批量结算"
+      record.batchId = batchId
+      record.updatedAt = now
+      count += 1
+    })
+    await saveStoreSettlementRecords(allRecords)
+    sendJson(res, 200, { ok: true, batchId, recordCount: count })
     return
   }
 
@@ -6357,6 +6541,83 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/reward-records" && req.method === "GET") {
     sendJson(res, 200, await processRewardState())
+    return
+  }
+
+  if (url.pathname === "/api/admin/rewards" && req.method === "GET") {
+    let records = await processRewardState()
+    const status = url.searchParams.get("status") || ""
+    const keyword = String(url.searchParams.get("keyword") || "").toLowerCase()
+    if (status) records = records.filter(record => record.status === status)
+    if (keyword) {
+      records = records.filter(record => [record.id, record.orderId, record.productName, record.buyerPhone, record.promoterPhone, record.promoterName].some(value => String(value || "").toLowerCase().includes(keyword)))
+    }
+    sendJson(res, 200, {
+      ok: true,
+      summary: {
+        unsettledAmount: money(records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+        settledAmount: money(records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+        cancelledAmount: money(records.filter(record => record.status === "cancelled").reduce((sum, record) => sum + Number(record.amount || 0), 0))
+      },
+      records
+    })
+    return
+  }
+
+  const rewardActionMatch = url.pathname.match(/^\/api\/admin\/rewards\/([^/]+)\/(settle|cancel)$/)
+  if (rewardActionMatch && req.method === "POST") {
+    const [, id, action] = rewardActionMatch
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const records = await getRewardRecords()
+    const record = records.find(item => item.id === decodeURIComponent(id))
+    if (!record) throw httpError(404, "推广奖励记录不存在")
+    if (action === "settle") {
+      if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
+      if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
+      record.status = "settled"
+      record.settledAt = formatDateTime(new Date())
+      record.settledBy = "admin"
+      record.settleNote = body.note || body.settleNote || ""
+    } else {
+      if (record.status === "cancelled") throw httpError(400, "该记录已取消。")
+      record.status = "cancelled"
+      record.cancelReason = body.reason || body.cancelReason || "后台取消奖励"
+    }
+    record.updatedAt = formatDateTime(new Date())
+    await saveRewardRecords(records)
+    sendJson(res, 200, { ok: true, data: normalizeRewardRecord(record, 0) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/rewards/adjustment" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const amount = money(body.amount)
+    const promoterPhone = normalizePhone(body.promoterPhone || body.phone || "")
+    if (!promoterPhone) throw httpError(400, "请填写用户手机号")
+    if (Number(amount) === 0) throw httpError(400, "调整金额不能为 0")
+    const customers = await getCustomers()
+    const customer = customers.find(item => normalizePhone(item.phone) === promoterPhone) || {}
+    const records = await getRewardRecords()
+    const now = formatDateTime(new Date())
+    records.unshift(normalizeRewardRecord({
+      id: `RWA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+      orderId: "",
+      productName: body.note || "后台手动调整",
+      buyerPhone: "",
+      promoterPhone,
+      promoterName: customer.name || body.promoterName || "",
+      level: 0,
+      type: "adjustment",
+      amount,
+      status: body.status === "settled" ? "settled" : "unsettled",
+      settledAt: body.status === "settled" ? now : "",
+      settledBy: body.status === "settled" ? "admin" : "",
+      settleNote: body.note || "",
+      createdAt: now,
+      updatedAt: now
+    }, records.length))
+    await saveRewardRecords(records)
+    sendJson(res, 200, { ok: true })
     return
   }
 

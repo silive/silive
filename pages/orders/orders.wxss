@@ -375,12 +375,15 @@
   min-width: 190rpx;
   flex: 1 1 190rpx;
   height: 66rpx;
+  max-width: 100%;
   border-radius: 999rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   font-size: 23rpx;
   font-weight: 850;
+  line-height: 1;
 }
 
 .waiting-btn {
@@ -594,10 +597,26 @@ textarea {
 }
 
 .modal-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16rpx;
+  display: flex;
+  gap: 20rpx;
   margin-top: 24rpx;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.modal-actions .cancel-btn,
+.modal-actions .submit-btn {
+  min-width: 0;
+  width: auto;
+  flex: 1 1 0;
+  height: 88rpx;
+  margin: 0;
+  padding: 0 18rpx;
+  box-sizing: border-box;
+}
+
+button::after {
+  border: 0;
 }
 
 .cancel-btn {

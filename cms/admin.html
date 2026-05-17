@@ -663,7 +663,7 @@
             </div>
             <div class="filters">
               <select id="settlementStoreFilter"></select>
-              <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option></select>
+              <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
               <select id="settlementTypeFilter"><option value="">全部类型</option><option value="store_referral_commission">门店推广佣金</option><option value="pickup_service_fee">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
               <input id="settlementStartFilter" placeholder="开始时间 2026-05-01">
               <input id="settlementEndFilter" placeholder="结束时间 2026-05-31">
@@ -697,7 +697,14 @@
           <div class="panel"><h3>推广关系管理</h3><div id="relationsTable"></div></div>
         </div>
         <div class="subview" id="subview-rewardManager">
-          <div class="panel"><h3>奖励记录</h3><div id="rewardsTable"></div></div>
+          <div class="panel"><h3>个人推广奖励</h3>
+            <div class="filters">
+              <select id="rewardStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
+              <input id="rewardKeywordFilter" placeholder="手机号 / 订单号 / 商品">
+              <button class="secondary" id="filterRewardsBtn">筛选</button>
+            </div>
+            <div id="rewardsTable"></div>
+          </div>
         </div>
       </section>
 
@@ -814,6 +821,7 @@
     let editingThemeSkin = "skin01"
     let orderFilters = { keyword: "", status: "" }
     let settlementFilters = { storeId: "", status: "", type: "", startAt: "", endAt: "" }
+    let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
     let productImportToken = ""
     let categorySearch = ""
@@ -2283,7 +2291,7 @@
         </div></div>
         <div class="drawer-section"><h4>奖励记录</h4>
           <p class="muted">邀请码：${escapeHtml(order.inviterCode || "-")}</p>
-          <p class="muted">退款成功后系统会扣回一级奖励、二级奖励和购物金。</p>
+          <p class="muted">退款成功后系统会将未结算推广奖励标记失效；已结算奖励需人工线下处理。</p>
         </div>
       `
       $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button><button class="primary" data-action="save-order-drawer">保存订单</button>`
@@ -2349,7 +2357,7 @@
         </tr>`).join("")}</tbody></table></div>`
     }
     function renderCustomers() {
-      $("customersTable").innerHTML = `<table><thead><tr><th>客户</th><th>电话</th><th>邀请码</th><th>微信</th><th>订单数</th><th>累计消费</th><th>购物金</th></tr></thead><tbody>${customers.map(customer => `
+      $("customersTable").innerHTML = `<table><thead><tr><th>客户</th><th>电话</th><th>邀请码</th><th>微信</th><th>订单数</th><th>累计消费</th><th>推广奖励</th></tr></thead><tbody>${customers.map(customer => `
         <tr><td>${escapeHtml(customer.name)}</td><td>${escapeHtml(customer.phone)}</td><td><span class="pill">${escapeHtml(customer.inviteCode)}</span></td><td>${escapeHtml(customer.wechat)}</td><td>${customer.orders}</td><td>¥${escapeHtml(customer.totalAmount)}</td><td>¥${escapeHtml(customer.shoppingMoney || "0")}</td></tr>`).join("")}</tbody></table>`
     }
     function storeLevelText(level) {
@@ -2382,17 +2390,18 @@
       $("settlementEndFilter").value = settlementFilters.endAt || ""
       $("storeSettlementSummary").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>供货/定制</th><th>应结算</th><th>已结算</th><th>未结算</th></tr></thead><tbody>${summary.map(item => `
         <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.supplierAmount} / ¥${item.customAmount}</td><td><strong>¥${item.totalAmount}</strong></td><td>¥${item.settledAmount}</td><td>¥${item.unsettledAmount}</td></tr>`).join("")}</tbody></table></div>`
-      $("storeSettlementRecords").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th></tr></thead><tbody>${records.map(record => {
+      $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
         const store = stores.find(item => item.id === record.storeId) || {}
         return `<tr>
-          <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${record.status === "settled" ? "disabled" : ""}></td>
+          <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}></td>
           <td>${escapeHtml(record.orderId)}</td>
           <td>${escapeHtml(store.name || record.storeId)}</td>
           <td>${({ referral: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整" })[record.type] || record.type}</td>
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
           <td><strong>¥${record.amount}</strong></td>
-          <td><span class="pill">${record.status === "settled" ? "已结算" : "未结算"}</span></td>
+          <td><span class="pill">${record.statusText || (record.status === "settled" ? "已结算" : record.status === "cancelled" ? "已取消" : "未结算")}</span></td>
           <td>${escapeHtml(record.createdAtText || record.createdAt || "")}<div class="muted">${record.settledAtText || record.settledAt ? `结算：${escapeHtml(record.settledAtText || record.settledAt)}` : ""}</div></td>
+          <td><div class="table-actions"><button class="secondary" data-action="store-earning-settle" data-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}>结算</button><button class="danger" data-action="store-earning-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
         </tr>`
       }).join("")}</tbody></table></div>`
     }
@@ -2492,16 +2501,19 @@
         </tr>`).join("")}</tbody></table>`
     }
     function renderRewards() {
-      $("rewardsTable").innerHTML = `<table><thead><tr><th>订单号</th><th>商品</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>发放时间</th></tr></thead><tbody>${rewards.map(record => `
+      $("rewardStatusFilter").value = rewardFilters.status || ""
+      $("rewardKeywordFilter").value = rewardFilters.keyword || ""
+      $("rewardsTable").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="reward-adjustment">新增奖励调整</button></div><table><thead><tr><th>订单号</th><th>商品/说明</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>结算时间</th><th>操作</th></tr></thead><tbody>${rewards.map(record => `
         <tr>
-          <td>${escapeHtml(record.orderId)}</td>
+          <td>${escapeHtml(record.orderId || "-")}</td>
           <td>${escapeHtml(record.productName)}</td>
           <td>${escapeHtml(record.promoterName)}<div class="muted">${escapeHtml(record.promoterPhone)}</div></td>
           <td>${escapeHtml(record.buyerPhone)}</td>
-          <td>${record.level === 2 ? "二级" : "一级"}</td>
+          <td>${record.type === "adjustment" ? "调整" : record.level === 2 ? "二级" : "一级"}</td>
           <td>¥${escapeHtml(record.amount)}</td>
-          <td><span class="pill">${escapeHtml(record.status)}</span></td>
-          <td>${escapeHtml(record.releaseAt || "订单完成7天后")}</td>
+          <td><span class="pill">${escapeHtml(record.statusText || record.status)}</span></td>
+          <td>${escapeHtml(record.settledAtText || record.settledAt || record.releaseAt || "-")}</td>
+          <td><div class="table-actions"><button class="secondary" data-action="reward-settle" data-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}>结算</button><button class="danger" data-action="reward-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
         </tr>`).join("")}</tbody></table>`
     }
     function renderSettings() {
@@ -2621,9 +2633,10 @@
         api("/api/admin/stores"),
         api(`/api/admin/store-settlements${settlementQuery ? `?${settlementQuery}` : ""}`)
       ])
+      const rewardQuery = new URLSearchParams(Object.fromEntries(Object.entries(rewardFilters).filter(([, value]) => value))).toString()
       const [relationData, rewardData] = await Promise.all([
         api("/api/admin/promotion-relations"),
-        api("/api/admin/reward-records")
+        api(`/api/admin/rewards${rewardQuery ? `?${rewardQuery}` : ""}`)
       ])
       home = homeData
       products = productData
@@ -2633,7 +2646,7 @@
       stores = storeData
       storeSettlements = settlementData
       relations = relationData
-      rewards = rewardData
+      rewards = rewardData.records || rewardData
       settings = settingData
       themeState = themeData || { activeThemeSkin: settings.activeThemeSkin || "skin01", themes: settings.themes || [] }
       if (!editingThemeSkin) editingThemeSkin = themeState.activeThemeSkin
@@ -2843,6 +2856,13 @@
       }
       loadAll().catch(error => setStatus(error.message))
     })
+    $("filterRewardsBtn").addEventListener("click", () => {
+      rewardFilters = {
+        status: $("rewardStatusFilter").value,
+        keyword: $("rewardKeywordFilter").value.trim()
+      }
+      loadAll().catch(error => setStatus(error.message))
+    })
     $("addThemeBtn").addEventListener("click", () => {
       collectThemeEditor()
       const skin = `skin-custom-${Date.now()}`
@@ -2926,6 +2946,66 @@
         } else {
           setStatus(`门店ID：${id}`)
         }
+      }
+      if (event.target.dataset.action === "reward-settle") {
+        const note = prompt("结算备注（选填）", "线下已结算") || ""
+        api(`/api/admin/rewards/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
+          .then(() => loadAll())
+          .then(() => setStatus("个人推广奖励已标记结算"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "reward-cancel") {
+        const reason = prompt("取消原因", "后台人工取消奖励")
+        if (reason == null) return
+        api(`/api/admin/rewards/${encodeURIComponent(event.target.dataset.id)}/cancel`, "POST", { reason })
+          .then(() => loadAll())
+          .then(() => setStatus("个人推广奖励已取消"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "reward-adjustment") {
+        const promoterPhone = prompt("请输入用户手机号")
+        if (!promoterPhone) return
+        const amount = prompt("调整金额，可为负数，例如 -5.00")
+        if (!amount) return
+        const note = prompt("调整备注", "后台手动调整") || "后台手动调整"
+        api("/api/admin/rewards/adjustment", "POST", { promoterPhone, amount, note })
+          .then(() => loadAll())
+          .then(() => setStatus("已新增个人奖励调整记录"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-earning-settle") {
+        const note = prompt("结算备注（选填）", "线下已结算") || ""
+        api(`/api/admin/store-earnings/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
+          .then(() => loadAll())
+          .then(() => setStatus("门店收益已标记结算"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-earning-cancel") {
+        const reason = prompt("取消原因", "后台人工取消收益")
+        if (reason == null) return
+        api(`/api/admin/store-earnings/${encodeURIComponent(event.target.dataset.id)}/cancel`, "POST", { reason })
+          .then(() => loadAll())
+          .then(() => setStatus("门店收益已取消"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-earning-adjustment") {
+        const storeId = settlementFilters.storeId || prompt("请输入门店ID")
+        if (!storeId) return
+        const amount = prompt("调整金额，可为负数，例如 -5.00")
+        if (!amount) return
+        const note = prompt("调整备注", "后台手动调整") || "后台手动调整"
+        api("/api/admin/store-earnings/adjustment", "POST", { storeId, amount, note })
+          .then(() => loadAll())
+          .then(() => setStatus("已新增门店收益调整记录"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-earning-batch-settle") {
+        if (!confirm("确认按当前筛选条件批量结算未结算门店收益？")) return
+        const note = prompt("批量结算备注", "线下批量结算") || "线下批量结算"
+        api("/api/admin/store-earnings/batch-settle", "POST", { ...settlementFilters, note })
+          .then(result => loadAll().then(() => result))
+          .then(result => setStatus(`批量结算完成：${result.recordCount || 0} 条`))
+          .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "view-store-qrcode" || event.target.dataset.action === "download-store-qrcode" || event.target.dataset.action === "copy-store-link") {
         const id = event.target.dataset.id || ""

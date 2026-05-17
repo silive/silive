@@ -4,17 +4,17 @@
       <view class="eyebrow">PROMOTION</view>
       <view class="title">把喜欢的礼物店分享给朋友</view>
       <view class="subtitle">好友也可能刚好需要</view>
-      <view class="hero-note">好友成交后可获得购物金</view>
+      <view class="hero-note">好友成交后可获得推广奖励</view>
     </view>
   </view>
 
   <view class="wallet-grid">
     <view class="wallet dark">
-      <view class="wallet-label">我的购物金</view>
+      <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{profile.shoppingMoney}}</view>
     </view>
     <view class="wallet">
-      <view class="wallet-label">待发放奖励</view>
+      <view class="wallet-label">待结算奖励</view>
       <view class="wallet-value">¥{{profile.pendingReward}}</view>
     </view>
     <view class="wallet">
@@ -46,7 +46,7 @@
     <view class="panel-title">最近很多人在买</view>
     <view class="hot-grid">
       <view class="hot-card" wx:for="{{hotProducts}}" wx:key="id" bindtap="openProduct" data-id="{{item.id}}">
-        <image wx:if="{{item.imageUrl}}" class="hot-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.displayImage}}" class="hot-image" src="{{item.displayImage}}" mode="aspectFill" lazy-load />
         <view wx:else class="hot-image hot-placeholder">非常智造</view>
         <view class="hot-name">{{item.name}}</view>
         <view class="hot-price">¥{{item.price}}</view>
@@ -74,7 +74,7 @@
       <view class="record" wx:for="{{rewards}}" wx:key="id">
         <view>
           <view class="record-title">{{item.productName}}</view>
-          <view class="record-desc">{{item.level == 2 ? '二级奖励' : '一级奖励'}} · {{item.status}}</view>
+          <view class="record-desc">{{item.level == 2 ? '二级奖励' : (item.type === 'adjustment' ? '手动调整' : '一级奖励')}} · {{item.statusText || item.status}}</view>
         </view>
         <view class="amount">¥{{item.amount}}</view>
       </view>

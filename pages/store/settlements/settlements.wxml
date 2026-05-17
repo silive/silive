@@ -10,11 +10,16 @@
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.referralAmount || '0.00'}}</view><view class="stat-label">推广佣金</view></view>
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.pickupAmount || '0.00'}}</view><view class="stat-label">自提服务费</view></view>
   </view>
+  <view class="tabs">
+    <button wx:for="{{tabs}}" wx:key="key" class="tab {{activeStatus === item.key ? 'active' : ''}}" bindtap="switchStatus" data-status="{{item.key}}">{{item.label}}</button>
+  </view>
   <view class="list">
-    <view class="order-card" style="{{cardStyle}}" wx:for="{{records}}" wx:key="id">
-      <view class="order-head"><view><view class="order-title">{{item.typeText}}</view><view class="order-sub">{{item.orderId}} · {{item.createdAtText || item.createdAt}}</view></view><view class="pill">{{item.status === 'settled' ? '已结算' : '未结算'}}</view></view>
+    <view class="order-card" style="{{cardStyle}}" wx:for="{{filteredRecords}}" wx:key="id">
+      <view class="order-head"><view><view class="order-title">{{item.typeText}}</view><view class="order-sub">{{item.orderId || '手动调整'}} · {{item.createdAtText || item.createdAt}}</view></view><view class="pill">{{item.statusText}}</view></view>
       <view class="amount">¥{{item.amount}}</view>
+      <view class="order-sub">备注：{{item.description || item.settleNote || '-'}}</view>
       <view class="order-sub">结算时间：{{item.settledAtText || item.settledAt || '-'}}</view>
     </view>
+    <view wx:if="{{!filteredRecords.length}}" class="order-card empty" style="{{cardStyle}}">暂无收益记录</view>
   </view>
 </view>

@@ -12,10 +12,13 @@
 
   <view class="wallet-card" style="{{walletCardStyle}}">
     <view>
-      <view class="wallet-label">我的购物金</view>
+      <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{shoppingMoney}}</view>
     </view>
-    <view class="wallet-pending">待发放 ¥{{pendingReward}}</view>
+    <view>
+      <view class="wallet-pending">待结算 ¥{{pendingReward}}</view>
+      <view class="wallet-note">{{storeBound ? '门店收益请前往门店中心查看' : '邀请好友下单后由平台人工审核结算'}}</view>
+    </view>
   </view>
 
   <view class="feature-panel">
@@ -61,7 +64,6 @@
   </view>
   <button wx:if="{{banner && banner.imageUrl && (banner.targetType === 'contact' || banner.linkType === 'contact')}}" class="profile-banner" style="{{bannerStyle}}" open-type="contact">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
-    <view class="profile-banner-mask"></view>
     <view class="profile-banner-copy">
       <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
       <view class="profile-banner-title">{{banner.title}}</view>
@@ -70,7 +72,6 @@
   </button>
   <view wx:elif="{{banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
-    <view class="profile-banner-mask"></view>
     <view class="profile-banner-copy">
       <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
       <view class="profile-banner-title">{{banner.title}}</view>

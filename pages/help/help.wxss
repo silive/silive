@@ -63,7 +63,7 @@
   bottom: 24rpx;
   z-index: 1;
   color: #ffffff;
-  text-shadow: 0 2rpx 8rpx rgba(0, 0, 0, .22);
+  text-shadow: none;
 }
 
 .guide-ad-title {
