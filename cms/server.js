@@ -5127,6 +5127,7 @@ async function initDb() {
     INDEX idx_store_status (store_id, status),
     INDEX idx_order_id (order_id)
   )`)
+  await query("ALTER TABLE store_settlement_records MODIFY COLUMN type VARCHAR(40)")
   await ensureColumn("store_settlement_records", "settled_by", "VARCHAR(80)")
   await ensureColumn("store_settlement_records", "settle_note", "TEXT")
   await ensureColumn("store_settlement_records", "cancel_reason", "TEXT")
