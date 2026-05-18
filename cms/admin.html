@@ -134,6 +134,57 @@
     .badge-option input,
     .category-option input { width: auto; height: auto; margin: 0; }
     .filters { display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto; gap: 10px; margin-bottom: 14px; }
+    .filters.finance-filter-grid { grid-template-columns: 1fr; gap: 10px; }
+    .finance-filter-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: center; }
+    .finance-filter-row.compact { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+    .finance-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 8px 0 14px;
+    }
+    .finance-card {
+      padding: 18px 20px;
+      border: 1px solid rgba(255, 106, 0, .18);
+      border-radius: 18px;
+      background: rgba(255,255,255,.94);
+      box-shadow: 0 14px 36px rgba(255, 106, 0, .07);
+      min-width: 0;
+    }
+    .finance-card.highlight {
+      border-color: rgba(255, 90, 0, .32);
+      background: linear-gradient(135deg, #fff 0%, #FFF5EB 100%);
+      box-shadow: 0 18px 42px rgba(255, 90, 0, .12);
+    }
+    .finance-card.chargeback { background: linear-gradient(135deg, #fff 0%, #FFF8F3 100%); }
+    .finance-label { color: #1F2933; font-size: 13px; font-weight: 900; }
+    .finance-desc { margin-top: 5px; color: #6B7280; font-size: 12px; font-weight: 700; }
+    .finance-amount {
+      margin-top: 13px;
+      color: #1F2933;
+      font-size: 26px;
+      line-height: 1.05;
+      font-weight: 950;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+    .finance-card.highlight .finance-amount { color: #FF4D00; }
+    .finance-card.chargeback .finance-amount { color: #D9480F; }
+    .finance-warning {
+      margin: -2px 0 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 106, 0, .18);
+      border-radius: 14px;
+      background: #FFF3E8;
+      color: #C2410C;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .finance-payable { color: #FF4D00; font-weight: 950; }
+    .finance-deduct-note { margin-top: 4px; color: #C2410C; font-size: 12px; font-weight: 800; }
+    .finance-amount-positive { color: #FF4D00; font-weight: 900; }
+    .finance-amount-negative { color: #D9480F; font-weight: 900; }
+    .row-muted td { color: #9CA3AF; background: #fafafa; }
     .list { display: grid; gap: 12px; }
     .item {
       padding: 14px;
@@ -398,6 +449,7 @@
       .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .main { padding: 22px 16px 42px; }
       .grid, .grid.three, .form-grid, .filters, .upload-row { grid-template-columns: 1fr; }
+      .finance-summary-grid, .finance-filter-row, .finance-filter-row.compact { grid-template-columns: 1fr; }
       .topbar { display: block; }
       .toolbar { margin-top: 14px; }
     }
@@ -661,13 +713,17 @@
               <h3>门店结算统计</h3>
               <button class="secondary" id="markSettledBtn">标记选中为已结算</button>
             </div>
-            <div class="filters">
-              <select id="settlementStoreFilter"></select>
-              <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">待结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
-              <select id="settlementTypeFilter"><option value="">全部类型</option><option value="store_referral_commission">门店推广佣金</option><option value="pickup_service_fee">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
-              <input id="settlementStartFilter" placeholder="开始时间 2026-05-01">
-              <input id="settlementEndFilter" placeholder="结束时间 2026-05-31">
-              <button class="secondary" id="filterSettlementsBtn">筛选</button>
+            <div class="filters finance-filter-grid">
+              <div class="finance-filter-row">
+                <select id="settlementStoreFilter"></select>
+                <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">待结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
+                <select id="settlementTypeFilter"><option value="">全部类型</option><option value="store_referral_commission">门店推广佣金</option><option value="pickup_service_fee">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
+              </div>
+              <div class="finance-filter-row compact">
+                <input id="settlementStartFilter" placeholder="开始时间 2026-05-01">
+                <input id="settlementEndFilter" placeholder="结束时间 2026-05-31">
+                <button class="secondary" id="filterSettlementsBtn">筛选</button>
+              </div>
             </div>
             <div id="storeSettlementSummary"></div>
             <div id="storeSettlementRecords" style="margin-top:18px"></div>
@@ -698,10 +754,12 @@
         </div>
         <div class="subview" id="subview-rewardManager">
           <div class="panel"><h3>个人推广奖励</h3>
-            <div class="filters">
-              <select id="rewardStatusFilter"><option value="">全部状态</option><option value="unsettled">待结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
-              <input id="rewardKeywordFilter" placeholder="手机号 / 订单号 / 商品">
-              <button class="secondary" id="filterRewardsBtn">筛选</button>
+            <div class="filters finance-filter-grid">
+              <div class="finance-filter-row compact">
+                <select id="rewardStatusFilter"><option value="">全部状态</option><option value="unsettled">待结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
+                <input id="rewardKeywordFilter" placeholder="手机号 / 订单号 / 商品">
+                <button class="secondary" id="filterRewardsBtn">筛选</button>
+              </div>
             </div>
             <div id="rewardsTable"></div>
           </div>
@@ -2377,6 +2435,39 @@
       const remain = Math.max(chargeback - payable, 0)
       return `当前待结算：¥${payable.toFixed(2)}\n当前退款扣回：¥${chargeback.toFixed(2)}\n本次实际应支付：¥${actual.toFixed(2)}${remain > 0 ? `\n仍有 ¥${remain.toFixed(2)} 待后续收益抵扣` : ""}\n\n确认已按以上口径线下处理并标记结算？`
     }
+    function financeValue(value) {
+      return escapeHtml(value == null || value === "" ? "0.00" : value)
+    }
+    function hasRemainingChargeback(summary) {
+      return Number(summary?.remainingChargeback || 0) > 0
+    }
+    function renderFinanceSummaryCards(summary = {}) {
+      return `<div class="finance-summary-grid">
+        <div class="finance-card">
+          <div class="finance-label">累计已结算</div>
+          <div class="finance-desc">历史已打款</div>
+          <div class="finance-amount">¥${financeValue(summary.settledTotal)}</div>
+        </div>
+        <div class="finance-card">
+          <div class="finance-label">当前待结算</div>
+          <div class="finance-desc">本期正收益</div>
+          <div class="finance-amount">¥${financeValue(summary.payableTotal)}</div>
+        </div>
+        <div class="finance-card chargeback">
+          <div class="finance-label">当前退款扣回</div>
+          <div class="finance-desc">退款待抵扣</div>
+          <div class="finance-amount">¥${financeValue(summary.chargebackTotal)}</div>
+        </div>
+        <div class="finance-card highlight">
+          <div class="finance-label">本次实际应支付</div>
+          <div class="finance-desc">线下应付款</div>
+          <div class="finance-amount">¥${financeValue(summary.actualPayable)}</div>
+        </div>
+      </div>${hasRemainingChargeback(summary) ? `<div class="finance-warning">仍有 ¥${financeValue(summary.remainingChargeback)} 待后续收益抵扣，本次无需额外打款。</div>` : ""}`
+    }
+    function financeAmountClass(amount) {
+      return Number(amount || 0) < 0 ? "finance-amount-negative" : "finance-amount-positive"
+    }
     function renderStores() {
       $("storesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>等级</th><th>能力</th><th>佣金/服务费</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead><tbody>${stores.map((store, index) => `
         <tr>
@@ -2398,8 +2489,8 @@
       $("settlementTypeFilter").value = settlementFilters.type || ""
       $("settlementStartFilter").value = settlementFilters.startAt || ""
       $("settlementEndFilter").value = settlementFilters.endAt || ""
-      $("storeSettlementSummary").innerHTML = `<div class="stats-row"><div class="stat"><b>累计已结算</b><strong>¥${totals.settledTotal || "0.00"}</strong></div><div class="stat"><b>当前待结算</b><strong>¥${totals.payableTotal || "0.00"}</strong></div><div class="stat"><b>当前退款扣回</b><strong>¥${totals.chargebackTotal || "0.00"}</strong></div><div class="stat"><b>本次实际应支付</b><strong>¥${totals.actualPayable || "0.00"}</strong></div></div>${totals.remainingChargeback && totals.remainingChargeback !== "0.00" ? `<div class="upload-help">当前仍有 ¥${totals.remainingChargeback} 待后续收益抵扣</div>` : ""}<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>当前待结算</th><th>退款扣回</th><th>本次应付</th><th>累计已结算</th></tr></thead><tbody>${summary.map(item => `
-        <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.payableTotal}</td><td>¥${item.chargebackTotal}</td><td><strong>¥${item.actualPayable}</strong>${item.remainingChargeback && item.remainingChargeback !== "0.00" ? `<div class="muted">仍有 ¥${item.remainingChargeback} 待抵扣</div>` : ""}</td><td>¥${item.settledTotal}</td></tr>`).join("")}</tbody></table></div>`
+      $("storeSettlementSummary").innerHTML = `${renderFinanceSummaryCards(totals)}<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>当前待结算</th><th>退款扣回</th><th>本次应付</th><th>累计已结算</th></tr></thead><tbody>${summary.map(item => `
+        <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.payableTotal}</td><td>¥${item.chargebackTotal}</td><td><strong class="finance-payable">¥${item.actualPayable}</strong>${Number(item.remainingChargeback || 0) > 0 ? `<div class="finance-deduct-note">仍有 ¥${item.remainingChargeback} 待抵扣</div>` : ""}</td><td>¥${item.settledTotal}</td></tr>`).join("")}</tbody></table></div>`
       $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
         const store = stores.find(item => item.id === record.storeId) || {}
         return `<tr>
@@ -2408,7 +2499,7 @@
           <td>${escapeHtml(store.name || record.storeId)}</td>
           <td>${({ referral: "门店推广佣金", referral_commission: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整", chargeback: "退款冲正" })[record.type] || record.type}</td>
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
-          <td><strong>${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</strong></td>
+          <td><strong class="${financeAmountClass(record.amount)}">${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</strong></td>
           <td><span class="pill">${record.statusText || (record.status === "settled" ? "已结算" : record.status === "cancelled" ? "已取消" : "未结算")}</span></td>
           <td>${escapeHtml(record.createdAtText || record.createdAt || "")}<div class="muted">${record.settledAtText || record.settledAt ? `结算：${escapeHtml(record.settledAtText || record.settledAt)}` : ""}</div></td>
           <td><div class="table-actions"><button class="secondary" data-action="store-earning-settle" data-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}>结算</button><button class="danger" data-action="store-earning-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
@@ -2514,18 +2605,18 @@
       $("rewardStatusFilter").value = rewardFilters.status || ""
       $("rewardKeywordFilter").value = rewardFilters.keyword || ""
       const rewardSummary = rewardDataSummary || {}
-      $("rewardsTable").innerHTML = `<div class="stats-row"><div class="stat"><b>累计已结算</b><strong>¥${rewardSummary.settledTotal || "0.00"}</strong></div><div class="stat"><b>当前待结算</b><strong>¥${rewardSummary.payableTotal || "0.00"}</strong></div><div class="stat"><b>当前退款扣回</b><strong>¥${rewardSummary.chargebackTotal || "0.00"}</strong></div><div class="stat"><b>本次实际应支付</b><strong>¥${rewardSummary.actualPayable || "0.00"}</strong></div></div>${rewardSummary.remainingChargeback && rewardSummary.remainingChargeback !== "0.00" ? `<div class="upload-help">当前仍有 ¥${rewardSummary.remainingChargeback} 待后续收益抵扣</div>` : ""}<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="reward-adjustment">新增奖励调整</button></div><table><thead><tr><th>订单号</th><th>商品/说明</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>结算时间</th><th>操作</th></tr></thead><tbody>${rewards.map(record => `
-        <tr>
+      $("rewardsTable").innerHTML = `${renderFinanceSummaryCards(rewardSummary)}<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="reward-adjustment">新增奖励调整</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>订单号</th><th>商品/说明</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>结算时间</th><th>操作</th></tr></thead><tbody>${rewards.map(record => `
+        <tr class="${record.status === "cancelled" ? "row-muted" : ""}">
           <td>${escapeHtml(record.orderId || "-")}</td>
           <td>${escapeHtml(record.productName)}</td>
           <td>${escapeHtml(record.promoterName)}<div class="muted">${escapeHtml(record.promoterPhone)}</div></td>
           <td>${escapeHtml(record.buyerPhone)}</td>
           <td>${record.type === "adjustment" ? "调整" : record.type === "chargeback" ? "退款冲正" : record.level === 2 ? "二级" : "一级"}</td>
-          <td>${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</td>
+          <td><strong class="${financeAmountClass(record.amount)}">${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</strong></td>
           <td><span class="pill">${escapeHtml(record.statusText || record.status)}</span></td>
           <td>${escapeHtml(record.settledAtText || record.settledAt || record.releaseAt || "-")}</td>
           <td><div class="table-actions"><button class="secondary" data-action="reward-settle" data-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}>结算</button><button class="danger" data-action="reward-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
-        </tr>`).join("")}</tbody></table>`
+        </tr>`).join("")}</tbody></table></div>`
     }
     function renderSettings() {
       $("storeName").value = settings.storeName || ""
