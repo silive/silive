@@ -3569,7 +3569,7 @@ async function resolvePersonalOrderAttribution(phone) {
 
 async function createStoreSettlementRecordsForOrder(order) {
   const existing = await getStoreSettlementRecords()
-  if (!isOrderPaidForPickupCredential(order)) return existing.filter(record => record.orderId === order.id)
+  if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return existing.filter(record => record.orderId === order.id)
   const next = [...existing]
   const referrerStore = await getPartnerStore(order.referrerStoreId)
   const pickupStore = await getPartnerStore(order.pickupStoreId)
@@ -3678,7 +3678,7 @@ async function getStoreSettlementSummary(filters = {}) {
       storeId: store.id,
       storeName: store.name,
       referralOrders: new Set(referralRecords.map(record => record.orderId)).size,
-      pickupOrders: orders.filter(order => order.pickupStoreId === store.id && order.deliveryType === "pickup" && isOrderPaidForPickupCredential(order)).length,
+      pickupOrders: orders.filter(order => order.pickupStoreId === store.id && order.deliveryType === "pickup" && isOrderPaidForPickupCredential(order) && !isOrderRefunded(order)).length,
       referralAmount: money(referralRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
       pickupAmount: money(pickupRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
       supplierAmount: money(supplierRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
@@ -3799,7 +3799,7 @@ function storeOrderView(order, mode = "referral") {
 function storeCenterStats(store, orders, records) {
   const today = new Date().toISOString().slice(0, 10)
   const month = new Date().toISOString().slice(0, 7)
-  const paidOrders = orders.filter(order => isOrderPaidForPickupCredential(order))
+  const paidOrders = orders.filter(order => isOrderPaidForPickupCredential(order) && !isOrderRefunded(order))
   const paidOrderIds = new Set(paidOrders.map(order => order.id))
   const referralOrders = paidOrders.filter(order => order.referrerStoreId === store.id)
   const pickupOrders = paidOrders.filter(order => order.pickupStoreId === store.id && isPickupOrder(order))
@@ -5836,7 +5836,7 @@ async function handle(req, res) {
   if (url.pathname === "/api/store/referral-orders" && req.method === "GET") {
     const storeSession = await requireStoreSession(req, res)
     if (!storeSession) return
-    const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id && isOrderPaidForPickupCredential(order))
+    const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id && isOrderPaidForPickupCredential(order) && !isOrderRefunded(order))
     const paidOrderIds = new Set(orders.map(order => order.id))
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "store_referral_commission" }))
       .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
@@ -5868,7 +5868,7 @@ async function handle(req, res) {
   if (url.pathname === "/api/store/settlements" && req.method === "GET") {
     const storeSession = await requireStoreSession(req, res)
     if (!storeSession) return
-    const paidOrderIds = new Set((await getOrders()).filter(order => isOrderPaidForPickupCredential(order)).map(order => order.id))
+    const paidOrderIds = new Set((await getOrders()).filter(order => isOrderPaidForPickupCredential(order) && !isOrderRefunded(order)).map(order => order.id))
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id }))
       .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
     const activeRecords = records.filter(record => record.status !== "cancelled")
