@@ -1,6 +1,7 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
+const { isReviewMode } = require("../../utils/review")
 
 function safeJson(value, fallback = null) {
   try {
@@ -104,7 +105,8 @@ Page({
     unitPrice: "0.00",
     totalPrice: "0.00",
     loginVisible: false,
-    loginLoading: false
+    loginLoading: false,
+    reviewMode: isReviewMode()
   },
 
   onLoad(options) {
@@ -333,6 +335,10 @@ Page({
 
   switchDelivery(event) {
     const type = event.currentTarget.dataset.type === "pickup" ? "pickup" : "delivery"
+    if (this.data.reviewMode && type === "pickup") {
+      wx.showToast({ title: "自提功能暂未开放", icon: "none" })
+      return
+    }
     this.setData({ deliveryType: type })
     if (type === "pickup") {
       this.loadPickupStores()
@@ -671,6 +677,15 @@ Page({
         message: order.message || ""
       })
       if (!orderId) throw new Error(order.message || "订单创建失败")
+      if (this.data.reviewMode) {
+        wx.showModal({
+          title: "订单已提交",
+          content: "客服会尽快联系你确认付款方式和配送安排。",
+          showCancel: false,
+          success: () => wx.switchTab({ url: "/pages/orders/orders" })
+        })
+        return null
+      }
       if (this.isQuoteOrder() || order.paymentStatus === "待报价" || order.status === "待客服确认") {
         wx.showModal({
           title: "需求已提交",

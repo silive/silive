@@ -463,14 +463,14 @@
         <p>内容、商品、订单一处维护</p>
       </div>
       <nav class="nav" id="nav">
-        <button class="active" data-view="overview">数据总览</button>
-        <button data-view="products">商品中心</button>
+        <button style="display:none" data-view="overview">数据总览</button>
+        <button class="active" data-view="products">商品中心</button>
         <button data-view="orders">订单中心</button>
-        <button data-view="customers">用户中心</button>
-        <button data-view="stores">合作门店</button>
-        <button data-view="marketing">营销中心</button>
+        <button style="display:none" data-view="customers">用户中心</button>
+        <button style="display:none" data-view="stores">合作门店</button>
+        <button style="display:none" data-view="marketing">营销中心</button>
         <button data-view="home">页面装修</button>
-        <button data-view="theme">皮肤管理</button>
+        <button style="display:none" data-view="theme">皮肤管理</button>
         <button data-view="settings">系统设置</button>
       </nav>
     </aside>
@@ -478,8 +478,8 @@
     <main class="main">
       <section class="topbar">
         <div class="title">
-          <h2 id="pageTitle">数据总览</h2>
-          <p id="pageDesc">查看经营数据和待处理事项。</p>
+          <h2 id="pageTitle">商品中心</h2>
+          <p id="pageDesc">维护商品、库存、媒体素材和一二级类目。</p>
         </div>
         <div class="toolbar">
           <span class="status" id="status">正在读取...</span>
@@ -488,7 +488,7 @@
         </div>
       </section>
 
-      <section class="view active" id="view-overview">
+      <section class="view" id="view-overview">
         <div class="grid three">
           <div class="card"><div class="metric">首页商品</div><div class="value" id="mProducts">0</div></div>
           <div class="card"><div class="metric">订单总数</div><div class="value" id="mOrders">0</div></div>
@@ -516,7 +516,7 @@
       <section class="view" id="view-home">
         <div class="center-tabs">
           <button class="center-tab active" data-subview="homeDecor">首页装修</button>
-          <button class="center-tab" data-subview="helpManager">帮助中心管理</button>
+          <button class="center-tab" style="display:none" data-subview="helpManager">帮助中心管理</button>
         </div>
         <div class="subview active" id="subview-homeDecor">
           <div class="panel">
@@ -529,8 +529,8 @@
             </div>
           </div>
           <div class="panel"><h3>Banner 图与文字</h3><div class="list" id="homeBanners"></div></div>
-          <div class="panel"><h3>首页入口管理</h3><div class="upload-help">共4个卡片位。跳转目标改为联动选择，避免手输错误。类目来自商品中心，活动来自营销中心。</div><div class="list" id="homeEntries"></div></div>
-          <div class="panel"><h3>运营广告位</h3><div class="upload-help">用于配置我的页底部广告、售后保障页广告和推广分享素材。标题/副标题可以留空，留空后前台不显示旧默认文案。</div><div class="list" id="homeAds"></div></div>
+          <div class="panel"><h3>首页入口管理</h3><div class="upload-help">共4个卡片位。跳转目标改为联动选择，避免手输错误。类目来自商品中心。</div><div class="list" id="homeEntries"></div></div>
+          <div class="panel" style="display:none"><h3>运营广告位</h3><div class="upload-help">用于配置我的页底部广告、售后保障页广告和分享素材。标题/副标题可以留空，留空后前台不显示旧默认文案。</div><div class="list" id="homeAds"></div></div>
           <div class="panel"><h3>首页商品展示规则</h3><div class="list" id="homeProducts"></div></div>
         </div>
         <div class="subview" id="subview-helpManager">
@@ -557,7 +557,7 @@
               <div class="upload-help">上传 colors.json、主题图片和图标资源后，一键启用即可让小程序自动读取最新皮肤，无需重新发版。theme.wxss 可上传留档，线上即时换肤通过主题变量生效。</div>
             </div>
             <div class="toolbar">
-              <button class="secondary" id="testThemeApiBtn">测试当前主题接口</button>
+              <button class="secondary" id="checkThemeApiBtn">检查当前主题接口</button>
               <button class="secondary" id="addThemeBtn">新增皮肤</button>
             </div>
           </div>
@@ -577,7 +577,7 @@
         </div>
       </section>
 
-      <section class="view" id="view-products">
+      <section class="view active" id="view-products">
         <div class="center-tabs">
           <button class="center-tab active" data-subview="productList">商品列表</button>
           <button class="center-tab" data-subview="categoryManager">类目管理</button>
@@ -864,7 +864,7 @@
       settings: ["系统设置", "维护店铺基础信息和客服信息。"]
     }
     const $ = id => document.getElementById(id)
-    let currentView = "overview"
+    let currentView = "products"
     let home = {}
     let products = []
     let allOrders = []
@@ -2981,7 +2981,7 @@
       renderThemes()
       setStatus("已新增皮肤，编辑后点击保存当前页")
     })
-    $("testThemeApiBtn").addEventListener("click", () => {
+    $("checkThemeApiBtn").addEventListener("click", () => {
       api(`/api/theme/current?t=${Date.now()}`).then(theme => {
         $("themeApiResult").style.display = "block"
         $("themeApiResult").textContent = JSON.stringify(theme, null, 2)

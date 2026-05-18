@@ -10,7 +10,7 @@
     <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">微信快捷登录</button>
   </view>
 
-  <view class="wallet-card" style="{{walletCardStyle}}">
+  <view wx:if="{{!reviewMode}}" class="wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
@@ -29,7 +29,7 @@
         <view class="feature-title">我的订单</view>
         <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>
       </button>
-      <block wx:if="{{!loggedIn || storeChecked}}">
+      <block wx:if="{{!reviewMode && (!loggedIn || storeChecked)}}">
         <button wx:if="{{loggedIn && storeBound}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
           <view class="feature-icon" style="{{iconBadgeStyle}}">店</view>
           <view class="feature-title">门店中心</view>
@@ -54,7 +54,7 @@
       </button>
     </view>
     <view class="feature-row bottom-row">
-      <button class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
+      <button wx:if="{{!reviewMode}}" class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
         <view wx:if="{{afterSaleDot}}" class="red-dot"></view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">✓</view>
         <view class="feature-title">售后保障</view>
@@ -62,7 +62,7 @@
       </button>
     </view>
   </view>
-  <button wx:if="{{banner && banner.imageUrl && (banner.targetType === 'contact' || banner.linkType === 'contact')}}" class="profile-banner" style="{{bannerStyle}}" open-type="contact">
+  <button wx:if="{{!reviewMode && banner && banner.imageUrl && (banner.targetType === 'contact' || banner.linkType === 'contact')}}" class="profile-banner" style="{{bannerStyle}}" open-type="contact">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
     <view class="profile-banner-copy">
       <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
@@ -70,7 +70,7 @@
       <view class="profile-banner-desc">{{banner.desc}}</view>
     </view>
   </button>
-  <view wx:elif="{{banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
+  <view wx:elif="{{!reviewMode && banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
     <view class="profile-banner-copy">
       <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>

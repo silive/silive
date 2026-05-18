@@ -34,11 +34,11 @@
     <view class="benefit-item" wx:for="{{newcomerBenefits}}" wx:key="text">新人首单{{item.text}}</view>
   </view>
 
-  <view wx:if="{{product.isNormalProduct}}" class="normal-action-panel share-only-panel" style="{{cardStyle}}">
+  <view wx:if="{{product.isNormalProduct && !reviewMode}}" class="normal-action-panel share-only-panel" style="{{cardStyle}}">
     <button class="normal-share-btn" open-type="share">推荐给朋友</button>
   </view>
 
-  <view wx:if="{{!product.isNormalProduct}}" class="top-actions share-only-panel" style="{{cardStyle}}">
+  <view wx:if="{{!product.isNormalProduct && !reviewMode}}" class="top-actions share-only-panel" style="{{cardStyle}}">
     <button class="share-btn" style="{{secondaryButtonStyle}}" open-type="share">推荐给朋友</button>
   </view>
 

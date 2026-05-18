@@ -1,6 +1,7 @@
 const { request } = require("../../utils/api")
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
+const { isReviewMode } = require("../../utils/review")
 const defaultData = require("../index/default-data")
 const BADGE_TEXT = {
   new: "新品推荐",
@@ -134,7 +135,8 @@ Page({
     shareStoreId: "",
     mainImageLoaded: false,
     visibleDetailImages: [],
-    detailImagesExpanded: false
+    detailImagesExpanded: false,
+    reviewMode: isReviewMode()
   },
 
   onLoad(options) {
@@ -418,6 +420,7 @@ Page({
   buildSharePath() {
     const product = this.data.product || {}
     const id = product.id || ""
+    if (this.data.reviewMode) return `/pages/product/detail?id=${encodeURIComponent(id)}`
     const storeId = this.getShareStoreId()
     if (storeId) return `/pages/product/detail?id=${encodeURIComponent(id)}&store_id=${encodeURIComponent(storeId)}`
     const invite = this.getShareInvite()

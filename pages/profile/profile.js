@@ -1,5 +1,6 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
+const { isReviewMode } = require("../../utils/review")
 
 Page({
   data: {
@@ -30,7 +31,8 @@ Page({
     storeBound: false,
     storeInfo: null,
     storeStats: null,
-    storeConflictMessage: ""
+    storeConflictMessage: "",
+    reviewMode: isReviewMode()
   },
 
   onShow() {
@@ -221,6 +223,10 @@ Page({
   },
 
   goPromotion() {
+    if (this.data.reviewMode) {
+      wx.showToast({ title: "该功能暂未开放", icon: "none" })
+      return
+    }
     if (!this.requireLogin()) return
     wx.navigateTo({ url: "/pages/promotion/promotion" })
   },
@@ -280,6 +286,10 @@ Page({
   },
 
   loadStoreMe() {
+    if (this.data.reviewMode) {
+      this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
+      return
+    }
     if (!this.data.loggedIn) {
       this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null })
       return
@@ -317,6 +327,10 @@ Page({
   },
 
   goStoreCenter() {
+    if (this.data.reviewMode) {
+      wx.showToast({ title: "该功能暂未开放", icon: "none" })
+      return
+    }
     if (!this.requireLogin()) return
     wx.navigateTo({ url: "/pages/store/center/center" })
   },

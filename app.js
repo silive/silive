@@ -1,5 +1,6 @@
 const { checkApiConnectivity, request } = require("./utils/api")
 const { loadCurrentTheme } = require("./utils/theme")
+const { REVIEW_MODE } = require("./utils/review")
 const STORE_REFERRAL_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const REFERRAL_CONTEXT_KEY = "referralContext"
 const REFERRAL_DEDUPE_MS = 5000
@@ -124,7 +125,8 @@ function robustParseScene(options = {}) {
 
 App({
   globalData: {
-    brandName: "非常智造"
+    brandName: "非常智造",
+    reviewMode: REVIEW_MODE
   },
 
   onLaunch(options = {}) {
@@ -221,6 +223,10 @@ App({
   },
 
   handleReferralScene(options = {}, source = "page-load") {
+    if (REVIEW_MODE) {
+      console.log("[review-mode] referral disabled", { source })
+      return
+    }
     const parsed = robustParseScene({ ...(options || {}), source })
     const skip = this.shouldSkipReferral(parsed)
     if (skip.skip) {

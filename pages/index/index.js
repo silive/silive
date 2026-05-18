@@ -1,6 +1,7 @@
 const defaultData = require("./default-data")
 const { request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
+const { filterReviewHomeEntries, isReviewMode } = require("../../utils/review")
 const BADGE_TEXT = {
   new: "新品推荐",
   hot: "人气热卖",
@@ -112,7 +113,7 @@ function buildHomeState(data) {
   const burstProducts = burstSource.slice(0, 4)
   const homeUpdatedAt = data.updatedAt || data.homeUpdatedAt || ""
   const banners = normalizeBannersWithVersion((data.banners || defaultData.banners || []).slice(0, 3).filter(item => item.imageUrl || item.title || item.desc), homeUpdatedAt)
-  const homeEntries = (data.homeEntries || defaultData.homeEntries || [])
+  const homeEntries = filterReviewHomeEntries((data.homeEntries || defaultData.homeEntries || [])
     .map(item => item.name === "联系客服" || item.targetType === "service" ? {
       ...item,
       name: "日用好货",
@@ -125,7 +126,7 @@ function buildHomeState(data) {
       desc: item.name === "日用好货" && ["食品饮料 · 日用百货", "食品饮料 / 日用百货"].includes(item.desc) ? "零食饮料 · 家庭纸品" : item.desc
     })
     .filter(item => String(item.visible) !== "false")
-    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0))
+    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0)))
   return {
     ...defaultData,
     ...data,
@@ -159,7 +160,8 @@ Page({
     preloadBannerThumbCount: 0,
     bannerLoading: true,
     bannerLoaded: false,
-    bannerError: false
+    bannerError: false,
+    reviewMode: isReviewMode()
   },
 
   onLoad(options = {}) {
@@ -494,6 +496,11 @@ Page({
   handleTarget(entry) {
     if (!entry) return
     const value = entry.targetValue || entry.name || ""
+    if (isReviewMode() && ["poster", "activity", "custom", "web", "contact", "service"].includes(entry.targetType || entry.linkType || "")) {
+      if (entry.targetType === "contact" || entry.targetType === "service") return
+      wx.navigateTo({ url: `/pages/category/list?primary=${encodeURIComponent(value || "日用好货")}` })
+      return
+    }
     if (entry.targetType === "service") {
       this.showContact()
       return
