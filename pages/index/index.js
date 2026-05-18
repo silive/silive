@@ -167,8 +167,6 @@ Page({
     applyTheme(this)
     const app = getApp()
     if (app.captureInvite) app.captureInvite({ query: options })
-    if (options.invite) wx.setStorageSync("inviterCode", decodeURIComponent(options.invite))
-    if (options.inviterCode) wx.setStorageSync("inviterCode", decodeURIComponent(options.inviterCode))
     this.loadHomeConfig()
   },
 

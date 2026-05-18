@@ -30,6 +30,14 @@ function buildCustomProduct(category = "图片定制") {
 function getValidReferrerStoreId() {
   const app = getApp()
   if (app && typeof app.getValidReferrerStoreId === "function") return app.getValidReferrerStoreId()
+  const context = wx.getStorageSync("referralContext") || {}
+  const storeReferral = context.storeReferral || {}
+  const contextStoreId = storeReferral.storeId || ""
+  const contextExpireAt = Number(storeReferral.expiresAt || 0)
+  if (contextStoreId) {
+    if (contextExpireAt && Date.now() <= contextExpireAt) return contextStoreId
+    return ""
+  }
   const storeId = wx.getStorageSync("referrerStoreId") || ""
   const expireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
   if (!storeId) return ""
@@ -43,12 +51,16 @@ function getValidReferrerStoreId() {
 }
 
 function getReferrerStoreMeta() {
+  const app = getApp()
+  if (app && typeof app.getReferrerStoreMeta === "function") return app.getReferrerStoreMeta()
+  const context = wx.getStorageSync("referralContext") || {}
+  const storeReferral = context.storeReferral || {}
   const storeId = getValidReferrerStoreId()
   if (!storeId) return { referrerStoreId: "", referrerStoreBoundAt: "", referrerStoreExpireAt: "" }
   return {
     referrerStoreId: storeId,
-    referrerStoreBoundAt: wx.getStorageSync("referrerStoreBoundAt") || "",
-    referrerStoreExpireAt: wx.getStorageSync("referrerStoreExpireAt") || ""
+    referrerStoreBoundAt: storeReferral.boundAt || wx.getStorageSync("referrerStoreBoundAt") || "",
+    referrerStoreExpireAt: storeReferral.expiresAt || wx.getStorageSync("referrerStoreExpireAt") || ""
   }
 }
 
