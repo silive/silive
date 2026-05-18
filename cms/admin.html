@@ -2396,7 +2396,7 @@
           <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}></td>
           <td>${escapeHtml(record.orderId)}</td>
           <td>${escapeHtml(store.name || record.storeId)}</td>
-          <td>${({ referral: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整" })[record.type] || record.type}</td>
+          <td>${({ referral: "门店推广佣金", referral_commission: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整" })[record.type] || record.type}</td>
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
           <td><strong>¥${record.amount}</strong></td>
           <td><span class="pill">${record.statusText || (record.status === "settled" ? "已结算" : record.status === "cancelled" ? "已取消" : "未结算")}</span></td>

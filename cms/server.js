@@ -3138,7 +3138,7 @@ async function getStoreSettlementRecords(filters = {}) {
 }
 
 function settlementTypeAliases(type) {
-  if (type === "referral" || type === "store_referral_commission") return ["referral", "store_referral_commission"]
+  if (type === "referral" || type === "store_referral_commission" || type === "referral_commission") return ["referral", "store_referral_commission", "referral_commission"]
   if (type === "pickup" || type === "pickup_service_fee") return ["pickup", "pickup_service_fee"]
   return [type]
 }
@@ -3576,11 +3576,12 @@ async function createStoreSettlementRecordsForOrder(order) {
   const createdAt = formatDateTime(new Date())
   const upsertSettlementRecord = incoming => {
     const normalized = normalizeSettlementRecord(incoming)
-    const index = next.findIndex(record => record.id === normalized.id || (record.orderId === normalized.orderId && record.type === normalized.type))
+    const index = next.findIndex(record => record.id === normalized.id || (record.orderId === normalized.orderId && record.storeId === normalized.storeId && settlementTypeAliases(normalized.type).includes(record.type)))
     if (index >= 0) {
       next[index] = normalizeSettlementRecord({
         ...next[index],
         ...normalized,
+        id: next[index].id || normalized.id,
         status: next[index].status || normalized.status,
         settledAt: next[index].settledAt || normalized.settledAt,
         settledBy: next[index].settledBy || normalized.settledBy,
@@ -3594,13 +3595,19 @@ async function createStoreSettlementRecordsForOrder(order) {
     }
     next.push(normalized)
   }
-  if (referrerStore && Number(order.referralCommission || 0) > 0) {
+  const referralAmount = referrerStore && Number(order.referralCommission || 0) <= 0
+    ? calculateStoreAmount(order.amount, referrerStore.referralCommissionType, referrerStore.referralCommissionValue)
+    : money(order.referralCommission || 0)
+  const pickupAmount = pickupStore && Number(order.pickupServiceFee || 0) <= 0
+    ? calculatePickupServiceFee(order.amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
+    : money(order.pickupServiceFee || 0)
+  if (referrerStore && Number(referralAmount || 0) > 0) {
     upsertSettlementRecord({
       id: `SSR${order.id}REF`,
       storeId: referrerStore.id,
       orderId: order.id,
       type: "store_referral_commission",
-      amount: order.referralCommission,
+      amount: referralAmount,
       commissionType: referrerStore.referralCommissionType,
       commissionValue: referrerStore.referralCommissionValue,
       orderPaidAmount: order.amount,
@@ -3609,13 +3616,13 @@ async function createStoreSettlementRecordsForOrder(order) {
       createdAt
     })
   }
-  if (pickupStore && Number(order.pickupServiceFee || 0) > 0) {
+  if (pickupStore && Number(pickupAmount || 0) > 0) {
     upsertSettlementRecord({
       id: `SSR${order.id}PIC`,
       storeId: pickupStore.id,
       orderId: order.id,
       type: "pickup_service_fee",
-      amount: order.pickupServiceFee,
+      amount: pickupAmount,
       commissionType: pickupStore.pickupFeeType,
       commissionValue: pickupStore.pickupFeeValue,
       orderPaidAmount: order.amount,
@@ -3627,7 +3634,8 @@ async function createStoreSettlementRecordsForOrder(order) {
   const deduped = []
   const seenOrderTypes = new Set()
   for (const record of next) {
-    const key = record.orderId ? `${record.orderId}:${record.type}` : ""
+    const canonicalType = isStoreReferralSettlement(record.type) ? "store_referral_commission" : isPickupServiceSettlement(record.type) ? "pickup_service_fee" : record.type
+    const key = record.orderId ? `${record.orderId}:${record.storeId}:${canonicalType}` : ""
     if (record.orderId === order.id && key) {
       if (seenOrderTypes.has(key)) continue
       seenOrderTypes.add(key)
@@ -3660,17 +3668,17 @@ async function getStoreSettlementSummary(filters = {}) {
   const summary = targetStores.map(store => {
     const storeRecords = records.filter(record => record.storeId === store.id)
     const activeStoreRecords = storeRecords.filter(record => record.status !== "cancelled")
-    const referralRecords = storeRecords.filter(record => isStoreReferralSettlement(record.type))
-    const pickupRecords = storeRecords.filter(record => isPickupServiceSettlement(record.type))
-    const supplierRecords = storeRecords.filter(record => record.type === "supplier")
-    const customRecords = storeRecords.filter(record => record.type === "custom")
+    const referralRecords = activeStoreRecords.filter(record => isStoreReferralSettlement(record.type))
+    const pickupRecords = activeStoreRecords.filter(record => isPickupServiceSettlement(record.type))
+    const supplierRecords = activeStoreRecords.filter(record => record.type === "supplier")
+    const customRecords = activeStoreRecords.filter(record => record.type === "custom")
     const settled = storeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const total = activeStoreRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)
     return {
       storeId: store.id,
       storeName: store.name,
       referralOrders: new Set(referralRecords.map(record => record.orderId)).size,
-      pickupOrders: orders.filter(order => order.pickupStoreId === store.id && order.deliveryType === "pickup").length,
+      pickupOrders: orders.filter(order => order.pickupStoreId === store.id && order.deliveryType === "pickup" && isOrderPaidForPickupCredential(order)).length,
       referralAmount: money(referralRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
       pickupAmount: money(pickupRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
       supplierAmount: money(supplierRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
@@ -4705,10 +4713,9 @@ async function saveRewardRecords(records) {
 
 async function createRewardsForOrder(order) {
   const normalized = normalizeOrder(order, 0)
-  if (normalized.paymentStatus !== "已支付") return []
+  if (!isOrderPaidForPickupCredential(normalized) || isOrderRefunded(normalized)) return []
   if (normalized.referrerStoreId) return await getRewardRecords()
   const existing = await getRewardRecords()
-  if (existing.some(record => record.orderId === normalized.id)) return existing
   const relations = await getPromotionRelations()
   const customers = await getCustomers()
   const buyerPhone = normalizePhone(normalized.phone)
@@ -4722,13 +4729,14 @@ async function createRewardsForOrder(order) {
   const makeRecord = (promoterPhone, level, amount) => {
     const promoter = customers.find(customer => normalizePhone(customer.phone) === normalizePhone(promoterPhone)) || {}
     return normalizeRewardRecord({
-      id: `RW${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}${level}`,
+      id: `RW${normalized.id}${level}`,
       orderId: normalized.id,
       productName: normalized.productName,
       buyerPhone: normalized.phone,
       promoterPhone,
       promoterName: promoter.name || "",
       level,
+      type: level === 2 ? "level2" : "level1",
       amount,
       status: "unsettled",
       releaseAt: "",
@@ -4736,10 +4744,45 @@ async function createRewardsForOrder(order) {
     }, existing.length)
   }
   const next = [...existing]
-  if (Number(rule.firstReward) > 0) next.unshift(makeRecord(directPhone, 1, rule.firstReward))
-  if (parentPhone && Number(rule.secondReward) > 0) next.unshift(makeRecord(parentPhone, 2, rule.secondReward))
+  const hasReward = (promoterPhone, level) => next.some(record =>
+    record.orderId === normalized.id &&
+    normalizePhone(record.promoterPhone) === normalizePhone(promoterPhone) &&
+    Number(record.level || 1) === Number(level) &&
+    record.type !== "adjustment"
+  )
+  if (Number(rule.firstReward) > 0 && !hasReward(directPhone, 1)) next.unshift(makeRecord(directPhone, 1, rule.firstReward))
+  if (parentPhone && Number(rule.secondReward) > 0 && !hasReward(parentPhone, 2)) next.unshift(makeRecord(parentPhone, 2, rule.secondReward))
   await saveRewardRecords(next)
   return next
+}
+
+async function ensureReferralRewardRecords() {
+  const orders = await getOrders()
+  let storeOrdersChecked = 0
+  let personalOrdersChecked = 0
+  let invalidatedOrders = 0
+  for (const order of orders) {
+    if (isOrderRefunded(order)) {
+      await rollbackRewardsForOrder(order.id)
+      await invalidateStoreSettlementRecordsForOrder(order.id)
+      invalidatedOrders += 1
+      continue
+    }
+    if (!isOrderPaidForPickupCredential(order)) continue
+    if (order.referrerStoreId) {
+      await createStoreSettlementRecordsForOrder(order)
+      storeOrdersChecked += 1
+    }
+    if (!order.referrerStoreId && (order.referrerUserId || order.parentReferrerUserId || order.inviterCode)) {
+      await createRewardsForOrder(order)
+      personalOrdersChecked += 1
+    }
+  }
+  console.log("[referral-settlement-backfill]", {
+    paidStoreReferralOrdersChecked: storeOrdersChecked,
+    paidPersonalReferralOrdersChecked: personalOrdersChecked,
+    refundedOrdersInvalidated: invalidatedOrders
+  })
 }
 
 async function processRewardState() {
@@ -6782,7 +6825,8 @@ warnRuntimeMode()
 assertProductionRuntimeConfig()
 ensureUploadDirectoryGuards()
 
-initDb().then(() => {
+initDb().then(async () => {
+  await ensureReferralRewardRecords().catch(error => console.warn("推广收益补偿检查失败：", error.message))
   cleanupOrphanTempUploads(true).catch(error => console.warn("临时图片清理失败：", error.message))
   const serverHandler = (req, res) => {
     handle(req, res).catch(error => {
