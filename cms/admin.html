@@ -663,7 +663,7 @@
             </div>
             <div class="filters">
               <select id="settlementStoreFilter"></select>
-              <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
+              <select id="settlementStatusFilter"><option value="">全部状态</option><option value="unsettled">待结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
               <select id="settlementTypeFilter"><option value="">全部类型</option><option value="store_referral_commission">门店推广佣金</option><option value="pickup_service_fee">自提服务费</option><option value="supplier">供货</option><option value="custom">定制</option></select>
               <input id="settlementStartFilter" placeholder="开始时间 2026-05-01">
               <input id="settlementEndFilter" placeholder="结束时间 2026-05-31">
@@ -699,7 +699,7 @@
         <div class="subview" id="subview-rewardManager">
           <div class="panel"><h3>个人推广奖励</h3>
             <div class="filters">
-              <select id="rewardStatusFilter"><option value="">全部状态</option><option value="unsettled">未结算</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
+              <select id="rewardStatusFilter"><option value="">全部状态</option><option value="unsettled">待结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
               <input id="rewardKeywordFilter" placeholder="手机号 / 订单号 / 商品">
               <button class="secondary" id="filterRewardsBtn">筛选</button>
             </div>
@@ -816,6 +816,7 @@
     let storeSettlements = { summary: [], records: [] }
     let relations = []
     let rewards = []
+    let rewardDataSummary = {}
     let settings = {}
     let themeState = { activeThemeSkin: "skin01", themes: [] }
     let editingThemeSkin = "skin01"
@@ -2368,6 +2369,14 @@
       if (type === "percent") return `${value || 0}%`
       return `¥${value || 0}/单`
     }
+    function settlementConfirmText(records) {
+      const list = records.filter(record => record && record.status === "unsettled")
+      const payable = list.filter(record => Number(record.amount || 0) > 0).reduce((sum, record) => sum + Number(record.amount || 0), 0)
+      const chargeback = Math.abs(list.filter(record => Number(record.amount || 0) < 0).reduce((sum, record) => sum + Number(record.amount || 0), 0))
+      const actual = Math.max(payable - chargeback, 0)
+      const remain = Math.max(chargeback - payable, 0)
+      return `当前待结算：¥${payable.toFixed(2)}\n当前退款扣回：¥${chargeback.toFixed(2)}\n本次实际应支付：¥${actual.toFixed(2)}${remain > 0 ? `\n仍有 ¥${remain.toFixed(2)} 待后续收益抵扣` : ""}\n\n确认已按以上口径线下处理并标记结算？`
+    }
     function renderStores() {
       $("storesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>等级</th><th>能力</th><th>佣金/服务费</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead><tbody>${stores.map((store, index) => `
         <tr>
@@ -2383,13 +2392,14 @@
     function renderStoreSettlements() {
       const summary = storeSettlements.summary || []
       const records = storeSettlements.records || []
+      const totals = storeSettlements.totals || {}
       $("settlementStoreFilter").innerHTML = `<option value="">全部门店</option>${stores.map(store => `<option value="${escapeHtml(store.id)}" ${settlementFilters.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)}</option>`).join("")}`
       $("settlementStatusFilter").value = settlementFilters.status || ""
       $("settlementTypeFilter").value = settlementFilters.type || ""
       $("settlementStartFilter").value = settlementFilters.startAt || ""
       $("settlementEndFilter").value = settlementFilters.endAt || ""
-      $("storeSettlementSummary").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>供货/定制</th><th>应结算</th><th>已结算</th><th>未结算</th></tr></thead><tbody>${summary.map(item => `
-        <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.supplierAmount} / ¥${item.customAmount}</td><td><strong>¥${item.totalAmount}</strong></td><td>¥${item.settledAmount}</td><td>¥${item.unsettledAmount}</td></tr>`).join("")}</tbody></table></div>`
+      $("storeSettlementSummary").innerHTML = `<div class="stats-row"><div class="stat"><b>累计已结算</b><strong>¥${totals.settledTotal || "0.00"}</strong></div><div class="stat"><b>当前待结算</b><strong>¥${totals.payableTotal || "0.00"}</strong></div><div class="stat"><b>当前退款扣回</b><strong>¥${totals.chargebackTotal || "0.00"}</strong></div><div class="stat"><b>本次实际应支付</b><strong>¥${totals.actualPayable || "0.00"}</strong></div></div>${totals.remainingChargeback && totals.remainingChargeback !== "0.00" ? `<div class="upload-help">当前仍有 ¥${totals.remainingChargeback} 待后续收益抵扣</div>` : ""}<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>当前待结算</th><th>退款扣回</th><th>本次应付</th><th>累计已结算</th></tr></thead><tbody>${summary.map(item => `
+        <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.payableTotal}</td><td>¥${item.chargebackTotal}</td><td><strong>¥${item.actualPayable}</strong>${item.remainingChargeback && item.remainingChargeback !== "0.00" ? `<div class="muted">仍有 ¥${item.remainingChargeback} 待抵扣</div>` : ""}</td><td>¥${item.settledTotal}</td></tr>`).join("")}</tbody></table></div>`
       $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
         const store = stores.find(item => item.id === record.storeId) || {}
         return `<tr>
@@ -2398,7 +2408,7 @@
           <td>${escapeHtml(store.name || record.storeId)}</td>
           <td>${({ referral: "门店推广佣金", referral_commission: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整", chargeback: "退款冲正" })[record.type] || record.type}</td>
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
-          <td><strong>¥${record.amount}</strong></td>
+          <td><strong>${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</strong></td>
           <td><span class="pill">${record.statusText || (record.status === "settled" ? "已结算" : record.status === "cancelled" ? "已取消" : "未结算")}</span></td>
           <td>${escapeHtml(record.createdAtText || record.createdAt || "")}<div class="muted">${record.settledAtText || record.settledAt ? `结算：${escapeHtml(record.settledAtText || record.settledAt)}` : ""}</div></td>
           <td><div class="table-actions"><button class="secondary" data-action="store-earning-settle" data-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}>结算</button><button class="danger" data-action="store-earning-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
@@ -2503,14 +2513,15 @@
     function renderRewards() {
       $("rewardStatusFilter").value = rewardFilters.status || ""
       $("rewardKeywordFilter").value = rewardFilters.keyword || ""
-      $("rewardsTable").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="reward-adjustment">新增奖励调整</button></div><table><thead><tr><th>订单号</th><th>商品/说明</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>结算时间</th><th>操作</th></tr></thead><tbody>${rewards.map(record => `
+      const rewardSummary = rewardDataSummary || {}
+      $("rewardsTable").innerHTML = `<div class="stats-row"><div class="stat"><b>累计已结算</b><strong>¥${rewardSummary.settledTotal || "0.00"}</strong></div><div class="stat"><b>当前待结算</b><strong>¥${rewardSummary.payableTotal || "0.00"}</strong></div><div class="stat"><b>当前退款扣回</b><strong>¥${rewardSummary.chargebackTotal || "0.00"}</strong></div><div class="stat"><b>本次实际应支付</b><strong>¥${rewardSummary.actualPayable || "0.00"}</strong></div></div>${rewardSummary.remainingChargeback && rewardSummary.remainingChargeback !== "0.00" ? `<div class="upload-help">当前仍有 ¥${rewardSummary.remainingChargeback} 待后续收益抵扣</div>` : ""}<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="reward-adjustment">新增奖励调整</button></div><table><thead><tr><th>订单号</th><th>商品/说明</th><th>推广人</th><th>买家</th><th>层级</th><th>金额</th><th>状态</th><th>结算时间</th><th>操作</th></tr></thead><tbody>${rewards.map(record => `
         <tr>
           <td>${escapeHtml(record.orderId || "-")}</td>
           <td>${escapeHtml(record.productName)}</td>
           <td>${escapeHtml(record.promoterName)}<div class="muted">${escapeHtml(record.promoterPhone)}</div></td>
           <td>${escapeHtml(record.buyerPhone)}</td>
           <td>${record.type === "adjustment" ? "调整" : record.type === "chargeback" ? "退款冲正" : record.level === 2 ? "二级" : "一级"}</td>
-          <td>¥${escapeHtml(record.amount)}</td>
+          <td>${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</td>
           <td><span class="pill">${escapeHtml(record.statusText || record.status)}</span></td>
           <td>${escapeHtml(record.settledAtText || record.settledAt || record.releaseAt || "-")}</td>
           <td><div class="table-actions"><button class="secondary" data-action="reward-settle" data-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}>结算</button><button class="danger" data-action="reward-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
@@ -2647,6 +2658,7 @@
       storeSettlements = settlementData
       relations = relationData
       rewards = rewardData.records || rewardData
+      rewardDataSummary = rewardData.summary || {}
       settings = settingData
       themeState = themeData || { activeThemeSkin: settings.activeThemeSkin || "skin01", themes: settings.themes || [] }
       if (!editingThemeSkin) editingThemeSkin = themeState.activeThemeSkin
@@ -2840,7 +2852,8 @@
     $("markSettledBtn").addEventListener("click", () => {
       const ids = Array.from(document.querySelectorAll("[data-settlement-id]:checked")).map(input => input.dataset.settlementId)
       if (!ids.length) return setStatus("请先勾选结算记录")
-      if (!confirm(`确认将 ${ids.length} 条记录标记为已结算？`)) return
+      const selectedRecords = (storeSettlements.records || []).filter(record => ids.includes(record.id))
+      if (!confirm(settlementConfirmText(selectedRecords))) return
       api("/api/admin/store-settlements/mark-settled", "POST", { ids })
         .then(() => loadAll())
         .then(() => setStatus("已标记结算"))
@@ -2948,6 +2961,8 @@
         }
       }
       if (event.target.dataset.action === "reward-settle") {
+        const record = (rewards || []).find(item => item.id === event.target.dataset.id)
+        if (record && !confirm(settlementConfirmText([record]))) return
         const note = prompt("结算备注（选填）", "线下已结算") || ""
         api(`/api/admin/rewards/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
           .then(() => loadAll())
@@ -2974,6 +2989,8 @@
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "store-earning-settle") {
+        const record = (storeSettlements.records || []).find(item => item.id === event.target.dataset.id)
+        if (record && !confirm(settlementConfirmText([record]))) return
         const note = prompt("结算备注（选填）", "线下已结算") || ""
         api(`/api/admin/store-earnings/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
           .then(() => loadAll())
@@ -3000,7 +3017,8 @@
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "store-earning-batch-settle") {
-        if (!confirm("确认按当前筛选条件批量结算未结算门店收益？")) return
+        const batchRecords = (storeSettlements.records || []).filter(record => record.status === "unsettled")
+        if (!confirm(settlementConfirmText(batchRecords))) return
         const note = prompt("批量结算备注", "线下批量结算") || "线下批量结算"
         api("/api/admin/store-earnings/batch-settle", "POST", { ...settlementFilters, note })
           .then(result => loadAll().then(() => result))

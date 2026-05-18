@@ -13,11 +13,11 @@
   <view class="wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">推广奖励</view>
-      <view class="wallet-value">¥{{shoppingMoney}}</view>
+      <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
     </view>
     <view>
-      <view class="wallet-pending">待结算 ¥{{pendingReward}}</view>
-      <view class="wallet-note">{{storeBound ? '门店收益请前往门店中心查看' : '邀请好友下单后由平台人工审核结算'}}</view>
+      <view class="wallet-pending">当前待结算 ¥{{pendingReward}}</view>
+      <view class="wallet-note">{{storeBound ? '门店收益请前往门店中心查看' : '本次预计到账，平台人工审核后结算'}}</view>
     </view>
   </view>
 

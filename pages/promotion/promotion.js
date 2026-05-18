@@ -77,7 +77,10 @@ Page({
         this.setData({
           profile: data.profile || this.data.profile,
           invited: data.invited || [],
-          rewards: data.rewards || []
+          rewards: (data.rewards || []).map(item => ({
+            ...item,
+            amountText: `${Number(item.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(item.amount || 0)).toFixed(2)}`
+          }))
         })
         if (data.profile?.inviteCode) wx.setStorageSync("profileInviteCode", data.profile.inviteCode)
         this.refreshInviteLink(data.profile)

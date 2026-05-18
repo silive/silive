@@ -10,21 +10,25 @@
 
   <view class="wallet-grid">
     <view class="wallet dark">
-      <view class="wallet-label">推广奖励</view>
-      <view class="wallet-value">¥{{profile.shoppingMoney}}</view>
+      <view class="wallet-label">本次预计到账</view>
+      <view class="wallet-value">¥{{profile.actualPayable || '0.00'}}</view>
     </view>
     <view class="wallet">
-      <view class="wallet-label">待结算奖励</view>
-      <view class="wallet-value">¥{{profile.pendingReward}}</view>
+      <view class="wallet-label">当前待结算</view>
+      <view class="wallet-value">¥{{profile.payableTotal || '0.00'}}</view>
     </view>
     <view class="wallet">
-      <view class="wallet-label">邀请人数</view>
-      <view class="wallet-value">{{profile.inviteCount || 0}}</view>
+      <view class="wallet-label">当前退款扣回</view>
+      <view class="wallet-value">¥{{profile.chargebackTotal || '0.00'}}</view>
     </view>
     <view class="wallet">
-      <view class="wallet-label">成交订单</view>
-      <view class="wallet-value">{{profile.inviteOrderCount || 0}}</view>
+      <view class="wallet-label">累计已结算</view>
+      <view class="wallet-value">¥{{profile.settledTotal || '0.00'}}</view>
     </view>
+  </view>
+  <view class="panel">
+    <view class="record-desc">推广奖励由平台人工审核后结算。若订单退款，相关奖励会进入退款扣回，并在后续结算中抵扣。</view>
+    <view wx:if="{{profile.remainingChargeback && profile.remainingChargeback !== '0.00'}}" class="record-desc">仍有 ¥{{profile.remainingChargeback}} 待后续收益抵扣</view>
   </view>
 
   <view class="panel">
@@ -74,9 +78,9 @@
       <view class="record" wx:for="{{rewards}}" wx:key="id">
         <view>
           <view class="record-title">{{item.productName}}</view>
-          <view class="record-desc">{{item.level == 2 ? '二级奖励' : (item.type === 'adjustment' ? '手动调整' : '一级奖励')}} · {{item.statusText || item.status}}</view>
+          <view class="record-desc">{{item.type === 'chargeback' ? '退款冲正' : (item.level == 2 ? '二级奖励' : (item.type === 'adjustment' ? '手动调整' : '一级奖励'))}} · {{item.statusText || item.status}}</view>
         </view>
-        <view class="amount">¥{{item.amount}}</view>
+        <view class="amount">{{item.amountText || ('¥' + item.amount)}}</view>
       </view>
     </view>
     <view wx:else class="empty">暂无奖励记录</view>

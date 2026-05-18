@@ -5,18 +5,19 @@
     <view class="store-meta">当前门店的推广佣金与自提服务费</view>
   </view>
   <view class="stats-grid">
-    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.unsettledAmount || '0.00'}}</view><view class="stat-label">未结算金额</view></view>
-    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.settledAmount || '0.00'}}</view><view class="stat-label">已结算金额</view></view>
-    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.referralAmount || '0.00'}}</view><view class="stat-label">推广佣金</view></view>
-    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.pickupAmount || '0.00'}}</view><view class="stat-label">自提服务费</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.settledTotal || '0.00'}}</view><view class="stat-label">累计已结算</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.payableTotal || '0.00'}}</view><view class="stat-label">当前待结算</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.chargebackTotal || '0.00'}}</view><view class="stat-label">当前退款扣回</view></view>
+    <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">¥{{summary.actualPayable || '0.00'}}</view><view class="stat-label">本次预计到账</view></view>
   </view>
+  <view wx:if="{{summary.remainingChargeback && summary.remainingChargeback !== '0.00'}}" class="store-card" style="{{cardStyle}}">仍有 ¥{{summary.remainingChargeback}} 待后续收益抵扣</view>
   <view class="tabs">
     <button wx:for="{{tabs}}" wx:key="key" class="tab {{activeStatus === item.key ? 'active' : ''}}" bindtap="switchStatus" data-status="{{item.key}}">{{item.label}}</button>
   </view>
   <view class="list">
     <view class="order-card" style="{{cardStyle}}" wx:for="{{filteredRecords}}" wx:key="id">
       <view class="order-head"><view><view class="order-title">{{item.typeText}}</view><view class="order-sub">{{item.orderId || '手动调整'}} · {{item.createdAtText || item.createdAt}}</view></view><view class="pill">{{item.statusText}}</view></view>
-      <view class="amount">¥{{item.amount}}</view>
+      <view class="amount">{{item.amountText}}</view>
       <view class="order-sub">备注：{{item.description || item.settleNote || '-'}}</view>
       <view class="order-sub">结算时间：{{item.settledAtText || item.settledAt || '-'}}</view>
     </view>

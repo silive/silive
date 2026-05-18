@@ -2860,6 +2860,31 @@ function settlementStatusText(status) {
   return "未结算"
 }
 
+function buildSettlementSummary(records = []) {
+  const list = Array.isArray(records) ? records : []
+  const settledTotal = list
+    .filter(record => record.status === "settled" && Number(record.amount || 0) > 0)
+    .reduce((sum, record) => sum + Number(record.amount || 0), 0)
+  const payableTotal = list
+    .filter(record => record.status === "unsettled" && Number(record.amount || 0) > 0)
+    .reduce((sum, record) => sum + Number(record.amount || 0), 0)
+  const chargebackTotal = Math.abs(list
+    .filter(record => record.status === "unsettled" && Number(record.amount || 0) < 0)
+    .reduce((sum, record) => sum + Number(record.amount || 0), 0))
+  const actualPayable = Math.max(payableTotal - chargebackTotal, 0)
+  const remainingChargeback = Math.max(chargebackTotal - payableTotal, 0)
+  return {
+    settledTotal: money(settledTotal),
+    payableTotal: money(payableTotal),
+    chargebackTotal: money(chargebackTotal),
+    actualPayable: money(actualPayable),
+    remainingChargeback: money(remainingChargeback),
+    settledAmount: money(settledTotal),
+    unsettledAmount: money(payableTotal),
+    pendingReward: money(payableTotal)
+  }
+}
+
 async function query(sql, params) {
   const [rows] = await pool.query(sql, params)
   return rows
@@ -3121,8 +3146,12 @@ async function getStoreSettlementRecords(filters = {}) {
     params.storeId = filters.storeId
   }
   if (filters.status) {
-    where.push("status = :status")
-    params.status = filters.status
+    if (filters.status === "chargeback") {
+      where.push("status = 'unsettled' AND amount < 0")
+    } else {
+      where.push("status = :status")
+      params.status = filters.status
+    }
   }
   if (filters.type) {
     const aliases = settlementTypeAliases(filters.type)
@@ -3672,11 +3701,11 @@ async function getStoreSettlementSummary(filters = {}) {
   const summary = targetStores.map(store => {
     const storeRecords = records.filter(record => record.storeId === store.id)
     const activeStoreRecords = storeRecords.filter(record => record.status !== "cancelled")
+    const settlementSummary = buildSettlementSummary(activeStoreRecords)
     const referralRecords = activeStoreRecords.filter(record => isStoreReferralSettlement(record.type))
     const pickupRecords = activeStoreRecords.filter(record => isPickupServiceSettlement(record.type))
     const supplierRecords = activeStoreRecords.filter(record => record.type === "supplier")
     const customRecords = activeStoreRecords.filter(record => record.type === "custom")
-    const settled = storeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const total = activeStoreRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)
     return {
       storeId: store.id,
@@ -3688,11 +3717,10 @@ async function getStoreSettlementSummary(filters = {}) {
       supplierAmount: money(supplierRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
       customAmount: money(customRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0)),
       totalAmount: money(total),
-      settledAmount: money(settled),
-      unsettledAmount: money(total - settled)
+      ...settlementSummary
     }
   })
-  return { summary, records }
+  return { summary, totals: buildSettlementSummary(records.filter(record => record.status !== "cancelled")), records }
 }
 
 async function getStoreSession(req) {
@@ -3808,14 +3836,13 @@ function storeCenterStats(store, orders, records) {
   const referralOrders = paidOrders.filter(order => order.referrerStoreId === store.id)
   const pickupOrders = paidOrders.filter(order => order.pickupStoreId === store.id && isPickupOrder(order))
   const validRecords = records.filter(record => !record.orderId || paidOrderIds.has(record.orderId))
-  const sumByStatus = status => validRecords.filter(record => record.status === status).reduce((sum, record) => sum + Number(record.amount || 0), 0).toFixed(2)
+  const settlementSummary = buildSettlementSummary(validRecords.filter(record => record.status !== "cancelled"))
   return {
     todayReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
     monthReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(month)).length,
     todayPickupOrders: pickupOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
     pendingPickupOrders: pickupOrders.filter(order => order.pickupStatus !== "picked_up").length,
-    unsettledAmount: sumByStatus("unsettled"),
-    settledAmount: sumByStatus("settled")
+    ...settlementSummary
   }
 }
 
@@ -4881,18 +4908,18 @@ async function getPromotionSummary(phone) {
   const orders = await getOrders()
   const inviteCode = customer.inviteCode || inviteCodeFor(phone)
   const myRewards = records.filter(item => normalizePhone(item.promoterPhone) === phone)
+  const rewardSummary = buildSettlementSummary(myRewards.filter(item => item.status !== "cancelled"))
   const rewardOrderIds = new Set(myRewards.filter(item => item.orderId).map(item => item.orderId))
   const rewardOrders = orders.filter(order => rewardOrderIds.has(order.id) && !order.referrerStoreId)
   const inviteAmount = rewardOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
-  const available = myRewards.filter(item => item.status === "settled").reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  const pending = myRewards.filter(item => item.status === "unsettled").reduce((sum, item) => sum + Number(item.amount || 0), 0)
   return {
     profile: {
       name: customer.name,
       phone,
       inviteCode,
-      shoppingMoney: available.toFixed(2),
-      pendingReward: pending.toFixed(2),
+      shoppingMoney: rewardSummary.settledTotal,
+      pendingReward: rewardSummary.payableTotal,
+      ...rewardSummary,
       inviteCount: invited.length,
       inviteOrderCount: rewardOrderIds.size,
       inviteAmount: inviteAmount.toFixed(2),
@@ -5898,8 +5925,7 @@ async function handle(req, res) {
     const paidOrderIds = new Set(orders.map(order => order.id))
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "store_referral_commission" }))
       .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
-    const unsettled = records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const settled = records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const commissionSummary = buildSettlementSummary(records.filter(record => record.status !== "cancelled"))
     const today = new Date().toISOString().slice(0, 10)
     const month = new Date().toISOString().slice(0, 7)
     sendJson(res, 200, {
@@ -5907,8 +5933,9 @@ async function handle(req, res) {
       summary: {
         todayOrders: orders.filter(order => String(order.createdAt || "").startsWith(today)).length,
         monthOrders: orders.filter(order => String(order.createdAt || "").startsWith(month)).length,
-        unsettledCommission: money(unsettled),
-        settledCommission: money(settled)
+        unsettledCommission: commissionSummary.payableTotal,
+        settledCommission: commissionSummary.settledTotal,
+        ...commissionSummary
       },
       orders: orders.map(order => storeOrderView(order, "referral"))
     })
@@ -5930,13 +5957,12 @@ async function handle(req, res) {
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id }))
       .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
     const activeRecords = records.filter(record => record.status !== "cancelled")
-    const unsettled = activeRecords.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
-    const settled = activeRecords.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)
+    const settlementSummary = buildSettlementSummary(activeRecords)
     const referral = activeRecords.filter(record => isStoreReferralSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const pickup = activeRecords.filter(record => isPickupServiceSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
     sendJson(res, 200, {
       storeInfo: storePrivateView(storeSession.store),
-      summary: { unsettledAmount: money(unsettled), settledAmount: money(settled), referralAmount: money(referral), pickupAmount: money(pickup) },
+      summary: { ...settlementSummary, referralAmount: money(referral), pickupAmount: money(pickup) },
       records: records.map(record => ({ ...record, statusText: settlementStatusText(record.status), typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type === "adjustment" ? "手动调整" : record.type === "chargeback" ? "退款冲正" : record.type }))
     })
     return
@@ -6698,15 +6724,15 @@ async function handle(req, res) {
     let records = await processRewardState()
     const status = url.searchParams.get("status") || ""
     const keyword = String(url.searchParams.get("keyword") || "").toLowerCase()
-    if (status) records = records.filter(record => record.status === status)
+    if (status === "chargeback") records = records.filter(record => record.status === "unsettled" && Number(record.amount || 0) < 0)
+    else if (status) records = records.filter(record => record.status === status)
     if (keyword) {
       records = records.filter(record => [record.id, record.orderId, record.productName, record.buyerPhone, record.promoterPhone, record.promoterName].some(value => String(value || "").toLowerCase().includes(keyword)))
     }
     sendJson(res, 200, {
       ok: true,
       summary: {
-        unsettledAmount: money(records.filter(record => record.status === "unsettled").reduce((sum, record) => sum + Number(record.amount || 0), 0)),
-        settledAmount: money(records.filter(record => record.status === "settled").reduce((sum, record) => sum + Number(record.amount || 0), 0)),
+        ...buildSettlementSummary(records.filter(record => record.status !== "cancelled")),
         cancelledAmount: money(records.filter(record => record.status === "cancelled").reduce((sum, record) => sum + Number(record.amount || 0), 0))
       },
       records
