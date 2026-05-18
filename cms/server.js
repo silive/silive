@@ -2830,6 +2830,10 @@ function normalizeRewardRecord(record, index) {
   }
 }
 
+function isChargebackRecord(record = {}) {
+  return String(record.type || "").includes("chargeback") || String(record.id || "").includes("CHARGEBACK")
+}
+
 function normalizeRewardStatus(status) {
   const text = String(status || "").trim()
   if (["settled", "已结算", "已发放"].includes(text)) return "settled"
@@ -4392,11 +4396,42 @@ async function reviewRefund(data) {
 async function rollbackRewardsForOrder(orderId) {
   const records = await getRewardRecords()
   let changed = false
+  const now = formatDateTime(new Date())
+  const hasChargebackFor = record => records.some(item =>
+    isChargebackRecord(item) &&
+    item.orderId === record.orderId &&
+    normalizePhone(item.promoterPhone) === normalizePhone(record.promoterPhone) &&
+    Number(item.level || 0) === Number(record.level || 0) &&
+    (item.batchId === `refund-chargeback:${record.id}` || item.settleNote?.includes(record.id))
+  )
   for (const record of records) {
-    if (record.orderId === orderId && record.status !== "cancelled") {
+    if (record.orderId !== orderId || isChargebackRecord(record)) continue
+    if (record.status === "settled") {
+      if (!hasChargebackFor(record)) {
+        records.unshift(normalizeRewardRecord({
+          id: `RW${orderId}CHARGEBACK${record.level || 0}${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 8)}`,
+          orderId,
+          productName: `订单退款冲正：${record.productName || orderId}`,
+          buyerPhone: record.buyerPhone,
+          promoterPhone: record.promoterPhone,
+          promoterName: record.promoterName,
+          level: record.level,
+          type: "chargeback",
+          amount: money(-Math.abs(Number(record.amount || 0))),
+          status: "unsettled",
+          settleNote: `订单退款冲正，关联原订单号：${orderId}，原奖励记录：${record.id}`,
+          batchId: `refund-chargeback:${record.id}`,
+          createdAt: now,
+          updatedAt: now
+        }, records.length))
+        changed = true
+      }
+      continue
+    }
+    if (record.status !== "cancelled") {
       record.status = "cancelled"
       record.cancelReason = record.cancelReason || "订单退款成功，推广奖励失效"
-      record.updatedAt = formatDateTime(new Date())
+      record.updatedAt = now
       changed = true
     }
   }
@@ -4408,11 +4443,34 @@ async function invalidateStoreSettlementRecordsForOrder(orderId) {
   const records = await getStoreSettlementRecords()
   let changed = false
   const now = formatDateTime(new Date())
+  const hasChargebackFor = record => records.some(item =>
+    isChargebackRecord(item) &&
+    item.orderId === record.orderId &&
+    item.storeId === record.storeId &&
+    (item.batchId === `refund-chargeback:${record.id}` || item.settleNote?.includes(record.id))
+  )
   for (const record of records) {
-    if (record.orderId !== orderId) continue
+    if (record.orderId !== orderId || isChargebackRecord(record)) continue
     if (record.status === "settled") {
-      record.description = `${record.description || ""}；订单已退款，已结算佣金需人工处理`.trim()
-      changed = true
+      if (!hasChargebackFor(record)) {
+        records.unshift(normalizeSettlementRecord({
+          id: `SSR${orderId}CHARGEBACK${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 10)}`,
+          storeId: record.storeId,
+          orderId,
+          type: "chargeback",
+          amount: money(-Math.abs(Number(record.amount || 0))),
+          commissionType: "none",
+          commissionValue: "0.00",
+          orderPaidAmount: record.orderPaidAmount || "0.00",
+          status: "unsettled",
+          description: `订单退款冲正，关联原订单号：${orderId}，原收益类型：${isStoreReferralSettlement(record.type) ? "推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type}`,
+          settleNote: `订单退款冲正，关联原订单号：${orderId}，原收益记录：${record.id}`,
+          batchId: `refund-chargeback:${record.id}`,
+          createdAt: now,
+          updatedAt: now
+        }, records.length))
+        changed = true
+      }
       continue
     }
     if (record.status !== "cancelled") {
@@ -5879,7 +5937,7 @@ async function handle(req, res) {
     sendJson(res, 200, {
       storeInfo: storePrivateView(storeSession.store),
       summary: { unsettledAmount: money(unsettled), settledAmount: money(settled), referralAmount: money(referral), pickupAmount: money(pickup) },
-      records: records.map(record => ({ ...record, statusText: settlementStatusText(record.status), typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type === "adjustment" ? "手动调整" : record.type }))
+      records: records.map(record => ({ ...record, statusText: settlementStatusText(record.status), typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type === "adjustment" ? "手动调整" : record.type === "chargeback" ? "退款冲正" : record.type }))
     })
     return
   }
