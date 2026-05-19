@@ -30,9 +30,12 @@ function getEnvVersion() {
 function getDevApiHost() {
   try {
     const host = wx.getStorageSync("DEV_API_HOST")
-    return /^https?:\/\//.test(host) ? host : LOCAL_DEV_API_HOST
+    const allowLocalApi = wx.getStorageSync("ALLOW_LOCAL_API") === true
+    const isLocalHost = /^https?:\/\/(127\.0\.0\.1|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host || "")
+    if (/^https?:\/\//.test(host) && (!isLocalHost || allowLocalApi)) return host
+    return PROD_API_HOST
   } catch (error) {
-    return LOCAL_DEV_API_HOST
+    return PROD_API_HOST
   }
 }
 
