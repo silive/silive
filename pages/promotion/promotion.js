@@ -1,6 +1,7 @@
 const { apiUrl, request } = require("../../utils/api")
+const { loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
-const { isReviewMode } = require("../../utils/review")
+const { isPromotionEnabled, isReviewMode } = require("../../utils/review")
 const { copyText } = require("../../utils/privacy")
 const SHARE_TITLES = [
   "非常智造 · 朋友推荐给你",
@@ -37,7 +38,12 @@ Page({
     hotProducts: [],
     themeStyle: "",
     themeClass: "theme-skin01",
-    loading: false
+    loading: false,
+    loginVisible: false,
+    loginLoading: false,
+    reviewMode: isReviewMode(),
+    promotionEnabled: isPromotionEnabled(),
+    showInviteTools: !isReviewMode()
   },
 
   onShow() {
@@ -45,19 +51,14 @@ Page({
     const phone = wx.getStorageSync("memberPhone") || ""
     this.setData({ phone })
     this.loadStoreShareImage()
-    if (phone) {
-      request("/api/store/me")
-        .then(data => {
-          if (data.bound) {
-            wx.showToast({ title: "门店负责人请使用门店中心", icon: "none" })
-            wx.redirectTo({ url: "/pages/store/center/center" })
-            return
-          }
-          this.loadSummary(phone)
-        })
-        .catch(() => this.loadSummary(phone))
+    if (!this.data.promotionEnabled) {
+      wx.showToast({ title: "该功能暂未开放", icon: "none" })
+      wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/profile/profile" }) })
+      return
     }
-    else {
+    if (phone) {
+      this.loadSummary(phone)
+    } else {
       const localCode = wx.getStorageSync("profileInviteCode") || wx.getStorageSync("localUserId") || "U0000"
       this.setData({
         profile: {
@@ -68,8 +69,29 @@ Page({
         }
       })
       this.refreshInviteLink()
-      this.loadPosterCode(localCode)
+      this.setData({ loginVisible: true })
     }
+  },
+
+  closeLoginSheet() {
+    this.setData({ loginVisible: false })
+  },
+
+  onLoginPhone(event) {
+    this.setData({ loginLoading: true })
+    loginWithPhoneDetail(event.detail || {}).then(() => {
+      this.setData({ loginVisible: false })
+      wx.showToast({ title: "登录成功", icon: "success" })
+      const phone = wx.getStorageSync("memberPhone") || ""
+      this.setData({ phone })
+      if (phone) this.loadSummary(phone)
+    }).catch(error => {
+      if (error.isAuthDenied) {
+        wx.showToast({ title: "未授权手机号", icon: "none" })
+        return
+      }
+      wx.showModal({ title: "登录失败", content: error.message || "登录失败，请稍后重试", showCancel: false })
+    }).finally(() => this.setData({ loginLoading: false }))
   },
 
   loadSummary(phone) {
@@ -93,8 +115,8 @@ Page({
   },
 
   copyInviteCode() {
-    if (isReviewMode()) {
-      wx.showToast({ title: "审核版暂不开放推广复制", icon: "none" })
+    if (this.data.reviewMode) {
+      wx.showToast({ title: "请通过商品详情分享给朋友", icon: "none" })
       return
     }
     const link = this.buildInviteLink()
@@ -118,6 +140,10 @@ Page({
   },
 
   createPoster() {
+    if (this.data.reviewMode) {
+      wx.showToast({ title: "请通过商品详情分享给朋友", icon: "none" })
+      return
+    }
     const code = this.buildInviteCode()
     this.ensurePosterCode(code).then(image => {
       const title = "非常智造邀请海报"
@@ -188,7 +214,7 @@ Page({
 
   onShareAppMessage() {
     return {
-      title: pickOne(SHARE_TITLES),
+      title: "非常智造 · 好物推荐",
       path: this.buildInviteLink(),
       imageUrl: this.data.storeShareImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE
     }

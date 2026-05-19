@@ -1,7 +1,7 @@
 const { request } = require("../../utils/api")
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
-const { isReviewMode } = require("../../utils/review")
+const { isPromotionEnabled, isReviewMode, isStoreFeaturesEnabled } = require("../../utils/review")
 const defaultData = require("../index/default-data")
 const BADGE_TEXT = {
   new: "新品推荐",
@@ -136,7 +136,9 @@ Page({
     mainImageLoaded: false,
     visibleDetailImages: [],
     detailImagesExpanded: false,
-    reviewMode: isReviewMode()
+    reviewMode: isReviewMode(),
+    promotionEnabled: isPromotionEnabled(),
+    storeFeaturesEnabled: isStoreFeaturesEnabled()
   },
 
   onLoad(options) {
@@ -167,8 +169,10 @@ Page({
   onShow() {
     applyTheme(this)
     this.loadCartCount()
-    if (!this.data.reviewMode) {
+    if (this.data.promotionEnabled) {
       this.ensureShareIdentity()
+    }
+    if (this.data.storeFeaturesEnabled) {
       this.loadShareStoreInfo()
     }
     this.loadNewcomerBenefits()
@@ -420,7 +424,7 @@ Page({
   },
 
   getShareInvite() {
-    return wx.getStorageSync("profileInviteCode") || wx.getStorageSync("localUserId") || "U0000"
+    return wx.getStorageSync("profileInviteCode") || ""
   },
 
   getShareStoreId() {
@@ -432,11 +436,12 @@ Page({
   buildSharePath() {
     const product = this.data.product || {}
     const id = product.id || ""
-    if (this.data.reviewMode) return `/pages/product/detail?id=${encodeURIComponent(id)}`
-    const storeId = this.getShareStoreId()
+    const base = `/pages/product/detail?id=${encodeURIComponent(id)}`
+    if (!this.data.promotionEnabled && !this.data.storeFeaturesEnabled) return base
+    const storeId = this.data.storeFeaturesEnabled ? this.getShareStoreId() : ""
     if (storeId) return `/pages/product/detail?id=${encodeURIComponent(id)}&store_id=${encodeURIComponent(storeId)}`
     const invite = this.getShareInvite()
-    return `/pages/product/detail?id=${encodeURIComponent(id)}&invite=${encodeURIComponent(invite)}`
+    return invite ? `/pages/product/detail?id=${encodeURIComponent(id)}&ref=${encodeURIComponent(invite)}` : base
   },
 
   onShareAppMessage() {

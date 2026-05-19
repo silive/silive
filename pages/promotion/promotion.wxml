@@ -4,7 +4,7 @@
       <view class="eyebrow">PROMOTION</view>
       <view class="title">把喜欢的礼物店分享给朋友</view>
       <view class="subtitle">好友也可能刚好需要</view>
-      <view class="hero-note">好友成交后可获得推广奖励</view>
+      <view class="hero-note">朋友完成支付后可获得推广奖励</view>
     </view>
   </view>
 
@@ -31,7 +31,7 @@
     <view wx:if="{{profile.remainingChargeback && profile.remainingChargeback !== '0.00'}}" class="record-desc">仍有 ¥{{profile.remainingChargeback}} 待后续收益抵扣</view>
   </view>
 
-  <view class="panel">
+  <view wx:if="{{showInviteTools}}" class="panel">
     <view class="panel-title">邀请二维码</view>
     <view class="qr-box">
       <image wx:if="{{profile.inviteQrUrl}}" class="qr-image" src="{{profile.inviteQrUrl}}" mode="aspectFit" />
@@ -44,6 +44,11 @@
       <button class="light-btn" bindtap="createPoster">生成邀请海报</button>
     </view>
     <button class="primary-btn ghost" bindtap="copyInviteCode">复制邀请链接</button>
+  </view>
+
+  <view wx:else class="panel">
+    <view class="panel-title">分享商品</view>
+    <view class="record-desc">进入商品详情页，点击“分享商品”发送给朋友。朋友通过你的商品链接下单并完成支付后，可获得对应推广奖励。</view>
   </view>
 
   <view class="panel hot-panel" wx:if="{{hotProducts.length}}">
@@ -66,7 +71,7 @@
           <view class="record-title">{{item.inviteeName || '用户'}}</view>
           <view class="record-desc">{{item.inviteePhone}}</view>
         </view>
-        <view class="pill">一级好友</view>
+        <view class="pill">推荐好友</view>
       </view>
     </view>
     <view wx:else class="empty">暂无邀请记录</view>
@@ -78,11 +83,22 @@
       <view class="record" wx:for="{{rewards}}" wx:key="id">
         <view>
           <view class="record-title">{{item.productName}}</view>
-          <view class="record-desc">{{item.type === 'chargeback' ? '退款冲正' : (item.level == 2 ? '二级奖励' : (item.type === 'adjustment' ? '手动调整' : '一级奖励'))}} · {{item.statusText || item.status}}</view>
+          <view class="record-desc">{{item.type === 'chargeback' ? '退款冲正' : (item.type === 'adjustment' ? '手动调整' : '推荐奖励')}} · {{item.statusText || item.status}}</view>
         </view>
         <view class="amount">{{item.amountText || ('¥' + item.amount)}}</view>
       </view>
     </view>
     <view wx:else class="empty">暂无奖励记录</view>
   </view>
+
+  <login-sheet
+    visible="{{loginVisible}}"
+    loading="{{loginLoading}}"
+    title="手机号快捷登录"
+    desc="申请获取并验证你的手机号，用于订单确认、配送联系和售后服务"
+    confirm-text="手机号快捷登录"
+    cancel-text="暂不登录"
+    bind:getphonenumber="onLoginPhone"
+    bind:close="closeLoginSheet"
+  />
 </view>

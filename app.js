@@ -1,6 +1,6 @@
 const { checkApiConnectivity, request } = require("./utils/api")
 const { loadCurrentTheme } = require("./utils/theme")
-const { REVIEW_MODE } = require("./utils/review")
+const { REVIEW_MODE, isPromotionEnabled, isStoreFeaturesEnabled } = require("./utils/review")
 const STORE_REFERRAL_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const REFERRAL_CONTEXT_KEY = "referralContext"
 const REFERRAL_DEDUPE_MS = 5000
@@ -90,7 +90,7 @@ function robustParseScene(options = {}) {
     const nested = params.scene || params.q || ""
     if (nested) Object.assign(params, parseQueryText(nested))
     const storeValue = params.store_id || params.storeId || params.referrerStoreId || ""
-    const inviteValue = params.invite || params.inviterCode || ""
+    const inviteValue = params.invite || params.inviterCode || params.ref || params.promoterCode || ""
     const codeValue = params.code || params.s || ""
     if (storeValue) parsed.storeId = normalizeReferralCode(storeValue)
     if (inviteValue) parsed.invite = normalizeReferralCode(inviteValue)
@@ -223,7 +223,7 @@ App({
   },
 
   handleReferralScene(options = {}, source = "page-load") {
-    if (REVIEW_MODE) {
+    if (REVIEW_MODE && !isPromotionEnabled()) {
       console.log("[review-mode] referral disabled", { source })
       return
     }
@@ -236,11 +236,11 @@ App({
     const context = this.getReferralContext()
     context.lastScene = { rawScene: parsed.rawScene || "", parsedAt: Date.now(), source }
     this.saveReferralContext(context)
-    if (parsed.storeId) {
+    if (parsed.storeId && isStoreFeaturesEnabled()) {
       this.captureStoreReferrer(parsed.storeId, { source, rawScene: parsed.rawScene, storeCode: parsed.storeCode })
       return
     }
-    if (this.getValidReferrerStoreId()) {
+    if (isStoreFeaturesEnabled() && this.getValidReferrerStoreId()) {
       console.log("[referral-handle-skip]", { source, skipReason: "store_referrer_active", hasInvite: !!parsed.invite, hasStoreId: false })
       return
     }

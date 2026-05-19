@@ -1,4 +1,5 @@
 const { checkApiConnectivity, request, getActiveApiHost, apiUrl, authHeader } = require("./api")
+const { isStoreFeaturesEnabled } = require("./review")
 
 function getLoginState() {
   const userSession = wx.getStorageSync("userSession") || ""
@@ -230,7 +231,7 @@ function requestPhoneLogin(phoneCode, loginCode, debugInfo = {}) {
 function bindStoredPromotionRelation(name = "用户") {
   const storeId = wx.getStorageSync("referrerStoreId") || wx.getStorageSync("pendingReferrerStoreId") || ""
   const storeExpireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
-  if (storeId && storeExpireAt && Date.now() <= storeExpireAt) return Promise.resolve(null)
+  if (isStoreFeaturesEnabled() && storeId && storeExpireAt && Date.now() <= storeExpireAt) return Promise.resolve(null)
   const inviterCode = wx.getStorageSync("boundInviterCode") || wx.getStorageSync("inviterCode") || ""
   if (!inviterCode) return Promise.resolve(null)
   return request("/api/promotion/bind", {
@@ -246,6 +247,7 @@ function bindStoredPromotionRelation(name = "用户") {
 }
 
 function syncStoredStoreReferrer() {
+  if (!isStoreFeaturesEnabled()) return Promise.resolve(null)
   const storeId = wx.getStorageSync("referrerStoreId") || wx.getStorageSync("pendingReferrerStoreId") || ""
   const expireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
   if (!storeId) return Promise.resolve(null)

@@ -4734,8 +4734,8 @@ async function getRewardRules() {
       id: rule?.id || product.id,
       productId: product.id,
       productName: product.name,
-      firstReward: product.rewardEnabled === "false" ? "0" : (product.firstReward || rule?.firstReward || "8"),
-      secondReward: product.rewardEnabled === "false" ? "0" : (product.secondReward || rule?.secondReward || "3")
+      firstReward: product.rewardEnabled === "false" ? "0" : (product.firstReward || rule?.firstReward || "0"),
+      secondReward: product.rewardEnabled === "false" ? "0" : (product.secondReward || rule?.secondReward || "0")
     }, 0)
   })
   return merged
@@ -4818,7 +4818,9 @@ async function createRewardsForOrder(order) {
   const parentPhone = normalizePhone(normalized.parentReferrerUserId) ||
     normalizePhone((relations.find(relation => normalizePhone(relation.inviteePhone) === directPhone) || {}).inviterPhone)
   const rules = await getRewardRules()
-  const rule = rules.find(item => item.productId === normalized.productId || item.productName === normalized.productName) || normalizeRewardRule({ productName: normalized.productName, firstReward: "8", secondReward: "3" }, 0)
+  const rule = rules.find(item => item.productId === normalized.productId || item.productName === normalized.productName) || normalizeRewardRule({ productName: normalized.productName, firstReward: "0", secondReward: "0" }, 0)
+  const firstRewardAmount = Number(rule.firstReward) > 0 ? money(rule.firstReward) : money(Number(normalized.amount || 0) * 0.05)
+  const secondRewardAmount = Number(rule.secondReward) > 0 ? money(rule.secondReward) : "0.00"
   const makeRecord = (promoterPhone, level, amount) => {
     const promoter = customers.find(customer => normalizePhone(customer.phone) === normalizePhone(promoterPhone)) || {}
     return normalizeRewardRecord({
@@ -4843,8 +4845,8 @@ async function createRewardsForOrder(order) {
     Number(record.level || 1) === Number(level) &&
     record.type !== "adjustment"
   )
-  if (Number(rule.firstReward) > 0 && !hasReward(directPhone, 1)) next.unshift(makeRecord(directPhone, 1, rule.firstReward))
-  if (parentPhone && Number(rule.secondReward) > 0 && !hasReward(parentPhone, 2)) next.unshift(makeRecord(parentPhone, 2, rule.secondReward))
+  if (Number(firstRewardAmount) > 0 && !hasReward(directPhone, 1)) next.unshift(makeRecord(directPhone, 1, firstRewardAmount))
+  if (parentPhone && Number(secondRewardAmount) > 0 && !hasReward(parentPhone, 2)) next.unshift(makeRecord(parentPhone, 2, secondRewardAmount))
   await saveRewardRecords(next)
   return next
 }

@@ -10,14 +10,14 @@
     <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">手机号快捷登录</button>
   </view>
 
-  <view wx:if="{{!reviewMode}}" class="wallet-card" style="{{walletCardStyle}}">
+  <view wx:if="{{promotionEnabled}}" class="wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
     </view>
     <view>
       <view class="wallet-pending">当前待结算 ¥{{pendingReward}}</view>
-      <view class="wallet-note">{{storeBound ? '门店收益请前往门店中心查看' : '本次预计到账，平台人工审核后结算'}}</view>
+      <view class="wallet-note">本次预计到账，平台人工审核后结算</view>
     </view>
   </view>
 
@@ -29,21 +29,21 @@
         <view class="feature-title">我的订单</view>
         <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>
       </button>
-      <block wx:if="{{!reviewMode && (!loggedIn || storeChecked)}}">
-        <button wx:if="{{loggedIn && storeBound}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
+      <block wx:if="{{promotionEnabled || storeFeaturesEnabled}}">
+        <button wx:if="{{storeFeaturesEnabled && loggedIn && storeBound}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
           <view class="feature-icon" style="{{iconBadgeStyle}}">店</view>
           <view class="feature-title">门店中心</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">订单与收益</view>
         </button>
-        <button wx:elif="{{loggedIn && storeConflictMessage}}" class="feature-card" style="{{cardStyle}}">
+        <button wx:elif="{{storeFeaturesEnabled && loggedIn && storeConflictMessage}}" class="feature-card" style="{{cardStyle}}">
           <view class="feature-icon" style="{{iconBadgeStyle}}">!</view>
           <view class="feature-title">门店异常</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">{{storeConflictMessage}}</view>
         </button>
-        <button wx:else class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
+        <button wx:if="{{promotionEnabled}}" class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
           <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
           <view class="feature-title">我的推广</view>
-          <view class="feature-subtitle" style="{{mutedTextStyle}}">邀请赚佣金</view>
+          <view class="feature-subtitle" style="{{mutedTextStyle}}">分享好物</view>
         </button>
       </block>
       <button class="feature-card" style="{{cardStyle}}" open-type="contact">
