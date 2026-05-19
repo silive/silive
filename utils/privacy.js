@@ -11,7 +11,7 @@ function callWxMethod(nameParts, options, blockedTitle) {
   }
   const method = nameParts.join("")
   if (typeof wx[method] !== "function") {
-    blocked("当前微信版本暂不支持")
+    blocked("当前版本暂不支持")
     return false
   }
   wx[method](options)

@@ -82,9 +82,9 @@ Page({
   contact() {
     const { phone, wechat, workWechatUrl, workWechatId, showWorkWechat, showPhone, showWechat } = this.data.contact || {}
     const actions = []
-    if (String(showWorkWechat) !== "false") actions.push({ key: "workWechat", label: "在线客服（企业微信）" })
+    if (String(showWorkWechat) !== "false") actions.push({ key: "workWechat", label: "联系客服" })
     if (String(showPhone) !== "false") actions.push({ key: "phone", label: "电话联系" })
-    if (String(showWechat) !== "false") actions.push({ key: "wechat", label: "复制微信号" })
+    if (String(showWechat) !== "false") actions.push({ key: "wechat", label: "复制客服号" })
     wx.showActionSheet({
       itemList: actions.map(item => item.label),
       success: res => {
@@ -92,7 +92,7 @@ Page({
         if (!action) return
         if (action.key === "workWechat") {
           if (workWechatUrl && workWechatUrl.indexOf("/") === 0) wx.navigateTo({ url: workWechatUrl })
-          else wx.showModal({ title: "在线客服（企业微信）", content: workWechatId || workWechatUrl || "暂未配置企业微信客服", showCancel: false })
+          else wx.showModal({ title: "联系客服", content: workWechatId || workWechatUrl || "暂未配置客服", showCancel: false })
         }
         if (action.key === "phone") {
           if (phone) wx.makePhoneCall({ phoneNumber: phone })
@@ -100,7 +100,7 @@ Page({
         }
         if (action.key === "wechat") {
           if (wechat) copyText(wechat)
-          else wx.showToast({ title: "暂未设置微信号", icon: "none" })
+          else wx.showToast({ title: "暂未设置客服号", icon: "none" })
         }
       }
     })

@@ -122,7 +122,7 @@ Page({
       method: "POST",
       data: {
         avatarUrl: profile.avatarUrl || "",
-        nickname: profile.nickName || profile.nickname || wx.getStorageSync("memberName") || "微信用户"
+        nickname: profile.nickName || profile.nickname || wx.getStorageSync("memberName") || "用户"
       }
     })
   },
@@ -340,9 +340,9 @@ Page({
     if (!this.requireLogin()) return
     const contact = this.data.contact || {}
     const actions = []
-    if (String(contact.showWorkWechat) !== "false") actions.push({ key: "workWechat", label: "在线客服（企业微信）" })
+    if (String(contact.showWorkWechat) !== "false") actions.push({ key: "workWechat", label: "联系客服" })
     if (String(contact.showPhone) !== "false") actions.push({ key: "phone", label: "电话联系" })
-    if (String(contact.showWechat) !== "false") actions.push({ key: "wechat", label: "复制微信号" })
+    if (String(contact.showWechat) !== "false") actions.push({ key: "wechat", label: "复制客服号" })
     if (!actions.length) {
       wx.showToast({ title: "客服入口暂未开放", icon: "none" })
       return
@@ -358,8 +358,8 @@ Page({
             return
           }
           wx.showModal({
-            title: "在线客服（企业微信）",
-            content: contact.workWechatId || contact.workWechatUrl || "暂未配置企业微信客服",
+            title: "联系客服",
+            content: contact.workWechatId || contact.workWechatUrl || "暂未配置客服",
             showCancel: false
           })
         }
@@ -369,7 +369,7 @@ Page({
         }
         if (action.key === "wechat") {
           if (contact.wechat) copyText(contact.wechat)
-          else wx.showToast({ title: "暂未设置微信号", icon: "none" })
+          else wx.showToast({ title: "暂未设置客服号", icon: "none" })
         }
       }
     })

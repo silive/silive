@@ -3,11 +3,11 @@
     <image wx:if="{{userInfo.avatarUrl}}" class="avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill" />
     <view wx:else class="avatar placeholder">我</view>
     <view class="user-info">
-      <view class="user-name">{{loggedIn ? (userInfo.nickName || '微信用户') : '欢迎来到非常智造'}}</view>
+      <view class="user-name">{{loggedIn ? (userInfo.nickName || '用户') : '欢迎来到非常智造'}}</view>
       <view class="user-desc" style="{{mutedTextStyle}}">{{loggedIn ? ('手机号 ' + maskedPhone) : '登录后同步订单、地址与会员权益'}}</view>
     </view>
     <button wx:if="{{loggedIn}}" class="auth-btn avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">更换头像</button>
-    <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">微信快捷登录</button>
+    <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">手机号快捷登录</button>
   </view>
 
   <view wx:if="{{!reviewMode}}" class="wallet-card" style="{{walletCardStyle}}">
@@ -83,9 +83,9 @@
   <login-sheet
     visible="{{loginVisible}}"
     loading="{{loginLoading}}"
-    title="微信快捷登录"
-    desc="登录后同步订单、地址、会员权益与售后服务"
-    confirm-text="授权手机号并登录"
+    title="手机号快捷登录"
+    desc="申请获取并验证你的手机号，用于订单确认、配送联系和售后服务"
+    confirm-text="手机号快捷登录"
     cancel-text="暂不登录"
     bind:getphonenumber="onLoginPhone"
     bind:close="closeLoginSheet"

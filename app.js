@@ -309,7 +309,7 @@ App({
       console.log("[referral-bind]", { source: meta.source || "", hasInvite: !!invite, shouldBind: true })
       return request("/api/promotion/bind", {
         method: "POST",
-        data: { inviterCode: invite, name: readStorage("memberName") || "微信用户" },
+        data: { inviterCode: invite, name: readStorage("memberName") || "用户" },
         timeout: 5000
       }).then(() => {
         console.log("[referral-bind]", { source: meta.source || "", ok: true })

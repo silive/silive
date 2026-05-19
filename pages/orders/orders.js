@@ -471,7 +471,7 @@ Page({
       }
     })).then(payData => {
       if (!payData.timeStamp || !payData.nonceStr || !payData.package || !payData.paySign) {
-        throw new Error(payData.message || "微信支付暂未完成配置，请联系商家确认订单")
+        throw new Error(payData.message || "支付配置暂未完成，请联系商家确认订单")
       }
       return new Promise((resolve, reject) => {
         wx.requestPayment({

@@ -1,6 +1,6 @@
 const PROD_API_HOST = "https://api.feichangjiandan.xyz"
 const PROD_BACKUP_API_HOST = "https://hk-api.feichangjiandan.xyz"
-// 如果微信开发者工具无法访问 127.0.0.1，请改为本机局域网 IP，比如 http://192.168.1.8:3000
+// 如果开发者工具无法访问 127.0.0.1，请改为本机局域网 IP，比如 http://192.168.1.8:3000
 const LOCAL_API_BASE = "http://127.0.0.1:3000"
 const LOCAL_DEV_API_HOST = LOCAL_API_BASE
 
@@ -86,7 +86,7 @@ function request(path, options = {}) {
   const tryHost = index => new Promise((resolve, reject) => {
     const host = hosts[index]
     if (!host) {
-      reject(new Error(`接口不可访问：${tried.join("、") || "未配置API域名"}。请检查域名解析、HTTPS证书、微信request合法域名或切换备用API。`))
+      reject(new Error(`接口不可访问：${tried.join("、") || "未配置API域名"}。请检查域名解析、HTTPS证书、request合法域名或切换备用API。`))
       return
     }
     const url = apiUrl(path, host)
@@ -116,7 +116,7 @@ function request(path, options = {}) {
           tryHost(index + 1).then(resolve).catch(reject)
           return
         }
-        reject(new Error(`${error.errMsg || "接口连接失败"}。当前API：${url}。可能原因：域名未解析/未备案拦截/HTTPS证书异常/未配置微信request合法域名。`))
+        reject(new Error(`${error.errMsg || "接口连接失败"}。当前API：${url}。可能原因：域名未解析/未备案拦截/HTTPS证书异常/未配置request合法域名。`))
       }
     })
   })
@@ -152,7 +152,7 @@ function checkApiConnectivity() {
       ok: false,
       activeHost: "",
       results,
-      message: "线上API不可访问，请检查域名解析、备案/接入、HTTPS证书和微信request合法域名。"
+      message: "线上API不可访问，请检查域名解析、备案/接入、HTTPS证书和request合法域名。"
     }
   })
 }

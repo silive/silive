@@ -14,15 +14,15 @@ Component({
     },
     title: {
       type: String,
-      value: "微信手机号授权登录"
+      value: "手机号快捷登录"
     },
     desc: {
       type: String,
-      value: "授权后同步订单、地址与会员权益"
+      value: "申请获取并验证你的手机号，用于订单确认、配送联系和售后服务"
     },
     confirmText: {
       type: String,
-      value: "授权手机号并登录"
+      value: "手机号快捷登录"
     },
     cancelText: {
       type: String,

@@ -543,7 +543,7 @@ Page({
 
   showContact() {
     const { phone, wechat, workWechatUrl } = this.data.contact
-    const items = ["在线客服（企业微信）", "电话联系", "复制微信号"]
+    const items = ["联系客服", "电话联系", "复制客服号"]
     wx.showActionSheet({
       itemList: items,
       success: res => {
@@ -552,7 +552,7 @@ Page({
             wx.navigateTo({ url: workWechatUrl })
             return
           }
-          wx.showModal({ title: "在线客服", content: workWechatUrl || "暂未配置企业微信客服链接", showCancel: false })
+          wx.showModal({ title: "在线客服", content: workWechatUrl || "暂未配置客服链接", showCancel: false })
         }
         if (res.tapIndex === 1) {
           if (phone) wx.makePhoneCall({ phoneNumber: phone })
@@ -560,7 +560,7 @@ Page({
         }
         if (res.tapIndex === 2) {
           if (wechat) copyText(wechat)
-          else wx.showToast({ title: "暂未设置微信号", icon: "none" })
+          else wx.showToast({ title: "暂未设置客服号", icon: "none" })
         }
       }
     })

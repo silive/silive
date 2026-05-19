@@ -88,7 +88,7 @@ function ensureOpenid() {
     wx.login({
       success: loginRes => {
         if (!loginRes.code) {
-          reject(new Error("微信登录失败"))
+          reject(new Error("手机号快捷登录失败"))
           return
         }
         request("/api/wechat/openid", {
@@ -117,7 +117,7 @@ function wxLoginCode(debugInfo = {}) {
           hasLoginCode: !!loginRes.code
         })
         if (!loginRes.code) {
-          const error = new Error("微信登录失败：未返回 loginCode")
+          const error = new Error("手机号快捷登录失败：未返回 loginCode")
           error.loginDebugInfo = debugInfo
           reject(error)
           return
@@ -132,7 +132,7 @@ function wxLoginCode(debugInfo = {}) {
           errMsg: error && error.errMsg,
           hasLoginCode: false
         })
-        const nextError = new Error("微信登录失败：未返回 loginCode")
+        const nextError = new Error("手机号快捷登录失败：未返回 loginCode")
         nextError.loginDebugInfo = debugInfo
         reject(nextError)
       }
@@ -227,7 +227,7 @@ function requestPhoneLogin(phoneCode, loginCode, debugInfo = {}) {
   })
 }
 
-function bindStoredPromotionRelation(name = "微信用户") {
+function bindStoredPromotionRelation(name = "用户") {
   const storeId = wx.getStorageSync("referrerStoreId") || wx.getStorageSync("pendingReferrerStoreId") || ""
   const storeExpireAt = Number(wx.getStorageSync("referrerStoreExpireAt") || 0)
   if (storeId && storeExpireAt && Date.now() <= storeExpireAt) return Promise.resolve(null)
@@ -336,7 +336,7 @@ function loginWithPhoneDetail(detail = {}) {
     }
     logLoginDebug("after phone login saved")
     return syncStoredStoreReferrer()
-      .then(() => bindStoredPromotionRelation(wx.getStorageSync("memberName") || "微信用户"))
+      .then(() => bindStoredPromotionRelation(wx.getStorageSync("memberName") || "用户"))
       .catch(error => {
         console.warn("[auth] post-login promotion sync failed:", error.message || error)
         return null

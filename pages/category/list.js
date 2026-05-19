@@ -370,7 +370,7 @@ Page({
   showContact() {
     const { phone, wechat, workWechatUrl } = this.data.contact || {}
     wx.showActionSheet({
-      itemList: ["在线客服", "电话联系", "复制微信号"],
+      itemList: ["在线客服", "电话联系", "复制客服号"],
       success: res => {
         if (res.tapIndex === 0) {
           if (workWechatUrl && workWechatUrl.indexOf("/") === 0) wx.navigateTo({ url: workWechatUrl })
@@ -382,7 +382,7 @@ Page({
         }
         if (res.tapIndex === 2) {
           if (wechat) copyText(wechat)
-          else wx.showToast({ title: "暂未设置微信号", icon: "none" })
+          else wx.showToast({ title: "暂未设置客服号", icon: "none" })
         }
       }
     })

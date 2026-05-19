@@ -63,7 +63,7 @@
     <view wx:if="{{invited.length}}">
       <view class="record" wx:for="{{invited}}" wx:key="id">
         <view>
-          <view class="record-title">{{item.inviteeName || '微信用户'}}</view>
+          <view class="record-title">{{item.inviteeName || '用户'}}</view>
           <view class="record-desc">{{item.inviteePhone}}</view>
         </view>
         <view class="pill">一级好友</view>
