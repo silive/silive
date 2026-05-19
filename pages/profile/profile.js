@@ -240,7 +240,7 @@ Page({
       this.setData({ shoppingMoney: "0.00", pendingReward: "0.00", actualPayable: "0.00" })
       return
     }
-    request(`/api/promotion/summary?phone=${encodeURIComponent(phone)}`)
+    request("/api/promotion/summary")
       .then(data => {
         this.setData({
           shoppingMoney: data.profile?.settledTotal || data.profile?.shoppingMoney || "0.00",

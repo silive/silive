@@ -6241,20 +6241,23 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/promotion/summary" && req.method === "GET") {
     const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
-    sendJson(res, 200, await getPromotionSummary(identity.phone || url.searchParams.get("phone") || ""))
+    if (!identity.phone) throw httpError(401, "请先完成手机号快捷登录")
+    sendJson(res, 200, await getPromotionSummary(identity.phone))
     return
   }
 
   if (url.pathname === "/api/promotion/stats" && req.method === "GET") {
     const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
-    const summary = await getPromotionSummary(identity.phone || url.searchParams.get("phone") || "")
+    if (!identity.phone) throw httpError(401, "请先完成手机号快捷登录")
+    const summary = await getPromotionSummary(identity.phone)
     sendJson(res, 200, { ok: true, data: summary.profile, profile: summary.profile })
     return
   }
 
   if (url.pathname === "/api/promotion/orders" && req.method === "GET") {
     const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
-    const summary = await getPromotionSummary(identity.phone || url.searchParams.get("phone") || "")
+    if (!identity.phone) throw httpError(401, "请先完成手机号快捷登录")
+    const summary = await getPromotionSummary(identity.phone)
     sendJson(res, 200, { ok: true, data: summary.orders || [], orders: summary.orders || [] })
     return
   }

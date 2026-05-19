@@ -96,7 +96,7 @@ Page({
 
   loadSummary(phone) {
     this.setData({ loading: true })
-    request(`/api/promotion/summary?phone=${encodeURIComponent(phone)}`)
+    request("/api/promotion/summary")
       .then(data => {
         this.setData({
           profile: data.profile || this.data.profile,
