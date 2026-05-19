@@ -1,5 +1,7 @@
 const { apiUrl, request } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
+const { isReviewMode } = require("../../utils/review")
+const { copyText } = require("../../utils/privacy")
 const SHARE_TITLES = [
   "非常智造 · 朋友推荐给你",
   "高颜值定制礼物店 · 邀你来逛逛",
@@ -91,8 +93,12 @@ Page({
   },
 
   copyInviteCode() {
+    if (isReviewMode()) {
+      wx.showToast({ title: "审核版暂不开放推广复制", icon: "none" })
+      return
+    }
     const link = this.buildInviteLink()
-    wx.setClipboardData({
+    copyText(link, {
       data: link,
       success: () => wx.showToast({ title: "邀请链接已复制", icon: "success" })
     })

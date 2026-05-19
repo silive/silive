@@ -1,5 +1,6 @@
 const { request } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
+const { copyText } = require("../../utils/privacy")
 
 function normalizeArticle(article, index) {
   return {
@@ -98,7 +99,7 @@ Page({
           else wx.showToast({ title: "暂未设置电话", icon: "none" })
         }
         if (action.key === "wechat") {
-          if (wechat) wx.setClipboardData({ data: wechat })
+          if (wechat) copyText(wechat)
           else wx.showToast({ title: "暂未设置微信号", icon: "none" })
         }
       }

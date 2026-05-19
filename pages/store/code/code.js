@@ -1,5 +1,7 @@
 const { request } = require("../../../utils/api")
 const { applyTheme } = require("../../../utils/theme")
+const { isReviewMode } = require("../../../utils/review")
+const { copyText, saveImage } = require("../../../utils/privacy")
 
 const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.png"
 
@@ -36,6 +38,10 @@ Page({
   },
 
   saveCode() {
+    if (isReviewMode()) {
+      wx.showToast({ title: "审核版暂不开放保存二维码", icon: "none" })
+      return
+    }
     const url = this.data.qrcodeUrl
     if (!url) {
       wx.showToast({ title: "二维码还未生成", icon: "none" })
@@ -48,7 +54,7 @@ Page({
           wx.showToast({ title: "二维码下载失败", icon: "none" })
           return
         }
-        wx.saveImageToPhotosAlbum({
+        saveImage(res.tempFilePath, {
           filePath: res.tempFilePath,
           success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
           fail: error => {
@@ -62,9 +68,13 @@ Page({
   },
 
   copyLink() {
+    if (isReviewMode()) {
+      wx.showToast({ title: "审核版暂不开放复制链接", icon: "none" })
+      return
+    }
     const path = this.data.sharePath
     if (!path) return
-    wx.setClipboardData({
+    copyText(path, {
       data: path,
       success: () => wx.showToast({ title: "推广链接已复制", icon: "success" })
     })

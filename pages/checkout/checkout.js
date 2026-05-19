@@ -2,6 +2,7 @@ const { authHeader, request, uploadFileWithFallback } = require("../../utils/api
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { isReviewMode } = require("../../utils/review")
+const { getLocation } = require("../../utils/privacy")
 
 function safeJson(value, fallback = null) {
   try {
@@ -358,8 +359,12 @@ Page({
   },
 
   requestPickupLocation() {
+    if (this.data.reviewMode) {
+      this.setData({ locationStatus: "disabled" })
+      return
+    }
     this.setData({ locationStatus: "locating" })
-    wx.getLocation({
+    getLocation({
       type: "gcj02",
       success: res => {
         const location = { latitude: res.latitude, longitude: res.longitude }

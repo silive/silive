@@ -1,4 +1,6 @@
 const { applyTheme } = require("../../utils/theme")
+const { isReviewMode } = require("../../utils/review")
+const { saveImage } = require("../../utils/privacy")
 
 function downloadImage(url) {
   if (!url) return Promise.resolve(null)
@@ -139,11 +141,15 @@ Page({
   },
 
   savePoster() {
+    if (isReviewMode()) {
+      wx.showToast({ title: "审核版暂不开放保存海报", icon: "none" })
+      return
+    }
     if (!this.data.posterImage) {
       wx.showToast({ title: "海报生成中，请稍后", icon: "none" })
       return
     }
-    wx.saveImageToPhotosAlbum({
+    saveImage(this.data.posterImage, {
       filePath: this.data.posterImage,
       success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
       fail: error => {

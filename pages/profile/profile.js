@@ -1,6 +1,7 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
 const { isReviewMode } = require("../../utils/review")
+const { copyText } = require("../../utils/privacy")
 
 Page({
   data: {
@@ -367,7 +368,7 @@ Page({
           else wx.showToast({ title: "暂未设置电话", icon: "none" })
         }
         if (action.key === "wechat") {
-          if (contact.wechat) wx.setClipboardData({ data: contact.wechat })
+          if (contact.wechat) copyText(contact.wechat)
           else wx.showToast({ title: "暂未设置微信号", icon: "none" })
         }
       }

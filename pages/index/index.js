@@ -2,6 +2,7 @@ const defaultData = require("./default-data")
 const { request, uploadFileWithFallback } = require("../../utils/api")
 const { applyTheme } = require("../../utils/theme")
 const { filterReviewHomeEntries, isReviewMode } = require("../../utils/review")
+const { copyText } = require("../../utils/privacy")
 const BADGE_TEXT = {
   new: "新品推荐",
   hot: "人气热卖",
@@ -558,7 +559,7 @@ Page({
           else wx.showToast({ title: "暂未设置电话", icon: "none" })
         }
         if (res.tapIndex === 2) {
-          if (wechat) wx.setClipboardData({ data: wechat })
+          if (wechat) copyText(wechat)
           else wx.showToast({ title: "暂未设置微信号", icon: "none" })
         }
       }
