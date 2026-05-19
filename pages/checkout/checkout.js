@@ -1,7 +1,7 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
-const { isReviewMode } = require("../../utils/review")
+const { isPaymentEnabled, isReviewMode } = require("../../utils/review")
 const { getLocation } = require("../../utils/privacy")
 
 function safeJson(value, fallback = null) {
@@ -107,7 +107,8 @@ Page({
     totalPrice: "0.00",
     loginVisible: false,
     loginLoading: false,
-    reviewMode: isReviewMode()
+    reviewMode: isReviewMode(),
+    paymentEnabled: isPaymentEnabled()
   },
 
   onLoad(options) {
@@ -641,7 +642,7 @@ Page({
     this.setData({ paying: true })
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
-    const referrerStore = getReferrerStoreMeta()
+    const referrerStore = this.data.reviewMode ? {} : getReferrerStoreMeta()
     ensureOpenid().then(openid => request("/api/orders", {
         method: "POST",
         data: {
@@ -650,7 +651,7 @@ Page({
           userSession: wx.getStorageSync("userSession") || "",
           userId: wx.getStorageSync("localUserId") || "",
           userToken: wx.getStorageSync("userToken") || wx.getStorageSync("localUserId") || "",
-          inviterCode: wx.getStorageSync("boundInviterCode") || wx.getStorageSync("inviterCode") || "",
+          inviterCode: this.data.reviewMode ? "" : (wx.getStorageSync("boundInviterCode") || wx.getStorageSync("inviterCode") || ""),
           newcomerBenefitText: wx.getStorageSync("newcomerBenefitText") || "",
           remark: this.data.uploadedImages.length ? `上传图片：${this.data.uploadedImages.map(item => item.url).join("，")}` : "",
           originalImageUrl: this.data.uploadedImages[0]?.url || "",
@@ -682,7 +683,7 @@ Page({
         message: order.message || ""
       })
       if (!orderId) throw new Error(order.message || "订单创建失败")
-      if (this.data.reviewMode) {
+      if (!this.data.paymentEnabled) {
         wx.showModal({
           title: "订单已提交",
           content: "客服会尽快联系你确认付款方式和配送安排。",

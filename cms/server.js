@@ -4124,10 +4124,16 @@ async function applyShipment(data) {
   const orders = await getOrders()
   const index = orders.findIndex(order => order.id === data.orderId)
   if (index < 0) throw new Error("订单不存在")
+  const order = orders[index]
+  if (!(order.paymentStatus === "已支付" || order.paidAt || order.transactionId)) throw httpError(400, "订单未支付，不能发货")
+  if (order.status === "已发货" || order.shippedAt || order.trackingNumber) throw httpError(400, "订单已发货，请勿重复发货")
+  if (["已退款", "已取消", "退款中"].includes(order.status) || ["已退款", "退款中", "退款处理中"].includes(order.paymentStatus) || ["refund_pending", "refunded"].includes(normalizeAfterSalesStatus(order.afterSalesStatus || order.after_sales_status || order.refundStatus))) {
+    throw httpError(400, "退款/取消订单不能发货")
+  }
   orders[index] = {
-    ...orders[index],
-    shippingCompany: data.shippingCompany || orders[index].shippingCompany,
-    trackingNumber: data.trackingNumber || orders[index].trackingNumber,
+    ...order,
+    shippingCompany: data.shippingCompany || order.shippingCompany,
+    trackingNumber: data.trackingNumber || order.trackingNumber,
     status: "已发货",
     shippedAt: formatDateTime(new Date())
   }
@@ -4270,7 +4276,9 @@ async function applyRefundRequest(data) {
 }
 
 function generateRefundNo(orderId) {
-  return `RF${String(orderId || "").replace(/[^\w]/g, "").slice(-18)}${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+  const clean = String(orderId || "").replace(/[^\w]/g, "")
+  const digest = crypto.createHash("sha256").update(String(orderId || "")).digest("hex").slice(0, 24).toUpperCase()
+  return `RF${clean.slice(0, 18)}${digest}`.slice(0, 64)
 }
 
 async function markRefundSuccess(order, refundData = {}) {

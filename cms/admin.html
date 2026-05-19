@@ -1559,11 +1559,32 @@
         if (!res.ok || data.ok === false) throw new Error(data.message || "请求失败")
         return data.data || data
       } catch (error) {
+        console.error("[admin-api]", method, path, error)
         if (error.name === "AbortError") throw new Error("接口响应超时，请刷新重试")
         throw error
       } finally {
         clearTimeout(timer)
       }
+    }
+    const actionBusy = new WeakSet()
+    function withButtonLoading(button, loadingText, task) {
+      if (!button) return Promise.resolve().then(task)
+      if (actionBusy.has(button)) return Promise.resolve()
+      const oldText = button.textContent
+      actionBusy.add(button)
+      button.disabled = true
+      button.textContent = loadingText || "处理中..."
+      return Promise.resolve()
+        .then(task)
+        .catch(error => {
+          console.error("[admin-action]", error)
+          setStatus(error.message || "操作失败，请稍后重试")
+        })
+        .finally(() => {
+          actionBusy.delete(button)
+          button.disabled = false
+          button.textContent = oldText
+        })
     }
     async function uploadImageData(file) {
       const ext = file.name.split(".").pop().toLowerCase()
@@ -2245,11 +2266,9 @@
         else target[key] = values
       })
     }
-    function saveProductDrawer() {
+    function saveProductDrawer(button) {
       collectProductDrawer()
-      saveProductsAndRefresh("商品已保存")
-        .then(closeDrawer)
-        .catch(error => setStatus(error.message))
+      return withButtonLoading(button, "保存中...", () => saveProductsAndRefresh("商品已保存").then(closeDrawer))
     }
     function openOrderDrawer(index) {
       const order = orders[index]
@@ -2875,7 +2894,7 @@
       if (event.target.dataset.subview) switchSubview(event.target.dataset.subview)
     })
     $("reloadBtn").addEventListener("click", () => loadAll().catch(error => setStatus(error.message)))
-    $("saveBtn").addEventListener("click", () => saveCurrent().catch(error => setStatus(error.message)))
+    $("saveBtn").addEventListener("click", event => withButtonLoading(event.currentTarget, "保存中...", saveCurrent))
     $("closeDrawer").addEventListener("click", closeDrawer)
     $("detailDrawer").addEventListener("click", event => {
       if (event.target.id === "detailDrawer") closeDrawer()
@@ -3280,7 +3299,7 @@
           if (select) select.value = event.target.dataset.value
         }
       }
-      if (event.target.dataset.action === "save-product-drawer") saveProductDrawer()
+      if (event.target.dataset.action === "save-product-drawer") saveProductDrawer(event.target)
       if (event.target.dataset.action === "save-order-drawer") saveOrderDrawer()
       if (event.target.dataset.action === "save-store-drawer") saveStoreDrawer()
       if (event.target.dataset.action === "add-media") {
@@ -3300,9 +3319,12 @@
         if (event.target.dataset.action === "media-down" && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row)
       }
       if (event.target.dataset.action === "remove-product") {
-        products.splice(Number(event.target.dataset.index), 1)
-        selectedProducts.clear()
-        renderProducts()
+        if (!confirm("确认删除该商品？此操作保存后生效。")) return
+        withButtonLoading(event.target, "删除中...", () => {
+          products.splice(Number(event.target.dataset.index), 1)
+          selectedProducts.clear()
+          return saveProductsAndRefresh("商品已删除")
+        })
       }
       if (event.target.dataset.bulk) openBulkCategory(event.target.dataset.bulk)
       if (event.target.dataset.action === "bulk-on") applyBulkStatus("on")
@@ -3317,10 +3339,10 @@
           setStatus("请先填写快递公司和快递单号")
           return
         }
-        api("/api/admin/orders/ship", "POST", { orderId: orders[index].id, shippingCompany, trackingNumber })
+        if (!confirm("确认标记该订单已发货？")) return
+        withButtonLoading(event.target, "发货中...", () => api("/api/admin/orders/ship", "POST", { orderId: orders[index].id, shippingCompany, trackingNumber })
           .then(() => loadAll())
-          .then(() => setStatus("已标记发货"))
-          .catch(error => setStatus(error.message))
+          .then(() => setStatus("已标记发货")))
       }
       if (event.target.dataset.action === "order-arrived-store") {
         const order = orders[Number(event.target.dataset.index)]
@@ -3340,17 +3362,16 @@
       }
       if (event.target.dataset.action === "refund-approve") {
         const order = orders[Number(event.target.dataset.index)]
-        api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/approve-refund`, "POST", { refundAmount: order.refundAmount || order.amount })
+        if (!confirm("确认提交退款？已退款或退款中的订单不能重复退款。")) return
+        withButtonLoading(event.target, "退款中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/approve-refund`, "POST", { refundAmount: order.refundAmount || order.amount })
           .then(() => loadAll())
-          .then(() => setStatus("退款已提交微信受理，成功后由回调更新订单"))
-          .catch(error => setStatus(error.message))
+          .then(() => setStatus("退款已提交受理，成功后由回调更新订单")))
       }
       if (event.target.dataset.action === "refund-status") {
         const order = orders[Number(event.target.dataset.index)]
-        api(`/api/admin/orders/${encodeURIComponent(order.id)}/refund-status`, "GET")
+        withButtonLoading(event.target, "查询中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/refund-status`, "GET")
           .then(() => loadAll())
-          .then(() => setStatus("退款状态已刷新"))
-          .catch(error => setStatus(error.message))
+          .then(() => setStatus("退款状态已刷新")))
       }
       if (event.target.dataset.action === "contact-user") {
         const order = orders[Number(event.target.dataset.index)]

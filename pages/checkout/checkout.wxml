@@ -109,7 +109,7 @@
     <view class="normal-tip" wx:else style="{{mutedTextStyle}}">普通商品无需上传图片和备注，确认配送方式后即可提交支付。</view>
   </view>
 
-  <button class="pay-btn" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">{{reviewMode ? '提交订单，客服确认付款方式' : (quoteMode ? '提交需求，等待报价' : '提交订单并支付')}}</button>
+  <button class="pay-btn" style="{{primaryButtonStyle}}" bindtap="submitOrder" loading="{{paying}}">{{!paymentEnabled ? '提交订单，客服确认付款方式' : (quoteMode ? '提交需求，等待报价' : '提交订单并支付')}}</button>
 
   <login-sheet
     visible="{{loginVisible}}"

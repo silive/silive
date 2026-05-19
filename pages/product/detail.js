@@ -167,8 +167,10 @@ Page({
   onShow() {
     applyTheme(this)
     this.loadCartCount()
-    this.ensureShareIdentity()
-    this.loadShareStoreInfo()
+    if (!this.data.reviewMode) {
+      this.ensureShareIdentity()
+      this.loadShareStoreInfo()
+    }
     this.loadNewcomerBenefits()
   },
 
@@ -322,6 +324,16 @@ Page({
     wx.navigateTo({ url: "/pages/cart/cart" })
   },
 
+  openProductPoster() {
+    const product = this.data.product || {}
+    if (!product.id) return
+    const image = product.displayImage || product.optimizedUrl || product.listImage || product.mediaImages?.[0] || product.imageUrl || ""
+    const path = `/pages/product/detail?id=${encodeURIComponent(product.id)}`
+    wx.navigateTo({
+      url: `/pages/poster/poster?mode=product&title=${encodeURIComponent(product.name || "商品海报")}&image=${encodeURIComponent(image)}&path=${encodeURIComponent(path)}`
+    })
+  },
+
   openCheckout() {
     wx.navigateTo({
       url: `/pages/checkout/checkout?product=${encodeURIComponent(JSON.stringify(this.data.product))}&source=${encodeURIComponent(this.data.source || "")}&autoAddress=1`
@@ -430,7 +442,7 @@ Page({
   onShareAppMessage() {
     const product = this.data.product || {}
     return {
-      title: "非常智造｜发现一个不错的定制礼物",
+      title: product.name || "非常智造商品推荐",
       path: this.buildSharePath(),
       imageUrl: product.displayImage || product.listImage || product.mediaImages?.[0] || product.imageUrl || ""
     }

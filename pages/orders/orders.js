@@ -1,7 +1,7 @@
 const { request, uploadFileWithFallback } = require("../../utils/api")
 const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
-const { isReviewMode } = require("../../utils/review")
+const { isPaymentEnabled, isReviewMode } = require("../../utils/review")
 
 const BADGE_TEXT = {
   new: "新品推荐",
@@ -220,7 +220,7 @@ function normalizeOrder(order, products = []) {
     isUnpaidOrder: isUnpaid(order),
     isRefundingOrder: isRefunding(order),
     isRefundedOrder: isRefunded(order),
-    canPay: isUnpaid(order) && !quote && !isReviewMode(),
+    canPay: isUnpaid(order) && !quote && isPaymentEnabled(),
     canContact: ["待报价", "待确认", "制作中", "待自提", "售后已拒绝"].includes(display),
     canViewDetail: display === "待收货",
     canShowPickupCode: canShowPickupCode(order),
@@ -333,7 +333,8 @@ Page({
     afterSalesTypes: ["退款", "退货退款", "补发", "重新制作"],
     submittingRefund: false,
     payLoadingOrderId: "",
-    reviewMode: isReviewMode()
+    reviewMode: isReviewMode(),
+    paymentEnabled: isPaymentEnabled()
   },
 
   onShow() {
@@ -454,7 +455,7 @@ Page({
   },
 
   payOrder(event) {
-    if (this.data.reviewMode) {
+    if (!this.data.paymentEnabled) {
       wx.showToast({ title: "订单已保留，客服会确认付款方式", icon: "none" })
       return
     }

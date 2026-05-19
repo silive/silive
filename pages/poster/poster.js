@@ -49,23 +49,27 @@ function drawCover(ctx, image, x, y, width, height) {
 
 Page({
   data: {
-    title: "邀请海报",
+    title: "商品海报",
+    mode: "product",
     image: "",
     code: "",
     path: "",
     shareImage: "",
     posterImage: "",
     generating: false,
+    canSaveAlbum: !isReviewMode(),
     themeStyle: "",
     themeClass: "theme-skin01"
   },
 
   onLoad(options) {
     applyTheme(this)
-    const title = decodeURIComponent(options.title || "邀请海报")
+    const mode = options.mode || "product"
+    const title = decodeURIComponent(options.title || (mode === "product" ? "商品海报" : "活动海报"))
     wx.setNavigationBarTitle({ title })
     this.setData({
       title,
+      mode,
       image: decodeURIComponent(options.image || ""),
       code: decodeURIComponent(options.code || ""),
       path: decodeURIComponent(options.path || ""),
@@ -83,7 +87,6 @@ Page({
     this.setData({ generating: true })
     Promise.all([downloadImage(this.data.image), downloadImage(this.data.shareImage)])
       .then(([qrImage, shareImage]) => {
-        if (!qrImage || !qrImage.path) throw new Error("小程序码加载失败，请稍后重试")
         const ctx = wx.createCanvasContext("posterCanvas", this)
         ctx.setFillStyle("#FFF9F3")
         ctx.fillRect(0, 0, 750, 1200)
@@ -103,22 +106,32 @@ Page({
         }
         ctx.setFillStyle("#1F2937")
         ctx.setFontSize(46)
-        ctx.fillText("非常智造", 82, 512)
+        ctx.fillText(this.data.title || "非常智造", 82, 512)
         ctx.setFontSize(28)
         ctx.setFillStyle("#6B7280")
-        ctx.fillText("上传照片，定制专属礼物", 82, 562)
-        ctx.fillText("3D打印 · 激光雕刻 · 到店自提", 82, 604)
-        ctx.setFillStyle("#FFF3E8")
-        ctx.fillRoundRect ? ctx.fillRoundRect(82, 642, 586, 86, 20) : ctx.fillRect(82, 642, 586, 86)
-        ctx.setFillStyle("#FF5A00")
-        ctx.setFontSize(26)
-        ctx.fillText(`专属邀请码：${this.data.code || "VSCUSTOM"}`, 112, 695)
-        ctx.setFillStyle("#FFFFFF")
-        ctx.fillRoundRect ? ctx.fillRoundRect(235, 780, 280, 280, 28) : ctx.fillRect(235, 780, 280, 280)
-        ctx.drawImage(qrImage.path, 250, 795, 250, 250)
+        ctx.fillText("定制礼品推荐", 82, 562)
+        ctx.fillText("3D打印 · 激光雕刻 · 创意好物", 82, 604)
+        if (qrImage && qrImage.path && this.data.code) {
+          ctx.setFillStyle("#FFF3E8")
+          ctx.fillRoundRect ? ctx.fillRoundRect(82, 642, 586, 86, 20) : ctx.fillRect(82, 642, 586, 86)
+          ctx.setFillStyle("#FF5A00")
+          ctx.setFontSize(26)
+          ctx.fillText(`商品码：${this.data.code}`, 112, 695)
+          ctx.setFillStyle("#FFFFFF")
+          ctx.fillRoundRect ? ctx.fillRoundRect(235, 780, 280, 280, 28) : ctx.fillRect(235, 780, 280, 280)
+          ctx.drawImage(qrImage.path, 250, 795, 250, 250)
+        } else {
+          ctx.setFillStyle("#FFF3E8")
+          ctx.fillRoundRect ? ctx.fillRoundRect(82, 680, 586, 240, 28) : ctx.fillRect(82, 680, 586, 240)
+          ctx.setFillStyle("#FF5A00")
+          ctx.setFontSize(36)
+          ctx.fillText("打开小程序查看商品详情", 142, 790)
+          ctx.setFontSize(26)
+          ctx.fillText("非常智造 · 年轻人的创意礼品店", 154, 850)
+        }
         ctx.setFillStyle("#6B7280")
         ctx.setFontSize(22)
-        ctx.fillText("扫码进入，领取好友推荐权益", 210, 1110)
+        ctx.fillText("分享给朋友，一起看看这件好物", 200, 1110)
         ctx.draw(false, () => {
           wx.canvasToTempFilePath({
             canvasId: "posterCanvas",
@@ -136,7 +149,7 @@ Page({
       })
       .catch(error => {
         this.setData({ generating: false })
-        wx.showModal({ title: "海报生成失败", content: error.message || "小程序码加载失败，请稍后重试", showCancel: false })
+        wx.showModal({ title: "海报生成失败", content: error.message || "图片加载失败，请稍后重试", showCancel: false })
       })
   },
 

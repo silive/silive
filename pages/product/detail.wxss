@@ -344,6 +344,10 @@
   box-shadow: none;
 }
 
+.poster-btn {
+  margin-top: 16rpx;
+}
+
 .floating-cart {
   position: fixed;
   right: 28rpx;

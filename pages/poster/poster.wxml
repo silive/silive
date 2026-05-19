@@ -2,14 +2,14 @@
   <view class="title">{{title}}</view>
   <view class="poster-card">
     <image wx:if="{{posterImage}}" class="poster" src="{{posterImage}}" mode="widthFix" />
-    <view wx:else class="poster-loading">{{generating ? '正在生成邀请海报...' : '海报暂未生成'}}</view>
+    <view wx:else class="poster-loading">{{generating ? '正在生成商品海报...' : '海报暂未生成'}}</view>
     <canvas class="poster-canvas" canvas-id="posterCanvas"></canvas>
   </view>
   <view class="poster-info">
     <view class="poster-brand">非常智造</view>
-    <view class="poster-copy">上传照片，定制专属礼物</view>
-    <view class="poster-copy">3D打印 · 激光雕刻 · 到店自提</view>
-    <view class="poster-code">邀请码：{{code || 'VSCUSTOM'}}</view>
+    <view class="poster-copy">分享商品给朋友看看</view>
+    <view class="poster-copy">3D打印 · 激光雕刻 · 创意好物</view>
   </view>
-  <button class="save-btn" bindtap="savePoster">保存到相册</button>
+  <button wx:if="{{canSaveAlbum}}" class="save-btn" bindtap="savePoster">保存到相册</button>
+  <view wx:else class="poster-copy poster-review-note">审核版暂不开放保存相册，可使用系统分享能力发送给朋友。</view>
 </view>

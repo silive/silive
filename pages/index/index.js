@@ -497,7 +497,7 @@ Page({
   handleTarget(entry) {
     if (!entry) return
     const value = entry.targetValue || entry.name || ""
-    if (isReviewMode() && ["poster", "activity", "custom", "web", "contact", "service"].includes(entry.targetType || entry.linkType || "")) {
+    if (isReviewMode() && ["activity", "custom", "web", "contact", "service"].includes(entry.targetType || entry.linkType || "")) {
       if (entry.targetType === "contact" || entry.targetType === "service") return
       wx.navigateTo({ url: `/pages/category/list?primary=${encodeURIComponent(value || "日用好货")}` })
       return
@@ -520,7 +520,7 @@ Page({
       return
     }
     if (entry.targetType === "poster") {
-      wx.navigateTo({ url: `/pages/poster/poster?title=${encodeURIComponent(entry.name)}&image=${encodeURIComponent(entry.imageUrl || value || "")}` })
+      wx.navigateTo({ url: `/pages/poster/poster?mode=activity&title=${encodeURIComponent(entry.name)}&image=${encodeURIComponent(entry.imageUrl || value || "")}` })
       return
     }
     if (entry.targetType === "custom") {
