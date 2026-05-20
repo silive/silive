@@ -63,7 +63,7 @@
       </button>
     </view>
     <view class="feature-row bottom-row">
-      <button wx:if="{{!reviewMode}}" class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
+      <button class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
         <view wx:if="{{afterSaleDot}}" class="red-dot"></view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">✓</view>
         <view class="feature-title">售后保障</view>
@@ -71,7 +71,7 @@
       </button>
     </view>
   </view>
-  <button wx:if="{{!reviewMode && banner && banner.imageUrl && (banner.targetType === 'contact' || banner.linkType === 'contact')}}" class="profile-banner" style="{{bannerStyle}}" open-type="contact">
+  <button wx:if="{{banner && banner.imageUrl && (banner.targetType === 'contact' || banner.linkType === 'contact')}}" class="profile-banner" style="{{bannerStyle}}" open-type="contact">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
     <view class="profile-banner-copy">
       <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
@@ -79,7 +79,7 @@
       <view class="profile-banner-desc">{{banner.desc}}</view>
     </view>
   </button>
-  <view wx:elif="{{!reviewMode && banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
+  <view wx:elif="{{banner && banner.imageUrl}}" class="profile-banner" style="{{bannerStyle}}" bindtap="openBanner">
     <image class="profile-banner-image" src="{{banner.imageUrl}}" mode="aspectFill" />
     <view class="profile-banner-copy">
       <view wx:if="{{banner.tag}}" class="profile-banner-tag">{{banner.tag}}</view>
