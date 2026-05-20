@@ -61,7 +61,7 @@
       <view class="upload-label">配送方式</view>
       <view class="delivery-tabs">
         <button class="delivery-tab {{deliveryType === 'delivery' ? 'active' : ''}}" data-type="delivery" bindtap="switchDelivery">同城配送 / 快递</button>
-        <button wx:if="{{!reviewMode}}" class="delivery-tab {{deliveryType === 'pickup' ? 'active' : ''}}" data-type="pickup" bindtap="switchDelivery">到店自提</button>
+        <button wx:if="{{storeFeaturesEnabled}}" class="delivery-tab {{deliveryType === 'pickup' ? 'active' : ''}}" data-type="pickup" bindtap="switchDelivery">到店自提</button>
       </view>
       <view wx:if="{{deliveryType === 'pickup'}}" class="pickup-panel">
         <view class="pickup-tip" style="{{mutedTextStyle}}" wx:if="{{locationStatus === 'success'}}">已为你推荐最近自提点，你也可以更换其他门店。顾客端显示到店自提免费。</view>

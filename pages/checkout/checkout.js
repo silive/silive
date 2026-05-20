@@ -339,7 +339,7 @@ Page({
 
   switchDelivery(event) {
     const type = event.currentTarget.dataset.type === "pickup" ? "pickup" : "delivery"
-    if (this.data.reviewMode && type === "pickup") {
+    if (!this.data.storeFeaturesEnabled && type === "pickup") {
       wx.showToast({ title: "自提功能暂未开放", icon: "none" })
       return
     }
@@ -362,7 +362,7 @@ Page({
   },
 
   requestPickupLocation() {
-    if (this.data.reviewMode) {
+    if (!this.data.storeFeaturesEnabled) {
       this.setData({ locationStatus: "disabled" })
       return
     }

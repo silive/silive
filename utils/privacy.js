@@ -1,4 +1,4 @@
-const { isReviewMode } = require("./review")
+const { isReviewMode, isStoreFeaturesEnabled } = require("./review")
 
 function blocked(title = "审核版暂不开放该能力") {
   wx.showToast({ title, icon: "none" })
@@ -27,6 +27,14 @@ function saveImage(filePath, options = {}) {
 }
 
 function getLocation(options = {}) {
+  if (isReviewMode() && isStoreFeaturesEnabled()) {
+    if (typeof wx.getLocation !== "function") {
+      blocked("当前版本暂不支持定位")
+      return false
+    }
+    wx.getLocation(options)
+    return true
+  }
   return callWxMethod(["get", "Location"], options, "审核版暂不支持定位")
 }
 

@@ -1,7 +1,7 @@
 const REVIEW_MODE = true
 const REVIEW_PAYMENT_ENABLED = true
 const REVIEW_PROMOTION_ENABLED = true
-const REVIEW_STORE_FEATURES_ENABLED = false
+const REVIEW_STORE_FEATURES_ENABLED = true
 
 function isReviewMode() {
   return REVIEW_MODE

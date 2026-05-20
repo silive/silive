@@ -29,17 +29,22 @@
     </view>
 
     <view class="section">
-      <view class="section-title">六、我们不收集的信息</view>
-      <view class="section-text">当前审核版本不收集定位、通讯录、身份证、人脸、银行卡等敏感信息，不主动读取剪切板，也不出售用户个人信息。</view>
+      <view class="section-title">六、位置信息</view>
+      <view class="section-text">当你主动选择附近门店或到店自提点时，我们会在你授权后获取位置信息，用于推荐附近自提点、计算门店距离和配送/自提服务。我们不会在你未触发相关功能时主动获取位置。</view>
     </view>
 
     <view class="section">
-      <view class="section-title">七、信息查询、更正与删除</view>
+      <view class="section-title">七、我们不收集的信息</view>
+      <view class="section-text">当前版本不收集通讯录、身份证、人脸、银行卡等敏感信息，不主动读取剪切板，也不出售用户个人信息。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">八、信息查询、更正与删除</view>
       <view class="section-text">你可以通过小程序内“联系客服”申请查询、更正或删除相关个人信息。为保障订单和售后处理，部分依法需要留存的信息会在必要期限内保存。</view>
     </view>
 
     <view class="section">
-      <view class="section-title">八、政策更新</view>
+      <view class="section-title">九、政策更新</view>
       <view class="section-text">如个人信息使用目的、方式或范围发生变化，我们会通过弹窗、页面公告或更新隐私政策等方式告知，并在需要时重新取得你的同意。</view>
     </view>
   </view>

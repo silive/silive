@@ -49,5 +49,13 @@
   },
   "style": "v2",
   "lazyCodeLoading": "requiredComponents",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于推荐附近自提点、计算门店距离和配送/自提服务"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
   "sitemapLocation": "sitemap.json"
 }
