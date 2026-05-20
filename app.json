@@ -52,6 +52,9 @@
   "permission": {
     "scope.userLocation": {
       "desc": "用于推荐附近自提点、计算门店距离和配送/自提服务"
+    },
+    "scope.writePhotosAlbum": {
+      "desc": "用于用户主动保存商品海报、推广海报或门店二维码到本地相册"
     }
   },
   "requiredPrivateInfos": [

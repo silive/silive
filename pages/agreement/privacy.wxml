@@ -34,17 +34,22 @@
     </view>
 
     <view class="section">
-      <view class="section-title">七、我们不收集的信息</view>
+      <view class="section-title">七、相册仅写入</view>
+      <view class="section-text">当你主动点击保存时，我们会申请相册写入权限，用于将商品海报、推广海报或门店二维码保存到本地相册。拒绝授权不会影响浏览、下单、支付、推广或自提功能。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">八、我们不收集的信息</view>
       <view class="section-text">当前版本不收集通讯录、身份证、人脸、银行卡等敏感信息，不主动读取剪切板，也不出售用户个人信息。</view>
     </view>
 
     <view class="section">
-      <view class="section-title">八、信息查询、更正与删除</view>
+      <view class="section-title">九、信息查询、更正与删除</view>
       <view class="section-text">你可以通过小程序内“联系客服”申请查询、更正或删除相关个人信息。为保障订单和售后处理，部分依法需要留存的信息会在必要期限内保存。</view>
     </view>
 
     <view class="section">
-      <view class="section-title">九、政策更新</view>
+      <view class="section-title">十、政策更新</view>
       <view class="section-text">如个人信息使用目的、方式或范围发生变化，我们会通过弹窗、页面公告或更新隐私政策等方式告知，并在需要时重新取得你的同意。</view>
     </view>
   </view>

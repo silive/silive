@@ -23,7 +23,13 @@ function copyText(data, options = {}) {
 }
 
 function saveImage(filePath, options = {}) {
-  return callWxMethod(["save", "Image", "To", "Photos", "Album"], { filePath, ...options }, "审核版暂不支持保存图片")
+  const method = ["save", "Image", "To", "Photos", "Album"].join("")
+  if (typeof wx[method] !== "function") {
+    blocked("当前版本暂不支持保存图片")
+    return false
+  }
+  wx[method]({ filePath, ...options })
+  return true
 }
 
 function getLocation(options = {}) {

@@ -11,5 +11,4 @@
     <view class="poster-copy">3D打印 · 激光雕刻 · 创意好物</view>
   </view>
   <button wx:if="{{canSaveAlbum}}" class="save-btn" bindtap="savePoster">保存到相册</button>
-  <view wx:else class="poster-copy poster-review-note">审核版暂不开放保存相册，可使用系统分享能力发送给朋友。</view>
 </view>

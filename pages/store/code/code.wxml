@@ -10,11 +10,11 @@
     <view wx:if="{{loading}}" class="muted center">正在生成门店小程序码...</view>
     <image wx:elif="{{qrcodeUrl}}" class="store-code" src="{{qrcodeUrl}}" mode="aspectFit" show-menu-by-longpress="true" />
     <view wx:else class="muted center">推广码暂时不可用</view>
-    <view class="code-tip">分享路径：{{sharePath || '生成后显示'}}</view>
+    <view class="code-tip">顾客扫码或打开分享卡片即可进入门店推荐页面。</view>
     <view class="action-row">
       <button class="primary-btn compact" open-type="share">分享给好友</button>
-      <button class="secondary-btn compact" bindtap="saveCode">保存到相册</button>
+      <button class="secondary-btn compact" bindtap="saveCode">保存门店码</button>
+      <button class="secondary-btn compact" bindtap="createStorePoster">生成门店海报</button>
     </view>
-    <button class="secondary-btn" bindtap="copyLink">复制推广链接</button>
   </view>
 </view>

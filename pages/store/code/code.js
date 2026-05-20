@@ -1,7 +1,6 @@
 const { request } = require("../../../utils/api")
 const { applyTheme } = require("../../../utils/theme")
-const { isReviewMode } = require("../../../utils/review")
-const { copyText, saveImage } = require("../../../utils/privacy")
+const { saveImage } = require("../../../utils/privacy")
 
 const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.png"
 
@@ -38,10 +37,6 @@ Page({
   },
 
   saveCode() {
-    if (isReviewMode()) {
-      wx.showToast({ title: "审核版暂不开放保存二维码", icon: "none" })
-      return
-    }
     const url = this.data.qrcodeUrl
     if (!url) {
       wx.showToast({ title: "二维码还未生成", icon: "none" })
@@ -58,8 +53,12 @@ Page({
           filePath: res.tempFilePath,
           success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
           fail: error => {
-            const denied = String(error.errMsg || "").includes("auth deny")
-            wx.showToast({ title: denied ? "请允许保存到相册" : "保存失败，请重试", icon: "none" })
+            const msg = String(error.errMsg || "")
+            wx.showModal({
+              title: "保存失败",
+              content: msg.includes("auth") || msg.includes("deny") ? "可手动截图保存，或在设置中开启相册权限" : "保存到相册失败，请稍后重试",
+              showCancel: false
+            })
           }
         })
       },
@@ -67,16 +66,15 @@ Page({
     })
   },
 
-  copyLink() {
-    if (isReviewMode()) {
-      wx.showToast({ title: "审核版暂不开放复制链接", icon: "none" })
+  createStorePoster() {
+    const image = this.data.qrcodeUrl
+    if (!image) {
+      wx.showToast({ title: "门店码生成中，请稍后", icon: "none" })
       return
     }
-    const path = this.data.sharePath
-    if (!path) return
-    copyText(path, {
-      data: path,
-      success: () => wx.showToast({ title: "推广链接已复制", icon: "success" })
+    const title = `${this.data.storeInfo?.name || "非常智造"}门店专属码`
+    wx.navigateTo({
+      url: `/pages/poster/poster?mode=store&title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(this.data.storeInfo?.id || "")}&path=${encodeURIComponent(this.data.sharePath || "")}&shareImage=${encodeURIComponent(DEFAULT_SHARE_IMAGE)}`
     })
   },
 

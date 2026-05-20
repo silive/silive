@@ -38,12 +38,11 @@
       <view wx:else class="qr-inner">{{profile.inviteCode || '专属邀请码'}}</view>
     </view>
     <view class="qr-text">{{profile.inviteQrText}}</view>
-    <view class="invite-link">{{inviteLink}}</view>
     <view class="action-grid">
       <button class="primary-btn" open-type="share">邀请好友逛店</button>
       <button class="light-btn" bindtap="createPoster">生成邀请海报</button>
+      <button class="light-btn" bindtap="saveInviteQr">保存推广二维码</button>
     </view>
-    <button class="primary-btn ghost" bindtap="copyInviteCode">复制邀请链接</button>
   </view>
 
   <view wx:else class="panel">

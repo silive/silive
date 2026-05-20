@@ -1,5 +1,4 @@
 const { applyTheme } = require("../../utils/theme")
-const { isReviewMode } = require("../../utils/review")
 const { saveImage } = require("../../utils/privacy")
 
 function downloadImage(url) {
@@ -57,7 +56,7 @@ Page({
     shareImage: "",
     posterImage: "",
     generating: false,
-    canSaveAlbum: !isReviewMode(),
+    canSaveAlbum: true,
     themeStyle: "",
     themeClass: "theme-skin01"
   },
@@ -85,7 +84,10 @@ Page({
   generatePoster() {
     if (this.data.generating) return
     this.setData({ generating: true })
-    Promise.all([downloadImage(this.data.image), downloadImage(this.data.shareImage)])
+    const hasCodeBlock = !!this.data.code
+    const codeImageUrl = hasCodeBlock ? this.data.image : ""
+    const coverImageUrl = this.data.shareImage || (hasCodeBlock ? "" : this.data.image)
+    Promise.all([downloadImage(codeImageUrl), downloadImage(coverImageUrl)])
       .then(([qrImage, shareImage]) => {
         const ctx = wx.createCanvasContext("posterCanvas", this)
         ctx.setFillStyle("#FFF9F3")
@@ -116,7 +118,8 @@ Page({
           ctx.fillRoundRect ? ctx.fillRoundRect(82, 642, 586, 86, 20) : ctx.fillRect(82, 642, 586, 86)
           ctx.setFillStyle("#FF5A00")
           ctx.setFontSize(26)
-          ctx.fillText(`商品码：${this.data.code}`, 112, 695)
+          const codeLabel = this.data.mode === "store" ? "门店码" : (this.data.mode === "product" ? "商品码" : "推荐码")
+          ctx.fillText(`${codeLabel}：${this.data.code}`, 112, 695)
           ctx.setFillStyle("#FFFFFF")
           ctx.fillRoundRect ? ctx.fillRoundRect(235, 780, 280, 280, 28) : ctx.fillRect(235, 780, 280, 280)
           ctx.drawImage(qrImage.path, 250, 795, 250, 250)
@@ -154,10 +157,6 @@ Page({
   },
 
   savePoster() {
-    if (isReviewMode()) {
-      wx.showToast({ title: "审核版暂不开放保存海报", icon: "none" })
-      return
-    }
     if (!this.data.posterImage) {
       wx.showToast({ title: "海报生成中，请稍后", icon: "none" })
       return
@@ -169,7 +168,7 @@ Page({
         const msg = String(error.errMsg || "")
         wx.showModal({
           title: "保存失败",
-          content: msg.includes("auth") ? "请在系统设置中允许保存到相册" : "保存到相册失败，请稍后重试",
+          content: msg.includes("auth") || msg.includes("deny") ? "可手动截图保存，或在设置中开启相册权限" : "保存到相册失败，请稍后重试",
           showCancel: false
         })
       }
