@@ -82,19 +82,23 @@
 
 .upload-preview {
   display: grid;
-  grid-template-columns: 126rpx minmax(0, 1fr);
-  gap: 18rpx;
+  grid-template-columns: 104rpx minmax(0, 1fr);
+  gap: 16rpx;
   align-items: center;
-  padding: 16rpx;
+  padding: 14rpx;
   border-radius: 18rpx;
   background: #ffffff;
   border: 1rpx solid #FFD9BF;
 }
 
 .upload-preview-image {
-  width: 126rpx;
-  height: 126rpx;
+  width: 104rpx;
+  height: 104rpx;
   border-radius: 16rpx;
+}
+
+.upload-preview-info {
+  min-width: 0;
 }
 
 .upload-preview-title {
@@ -641,16 +645,29 @@ input {
   position: absolute;
   top: 8rpx;
   right: 8rpx;
-  width: 34rpx;
-  height: 34rpx;
+  width: 38rpx;
+  height: 38rpx;
+  min-width: 38rpx;
+  min-height: 38rpx;
+  max-width: 38rpx;
+  max-height: 38rpx;
+  margin: 0;
+  padding: 0;
   border-radius: 999rpx;
   background: rgba(32, 32, 32, .76);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24rpx;
+  font-size: 26rpx;
+  font-weight: 900;
   line-height: 1;
+  box-sizing: border-box;
+  z-index: 3;
+}
+
+.upload-remove::after {
+  border: 0;
 }
 
 .upload-more,

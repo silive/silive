@@ -121,21 +121,23 @@
   <view class="refund-mask" wx:if="{{refundVisible}}">
     <view class="refund-panel">
       <view class="refund-title">申请售后</view>
-      <picker mode="selector" range="{{afterSalesTypes}}" bindchange="onAfterSalesTypeChange">
-        <view class="field picker-field">售后类型<text>{{refundForm.afterSalesType}}</text></view>
-      </picker>
-      <view class="field">售后原因<textarea value="{{refundForm.afterSalesReason}}" data-field="afterSalesReason" bindinput="onRefundInput" placeholder="请填写售后原因"></textarea></view>
-      <view class="field">问题说明<textarea value="{{refundForm.afterSalesDesc}}" data-field="afterSalesDesc" bindinput="onRefundInput" placeholder="补充说明问题现象、处理诉求"></textarea></view>
-      <view class="field">联系电话<input value="{{refundForm.contactPhone}}" data-field="contactPhone" bindinput="onRefundInput" type="number" placeholder="请填写联系电话" /></view>
-      <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">上传图片凭证（最多6张）</button>
-      <view class="refund-images" wx:if="{{refundForm.afterSalesImages.length}}">
-        <view class="refund-image-wrap" wx:for="{{refundForm.afterSalesImages}}" wx:key="*this">
-          <image class="refund-image" src="{{item}}" mode="aspectFill" />
-          <button class="refund-remove" bindtap="removeRefundImage" data-index="{{index}}">×</button>
+      <scroll-view class="refund-body" scroll-y>
+        <picker mode="selector" range="{{afterSalesTypes}}" bindchange="onAfterSalesTypeChange">
+          <view class="field picker-field">售后类型<text>{{refundForm.afterSalesType}}</text></view>
+        </picker>
+        <view class="field">售后原因<textarea value="{{refundForm.afterSalesReason}}" data-field="afterSalesReason" bindinput="onRefundInput" placeholder="请填写售后原因"></textarea></view>
+        <view class="field">问题说明<textarea value="{{refundForm.afterSalesDesc}}" data-field="afterSalesDesc" bindinput="onRefundInput" placeholder="补充说明问题现象、处理诉求"></textarea></view>
+        <view class="field">联系电话<input value="{{refundForm.contactPhone}}" data-field="contactPhone" bindinput="onRefundInput" type="number" placeholder="请填写联系电话" /></view>
+        <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">上传图片凭证（最多6张）</button>
+        <view class="refund-images" wx:if="{{refundForm.afterSalesImages.length}}">
+          <view class="refund-image-wrap" wx:for="{{refundForm.afterSalesImages}}" wx:key="*this">
+            <image class="refund-image" src="{{item}}" mode="aspectFill" />
+            <button class="refund-remove" bindtap="removeRefundImage" data-index="{{index}}">×</button>
+          </view>
         </view>
-      </view>
-      <view class="muted" style="{{mutedTextStyle}}">提交后进入后台审核，不会自动退款。</view>
-      <view class="modal-actions">
+        <view class="muted refund-note" style="{{mutedTextStyle}}">提交后进入后台审核，不会自动退款。</view>
+      </scroll-view>
+      <view class="modal-actions refund-footer">
         <button class="cancel-btn" style="{{secondaryButtonStyle}}" bindtap="closeRefund">取消</button>
         <button class="submit-btn" style="{{primaryButtonStyle}}" bindtap="submitRefund" loading="{{submittingRefund}}">提交申请</button>
       </view>

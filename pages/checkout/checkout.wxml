@@ -12,10 +12,10 @@
 
   <view class="form-panel" style="{{cardStyle}}">
     <view class="panel-title">{{normalMode ? '订单信息' : '定制信息'}}</view>
-    <view wx:if="{{customImage}}" class="upload-preview">
-      <image class="upload-preview-image" src="{{customImage}}" mode="aspectFill" />
-      <view>
-        <view class="upload-preview-title">已选择照片</view>
+    <view wx:if="{{uploadedImages.length}}" class="upload-preview" bindtap="previewUpload" data-url="{{uploadedImages[0].url || customImage}}">
+      <image class="upload-preview-image" src="{{uploadedImages[0].url || customImage}}" mode="aspectFill" />
+      <view class="upload-preview-info">
+        <view class="upload-preview-title">已上传图片 {{uploadedImages.length}} 张</view>
         <view class="upload-preview-subtitle" style="{{mutedTextStyle}}">请补充定制要求，设计师会先确认方案</view>
       </view>
     </view>
