@@ -71,8 +71,6 @@
         <view class="feature-title">联系客服</view>
         <view class="feature-subtitle" style="{{mutedTextStyle}}">1对1服务</view>
       </button>
-    </view>
-    <view class="feature-row bottom-row">
       <button class="feature-card" style="{{cardStyle}}" bindtap="goHelp">
         <view wx:if="{{afterSaleDot}}" class="red-dot"></view>
         <view class="feature-icon" style="{{iconBadgeStyle}}">✓</view>
