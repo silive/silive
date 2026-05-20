@@ -1,0 +1,46 @@
+<view class="agreement-page">
+  <view class="agreement-card">
+    <view class="agreement-title">隐私政策</view>
+    <view class="agreement-updated">更新日期：2026年5月20日</view>
+
+    <view class="section">
+      <view class="section-title">一、手机号</view>
+      <view class="section-text">我们会在你主动授权后获取并验证手机号，用于订单确认、配送联系、售后服务和账号身份识别。未经你同意，不会用于其他无关用途。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">二、收货地址</view>
+      <view class="section-text">你在下单时填写的收货人、联系电话和收货地址，将用于商品配送、订单沟通和售后处理。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">三、订单信息</view>
+      <view class="section-text">我们会处理你的商品、金额、支付状态、配送状态、售后状态等订单信息，用于订单履约、支付状态同步、客服沟通和售后服务。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">四、用户主动上传的图片或视频</view>
+      <view class="section-text">如你选择上传定制图片、设计图、参考图或售后凭证，我们会将相关内容用于定制商品沟通、设计确认、生产安排和售后处理。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">五、推荐关系和推荐奖励信息</view>
+      <view class="section-text">如你通过分享商品产生推荐关系，我们会记录商品推荐来源、推荐订单和对应奖励，用于一级商品推荐奖励的统计、审核和结算。退款订单会扣回相关奖励。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">六、我们不收集的信息</view>
+      <view class="section-text">当前审核版本不收集定位、通讯录、身份证、人脸、银行卡等敏感信息，不主动读取剪切板，也不出售用户个人信息。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">七、信息查询、更正与删除</view>
+      <view class="section-text">你可以通过小程序内“联系客服”申请查询、更正或删除相关个人信息。为保障订单和售后处理，部分依法需要留存的信息会在必要期限内保存。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">八、政策更新</view>
+      <view class="section-text">如个人信息使用目的、方式或范围发生变化，我们会通过弹窗、页面公告或更新隐私政策等方式告知，并在需要时重新取得你的同意。</view>
+    </view>
+  </view>
+</view>

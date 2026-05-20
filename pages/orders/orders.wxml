@@ -11,6 +11,12 @@
     <view>
       <view class="login-title">登录后查看订单</view>
       <view class="login-desc" style="{{mutedTextStyle}}">同步订单进度、物流与售后服务</view>
+      <view class="orders-login-agreement">
+        登录即表示你已阅读并同意
+        <navigator class="protocol-link" url="/pages/agreement/service">《用户服务协议》</navigator>
+        和
+        <navigator class="protocol-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
+      </view>
     </view>
     <button class="login-btn" style="{{primaryButtonStyle}}" catchtap="showLoginSheet">手机号快捷登录</button>
   </view>
@@ -140,7 +146,7 @@
     visible="{{loginVisible}}"
     loading="{{loginLoading}}"
     title="手机号快捷登录"
-    desc="申请获取并验证你的手机号，用于订单确认、配送联系和售后服务"
+    desc="我们将申请获取并验证你的手机号，用于订单确认、配送联系、售后服务及账号身份识别。未经你同意，不会用于其他无关用途。"
     confirm-text="手机号快捷登录"
     cancel-text="暂不登录"
     bind:getphonenumber="onLoginPhone"

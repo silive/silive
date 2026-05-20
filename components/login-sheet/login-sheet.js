@@ -18,7 +18,7 @@ Component({
     },
     desc: {
       type: String,
-      value: "申请获取并验证你的手机号，用于订单确认、配送联系和售后服务"
+      value: "我们将申请获取并验证你的手机号，用于订单确认、配送联系、售后服务及账号身份识别。未经你同意，不会用于其他无关用途。"
     },
     confirmText: {
       type: String,

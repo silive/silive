@@ -63,6 +63,20 @@
   font-weight: 800;
 }
 
+.login-agreement {
+  margin-top: 18rpx;
+  color: #8b8582;
+  font-size: 22rpx;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.login-agreement-link {
+  display: inline;
+  color: #FF5A00;
+  font-weight: 850;
+}
+
 .login-cancel-btn {
   margin-top: 14rpx;
   background: #FFF3E8;

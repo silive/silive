@@ -1,0 +1,46 @@
+<view class="agreement-page">
+  <view class="agreement-card">
+    <view class="agreement-title">用户服务协议</view>
+    <view class="agreement-updated">更新日期：2026年5月20日</view>
+
+    <view class="section">
+      <view class="section-title">一、服务内容</view>
+      <view class="section-text">非常智造为用户提供3D打印、激光雕刻、定制商品展示、在线下单、支付、订单查询、售后联系等服务。用户可根据页面说明选择商品、上传定制参考图片或填写需求，由商家确认后安排生产或发货。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">二、用户下单规则</view>
+      <view class="section-text">用户下单前应确认商品信息、数量、规格、配送方式、收货信息和定制要求。因用户填写信息错误、上传内容不清晰或需求描述不完整造成的沟通延迟，由用户配合补充确认。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">三、定制商品确认规则</view>
+      <view class="section-text">定制商品通常需要根据用户上传的图片、文字、尺寸或其他要求进行沟通确认。商家可在生产前联系用户核对方案；用户确认后，商品将按确认内容制作。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">四、支付与退款说明</view>
+      <view class="section-text">用户提交订单后可按页面提示完成支付。订单支付后，如需取消、退款或售后处理，应通过订单页或联系客服申请。已进入定制生产、已发货或已完成的订单，将根据商品性质、生产进度和售后规则处理。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">五、商品生产与配送说明</view>
+      <view class="section-text">普通商品按库存和配送安排发货；定制商品根据设计确认、生产排期和工艺要求安排制作。配送时效可能受库存、物流、节假日、用户确认时间等因素影响。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">六、用户上传内容要求</view>
+      <view class="section-text">用户上传的图片、文字、文件或定制内容应合法合规，不得侵犯他人知识产权、肖像权、隐私权或其他合法权益，不得包含违法违规、低俗、侵权或不适合制作的内容。平台有权拒绝处理违规内容。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">七、推荐奖励说明</view>
+      <view class="section-text">平台可为用户提供一级商品推荐奖励。用户分享商品给朋友，朋友通过分享链接下单并完成支付后，符合规则的订单可产生对应推荐奖励。退款订单会扣回相关奖励。本服务不设置层级团队计酬或人员发展奖励。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">八、服务限制</view>
+      <view class="section-text">如用户存在恶意下单、违规上传、虚假交易、侵权、扰乱服务秩序或其他不当行为，平台有权根据违规情况限制服务、取消订单、拒绝制作或采取必要处理措施。</view>
+    </view>
+  </view>
+</view>

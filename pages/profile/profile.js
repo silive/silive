@@ -230,7 +230,10 @@ Page({
       wx.showToast({ title: "该功能暂未开放", icon: "none" })
       return
     }
-    if (!this.requireLogin()) return
+    if (!this.data.loggedIn) {
+      this.showLoginSheet()
+      return
+    }
     wx.navigateTo({ url: "/pages/promotion/promotion" })
   },
 

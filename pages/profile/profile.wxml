@@ -9,8 +9,14 @@
     <button wx:if="{{loggedIn}}" class="auth-btn avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">更换头像</button>
     <button wx:else class="auth-btn login-auth-btn" style="{{primaryButtonStyle}}" bindtap="showLoginSheet">手机号快捷登录</button>
   </view>
+  <view wx:if="{{!loggedIn}}" class="profile-login-agreement">
+    登录即表示你已阅读并同意
+    <navigator class="protocol-link" url="/pages/agreement/service">《用户服务协议》</navigator>
+    和
+    <navigator class="protocol-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
+  </view>
 
-  <view wx:if="{{promotionEnabled}}" class="wallet-card" style="{{walletCardStyle}}">
+  <view wx:if="{{promotionEnabled && loggedIn}}" class="wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
@@ -19,6 +25,9 @@
       <view class="wallet-pending">当前待结算 ¥{{pendingReward}}</view>
       <view class="wallet-note">本次预计到账，平台人工审核后结算</view>
     </view>
+  </view>
+  <view wx:elif="{{promotionEnabled && !loggedIn}}" class="reward-login-tip" style="{{cardStyle}}">
+    登录后查看推荐奖励和订单进度
   </view>
 
   <view class="feature-panel">
@@ -84,7 +93,7 @@
     visible="{{loginVisible}}"
     loading="{{loginLoading}}"
     title="手机号快捷登录"
-    desc="申请获取并验证你的手机号，用于订单确认、配送联系和售后服务"
+    desc="我们将申请获取并验证你的手机号，用于订单确认、配送联系、售后服务及账号身份识别。未经你同意，不会用于其他无关用途。"
     confirm-text="手机号快捷登录"
     cancel-text="暂不登录"
     bind:getphonenumber="onLoginPhone"

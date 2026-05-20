@@ -4,6 +4,12 @@
       <view class="login-title">{{title}}</view>
       <view class="login-desc">{{desc}}</view>
       <button class="login-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="handlePhoneNumber" loading="{{loading}}">{{confirmText}}</button>
+      <view class="login-agreement">
+        登录即表示你已阅读并同意
+        <navigator class="login-agreement-link" url="/pages/agreement/service">《用户服务协议》</navigator>
+        和
+        <navigator class="login-agreement-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
+      </view>
       <button class="login-cancel-btn" bindtap="handleClose">{{cancelText}}</button>
     </view>
   </view>

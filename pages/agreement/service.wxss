@@ -1,0 +1,43 @@
+.agreement-page {
+  min-height: 100vh;
+  padding: 32rpx 28rpx 56rpx;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #FFF9F3 0%, #ffffff 56%, #FFF3E8 100%);
+}
+
+.agreement-card {
+  padding: 32rpx 28rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(83, 69, 64, .08);
+  box-sizing: border-box;
+}
+
+.agreement-title {
+  color: #1F2933;
+  font-size: 40rpx;
+  font-weight: 950;
+}
+
+.agreement-updated {
+  margin-top: 10rpx;
+  color: #8b8582;
+  font-size: 23rpx;
+}
+
+.section {
+  margin-top: 30rpx;
+}
+
+.section-title {
+  color: #1F2933;
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.section-text {
+  margin-top: 12rpx;
+  color: #4b5563;
+  font-size: 25rpx;
+  line-height: 1.75;
+}
