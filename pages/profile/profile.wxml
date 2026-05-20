@@ -16,7 +16,7 @@
     <navigator class="protocol-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
   </view>
 
-  <view wx:if="{{promotionEnabled && loggedIn}}" class="wallet-card" style="{{walletCardStyle}}">
+  <view wx:if="{{promotionEnabled && loggedIn && storeChecked && !isStoreManager}}" class="wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
@@ -24,6 +24,16 @@
     <view>
       <view class="wallet-pending">当前待结算 ¥{{pendingReward}}</view>
       <view class="wallet-note">本次预计到账，平台人工审核后结算</view>
+    </view>
+  </view>
+  <view wx:elif="{{loggedIn && storeChecked && isStoreManager}}" class="wallet-card store-wallet-card" style="{{walletCardStyle}}">
+    <view>
+      <view class="wallet-label">门店收益</view>
+      <view class="wallet-value">¥{{storeStats.actualPayable || storeStats.payableTotal || '0.00'}}</view>
+    </view>
+    <view>
+      <view class="wallet-pending">当前待结算 ¥{{storeStats.payableTotal || '0.00'}}</view>
+      <view class="wallet-note">订单与收益请进入门店中心查看</view>
     </view>
   </view>
   <view wx:elif="{{promotionEnabled && !loggedIn}}" class="reward-login-tip" style="{{cardStyle}}">
@@ -39,7 +49,7 @@
         <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>
       </button>
       <block wx:if="{{promotionEnabled || storeFeaturesEnabled}}">
-        <button wx:if="{{storeFeaturesEnabled && loggedIn && storeBound}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
+        <button wx:if="{{storeFeaturesEnabled && loggedIn && isStoreManager}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
           <view class="feature-icon" style="{{iconBadgeStyle}}">店</view>
           <view class="feature-title">门店中心</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">订单与收益</view>
@@ -49,7 +59,7 @@
           <view class="feature-title">门店异常</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">{{storeConflictMessage}}</view>
         </button>
-        <button wx:if="{{promotionEnabled}}" class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
+        <button wx:if="{{promotionEnabled && !isStoreManager}}" class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
           <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
           <view class="feature-title">我的推广</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">分享好物</view>

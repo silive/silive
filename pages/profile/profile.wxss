@@ -259,9 +259,11 @@
 }
 
 .feature-row {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18rpx;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .feature-row + .feature-row {
@@ -269,11 +271,11 @@
 }
 
 .top-row .feature-card {
-  width: 30%;
+  width: 100%;
 }
 
 .bottom-row .feature-card {
-  width: 45%;
+  width: 100%;
 }
 
 .feature-card {
@@ -289,7 +291,7 @@
   justify-content: center;
   border: 1rpx solid #FFD9BF;
   box-sizing: border-box;
-  flex-shrink: 0;
+  min-width: 0;
   box-shadow: 0 8rpx 22rpx rgba(83, 69, 64, .05);
 }
 

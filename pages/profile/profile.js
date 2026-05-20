@@ -30,6 +30,7 @@ Page({
     banner: null,
     storeChecked: false,
     storeBound: false,
+    isStoreManager: false,
     storeInfo: null,
     storeStats: null,
     storeConflictMessage: "",
@@ -75,6 +76,7 @@ Page({
       maskedPhone: this.maskPhone(state.phone),
       storeChecked: !state.loggedIn,
       storeBound: state.loggedIn ? this.data.storeBound : false,
+      isStoreManager: state.loggedIn ? this.data.isStoreManager : false,
       storeInfo: state.loggedIn ? this.data.storeInfo : null,
       storeStats: state.loggedIn ? this.data.storeStats : null,
       storeConflictMessage: state.loggedIn ? this.data.storeConflictMessage : ""
@@ -191,6 +193,7 @@ Page({
         loginVisible: false,
         storeChecked: false,
         storeBound: false,
+        isStoreManager: false,
         storeInfo: null,
         storeStats: null
       })
@@ -293,11 +296,11 @@ Page({
 
   loadStoreMe() {
     if (!this.data.storeFeaturesEnabled) {
-      this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
+      this.setData({ storeChecked: true, storeBound: false, isStoreManager: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
       return
     }
     if (!this.data.loggedIn) {
-      this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null })
+      this.setData({ storeChecked: true, storeBound: false, isStoreManager: false, storeInfo: null, storeStats: null })
       return
     }
     this.setData({ storeChecked: false, storeConflictMessage: "" })
@@ -318,9 +321,17 @@ Page({
         const storeInfo = data.storeInfo
           ? { ...data.storeInfo, levelText: levelMap[data.storeInfo.level] || data.storeInfo.level || "门店" }
           : null
+        const isStoreManager = !!(
+          data.bound ||
+          data.storeBound ||
+          data.storeId ||
+          storeInfo?.id ||
+          /manager|owner|负责人|店长/.test(String(data.role || data.storeRole || storeInfo?.storeRole || storeInfo?.role || ""))
+        )
         this.setData({
           storeChecked: true,
           storeBound: !!data.bound,
+          isStoreManager,
           storeInfo,
           storeStats: data.stats || null,
           storeConflictMessage: data.error || ""
@@ -328,7 +339,7 @@ Page({
         if (data.error) wx.showToast({ title: data.error, icon: "none" })
       })
       .catch(() => {
-        this.setData({ storeChecked: true, storeBound: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
+        this.setData({ storeChecked: true, storeBound: false, isStoreManager: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
       })
   },
 
