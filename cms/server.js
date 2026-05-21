@@ -46,7 +46,7 @@ const testFile = path.join(__dirname, "test.html")
 const uploadsDir = path.join(__dirname, "uploads")
 const productUploadsDir = path.join(uploadsDir, "products")
 const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
-const BRAND_QR_LOGO_VERSION = "orange-v3"
+const BRAND_QR_LOGO_VERSION = "orange-v4"
 const themesDir = path.join(ROOT, "themes")
 const seedDir = path.join(__dirname, "data")
 const importTempDir = path.join(seedDir, "import-temp")
@@ -5423,21 +5423,15 @@ async function applyBrandLogoToQrBuffer(buffer) {
   try {
     const meta = await sharp(buffer).metadata()
     const qrSize = Math.min(meta.width || 430, meta.height || 430)
-    // WeChat mini program codes can already contain a center avatar. The white
-    // backing deliberately covers that full center area so only our brand logo remains.
-    const badgeSize = Math.max(92, Math.round(qrSize * 0.28))
     const logoSize = Math.round(qrSize * 0.20)
+    const circleMaskSvg = Buffer.from(`<svg width="${logoSize}" height="${logoSize}" xmlns="http://www.w3.org/2000/svg"><circle cx="${logoSize / 2}" cy="${logoSize / 2}" r="${logoSize / 2}" fill="#fff"/></svg>`)
     const logo = await sharp(brandQrLogoFile)
-      .resize(logoSize, logoSize, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } })
-      .png()
-      .toBuffer()
-    const badgeSvg = Buffer.from(`<svg width="${badgeSize}" height="${badgeSize}" xmlns="http://www.w3.org/2000/svg"><rect width="${badgeSize}" height="${badgeSize}" rx="${Math.round(badgeSize * 0.24)}" fill="#fff"/></svg>`)
-    const badge = await sharp(badgeSvg)
-      .composite([{ input: logo, left: Math.round((badgeSize - logoSize) / 2), top: Math.round((badgeSize - logoSize) / 2) }])
+      .resize(logoSize, logoSize, { fit: "cover" })
+      .composite([{ input: circleMaskSvg, blend: "dest-in" }])
       .png()
       .toBuffer()
     return await sharp(buffer)
-      .composite([{ input: badge, left: Math.round(((meta.width || badgeSize) - badgeSize) / 2), top: Math.round(((meta.height || badgeSize) - badgeSize) / 2) }])
+      .composite([{ input: logo, left: Math.round(((meta.width || logoSize) - logoSize) / 2), top: Math.round(((meta.height || logoSize) - logoSize) / 2) }])
       .png()
       .toBuffer()
   } catch (error) {
@@ -5480,6 +5474,58 @@ async function generatePromotionWxacode(inviteCode) {
   fs.mkdirSync(uploadsDir, { recursive: true })
   fs.writeFileSync(outputFile, await applyBrandLogoToQrBuffer(result.data))
   return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, logoVersion: BRAND_QR_LOGO_VERSION }
+}
+
+async function generateProductWxacode(productId, refCode = "") {
+  const safeProductId = String(productId || "").replace(/[^\w-]/g, "").slice(0, 20)
+  if (!safeProductId) throw httpError(400, "缺少商品ID")
+  const safeRef = String(refCode || "").replace(/[^\w-]/g, "").slice(0, 10)
+  const scene = safeWxacodeScene(`p=${safeProductId}${safeRef ? `&ref=${safeRef}` : ""}`, `p=${safeProductId}`)
+  const cacheKey = `${safeProductId}${safeRef ? `-${safeRef}` : ""}`.replace(/[^\w-]/g, "").slice(0, 48)
+  const outputFile = path.join(uploadsDir, `product-code-${cacheKey}-${BRAND_QR_LOGO_VERSION}.png`)
+  if (fs.existsSync(outputFile)) {
+    return {
+      url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`),
+      cached: true,
+      scene,
+      path: `/pages/product/detail?id=${encodeURIComponent(safeProductId)}${safeRef ? `&ref=${encodeURIComponent(safeRef)}` : ""}`,
+      logoVersion: BRAND_QR_LOGO_VERSION
+    }
+  }
+  const accessToken = await getAccessToken()
+  const body = JSON.stringify({
+    scene,
+    page: "pages/product/detail",
+    check_path: false,
+    env_version: process.env.WECHAT_WXACODE_ENV_VERSION || "trial"
+  })
+  const result = await requestBuffer(`https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${accessToken}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "image/png,application/json" },
+    timeout: 15000
+  }, body)
+  const contentType = String(result.headers["content-type"] || "")
+  if (contentType.includes("application/json")) {
+    let data = {}
+    try {
+      data = JSON.parse(result.data.toString() || "{}")
+    } catch (error) {
+      data = { errcode: "wxacode_parse_error", errmsg: "微信小程序码接口返回异常" }
+    }
+    throw wechatApiError(data.errcode || "wxacode_error", data.errmsg || "微信小程序码生成失败", "微信小程序码接口")
+  }
+  if (!contentType.includes("image") || !result.data.length) {
+    throw wechatApiError("wxacode_empty", "微信未返回小程序码图片", "微信小程序码接口")
+  }
+  fs.mkdirSync(uploadsDir, { recursive: true })
+  fs.writeFileSync(outputFile, await applyBrandLogoToQrBuffer(result.data))
+  return {
+    url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`),
+    cached: false,
+    scene,
+    path: `/pages/product/detail?id=${encodeURIComponent(safeProductId)}${safeRef ? `&ref=${encodeURIComponent(safeRef)}` : ""}`,
+    logoVersion: BRAND_QR_LOGO_VERSION
+  }
 }
 
 async function generateStoreWxacode(store) {
@@ -6266,6 +6312,14 @@ async function handle(req, res) {
     const invite = url.searchParams.get("invite") || url.searchParams.get("code") || "VSCUSTOM"
     const result = await generatePromotionWxacode(invite)
     sendJson(res, 200, { ok: true, data: result })
+    return
+  }
+
+  if (url.pathname === "/api/product/poster-code" && req.method === "GET") {
+    const productId = url.searchParams.get("productId") || url.searchParams.get("id") || ""
+    const ref = url.searchParams.get("ref") || ""
+    const result = await generateProductWxacode(productId, ref)
+    sendJson(res, 200, { ok: true, data: result, url: result.url, path: result.path })
     return
   }
 

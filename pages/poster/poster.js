@@ -123,6 +123,9 @@ Page({
           ctx.setFillStyle("#FFFFFF")
           ctx.fillRoundRect ? ctx.fillRoundRect(235, 780, 280, 280, 28) : ctx.fillRect(235, 780, 280, 280)
           ctx.drawImage(qrImage.path, 250, 795, 250, 250)
+          ctx.setFillStyle("#1F2937")
+          ctx.setFontSize(26)
+          ctx.fillText(this.data.mode === "product" ? "扫码查看商品" : "长按识别进入小程序", 275, 1090)
         } else {
           ctx.setFillStyle("#FFF3E8")
           ctx.fillRoundRect ? ctx.fillRoundRect(82, 680, 586, 240, 28) : ctx.fillRect(82, 680, 586, 240)
@@ -134,7 +137,7 @@ Page({
         }
         ctx.setFillStyle("#6B7280")
         ctx.setFontSize(22)
-        ctx.fillText("分享给朋友，一起看看这件好物", 200, 1110)
+        ctx.fillText("分享给朋友，一起看看这件好物", 200, 1130)
         ctx.draw(false, () => {
           wx.canvasToTempFilePath({
             canvasId: "posterCanvas",

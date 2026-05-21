@@ -11,6 +11,25 @@ const BADGE_TEXT = {
 }
 const RECOMMEND_TIPS = ["朋友可能刚好需要", "分享好物给朋友", "送礼灵感推荐", "值得收藏的定制礼物"]
 
+function safeDecode(value = "") {
+  try {
+    return decodeURIComponent(String(value || ""))
+  } catch (error) {
+    return String(value || "")
+  }
+}
+
+function parseSceneParams(scene = "") {
+  const params = {}
+  const raw = safeDecode(scene)
+  raw.split("&").forEach(part => {
+    const [key, ...rest] = part.split("=")
+    if (!key) return
+    params[safeDecode(key)] = safeDecode(rest.join("="))
+  })
+  return params
+}
+
 function normalizeProductTag(product = {}) {
   const tag = String(product.tag || product.badge || product.label || "").trim()
   if (!tag || ["none", "无", "无标签", "null", "undefined"].includes(tag)) return ""
@@ -145,6 +164,8 @@ Page({
     applyTheme(this)
     const app = getApp()
     if (app.captureInvite) app.captureInvite({ query: options })
+    const sceneParams = options.scene ? parseSceneParams(options.scene) : {}
+    const sceneProductId = sceneParams.p || sceneParams.id || sceneParams.productId || ""
     this.setData({ source: options.source || "" })
     if (options.product) {
       const product = normalizeProduct(JSON.parse(decodeURIComponent(options.product)))
@@ -159,8 +180,8 @@ Page({
       this.rememberShareProduct(product)
       return
     }
-    if (options.id) {
-      this.loadProduct(options.id)
+    if (options.id || sceneProductId) {
+      this.loadProduct(options.id || sceneProductId)
       return
     }
     this.setData({ loading: false })
@@ -332,10 +353,20 @@ Page({
     const product = this.data.product || {}
     if (!product.id) return
     const image = product.displayImage || product.optimizedUrl || product.listImage || product.mediaImages?.[0] || product.imageUrl || ""
-    const path = `/pages/product/detail?id=${encodeURIComponent(product.id)}`
-    wx.navigateTo({
-      url: `/pages/poster/poster?mode=product&title=${encodeURIComponent(product.name || "商品海报")}&image=${encodeURIComponent(image)}&path=${encodeURIComponent(path)}`
-    })
+    const ref = this.getShareInvite()
+    const path = `/pages/product/detail?id=${encodeURIComponent(product.id)}${ref ? `&ref=${encodeURIComponent(ref)}` : ""}`
+    wx.showLoading({ title: "生成海报" })
+    request(`/api/product/poster-code?productId=${encodeURIComponent(product.id)}${ref ? `&ref=${encodeURIComponent(ref)}` : ""}`)
+      .then(data => {
+        const codeUrl = data.url || data.data?.url || ""
+        wx.navigateTo({
+          url: `/pages/poster/poster?mode=product&title=${encodeURIComponent(product.name || "商品海报")}&image=${encodeURIComponent(codeUrl)}&code=${encodeURIComponent(product.id)}&path=${encodeURIComponent(data.path || path)}&shareImage=${encodeURIComponent(image)}`
+        })
+      })
+      .catch(error => {
+        wx.showModal({ title: "商品码生成失败", content: error.message || "请稍后重试", showCancel: false })
+      })
+      .finally(() => wx.hideLoading())
   },
 
   openCheckout() {

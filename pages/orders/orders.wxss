@@ -47,8 +47,15 @@
   box-shadow: 0 14rpx 36rpx rgba(83, 69, 64, .08);
 }
 
-.login-card > view {
+.login-copy {
+  flex: 1;
   min-width: 0;
+}
+
+.login-action-block {
+  width: 256rpx;
+  max-width: 44%;
+  flex-shrink: 0;
 }
 
 .login-title {
@@ -65,10 +72,11 @@
 }
 
 .orders-login-agreement {
-  margin-top: 12rpx;
+  margin-top: 10rpx;
   color: #8b8582;
-  font-size: 21rpx;
+  font-size: 19rpx;
   line-height: 1.5;
+  text-align: center;
 }
 
 .protocol-link {
@@ -78,10 +86,10 @@
 }
 
 .login-btn {
-  width: auto;
-  min-width: 220rpx;
+  width: 100%;
+  min-width: 0;
   height: 72rpx;
-  padding: 0 28rpx;
+  padding: 0 18rpx;
   border-radius: 999rpx;
   background: linear-gradient(135deg, #FF7A00 0%, #FF4D00 100%);
   color: #ffffff;

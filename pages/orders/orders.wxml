@@ -8,9 +8,12 @@
   </view>
 
   <view wx:if="{{!loggedIn}}" class="login-card" style="{{cardStyle}}">
-    <view>
+    <view class="login-copy">
       <view class="login-title">登录后查看订单</view>
       <view class="login-desc" style="{{mutedTextStyle}}">同步订单进度、物流与售后服务</view>
+    </view>
+    <view class="login-action-block">
+      <button class="login-btn" style="{{primaryButtonStyle}}" catchtap="showLoginSheet">手机号快捷登录</button>
       <view class="orders-login-agreement">
         登录即表示你已阅读并同意
         <navigator class="protocol-link" url="/pages/agreement/service">《用户服务协议》</navigator>
@@ -18,7 +21,6 @@
         <navigator class="protocol-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
       </view>
     </view>
-    <button class="login-btn" style="{{primaryButtonStyle}}" catchtap="showLoginSheet">手机号快捷登录</button>
   </view>
 
   <view wx:if="{{loggedIn}}" class="status-panel">
