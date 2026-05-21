@@ -322,29 +322,70 @@ App({
   },
 
   captureStoreReferrer(storeId, meta = {}) {
+    const normalizedStoreId = normalizeReferralCode(storeId)
+    if (!normalizedStoreId) return Promise.resolve(false)
     const now = Date.now()
     const expireAt = now + STORE_REFERRAL_TTL_MS
     const context = this.getReferralContext()
-    context.storeReferral = {
-      storeId,
-      storeCode: meta.storeCode || "",
-      boundAt: now,
-      expiresAt: expireAt,
-      source: meta.source || "",
-      rawScene: meta.rawScene || "",
-      lastVisitAt: now
+    const current = context.storeReferral || {}
+    const currentStoreId = normalizeReferralCode(current.storeId || readStorage("referrerStoreId") || "")
+    const currentExpireAt = Number(current.expiresAt || readStorage("referrerStoreExpireAt") || 0)
+    const currentActive = !!currentStoreId && !!currentExpireAt && now <= currentExpireAt
+    const saveStoreReferral = () => {
+      const nextContext = this.getReferralContext()
+      nextContext.storeReferral = {
+        storeId: normalizedStoreId,
+        storeCode: meta.storeCode || "",
+        boundAt: now,
+        expiresAt: expireAt,
+        source: meta.source || "",
+        rawScene: meta.rawScene || "",
+        lastVisitAt: now
+      }
+      this.saveReferralContext(nextContext)
+      writeStorage("pendingReferrerStoreId", normalizedStoreId)
+      writeStorage("boundReferrerStoreId", normalizedStoreId)
+      writeStorage("referrerStoreId", normalizedStoreId)
+      writeStorage("referrerStoreBoundAt", now)
+      writeStorage("referrerStoreExpireAt", expireAt)
+      console.log("[store-referrer] saved", { source: meta.source || "", hasStoreId: true, storeCode: !!meta.storeCode })
+      return true
     }
-    this.saveReferralContext(context)
-    writeStorage("pendingReferrerStoreId", storeId)
-    writeStorage("boundReferrerStoreId", storeId)
-    writeStorage("referrerStoreId", storeId)
-    writeStorage("referrerStoreBoundAt", now)
-    writeStorage("referrerStoreExpireAt", expireAt)
-    request(`/api/store/source/validate?storeId=${encodeURIComponent(storeId)}`, { timeout: 5000 })
-      .then(data => {
-        if (!data.valid && this.getValidReferrerStoreId() === storeId) this.clearStoreReferrer()
+    const validateStore = id => request(`/api/store/source/validate?storeId=${encodeURIComponent(id)}`, { timeout: 5000 })
+      .then(data => !!(data && (data.valid === true || data.ok === true)))
+      .catch(error => {
+        console.warn("[store-referrer] validate failed", { source: meta.source || "", message: error.message || "validate_failed" })
+        return null
       })
-      .catch(error => console.warn("[store-referrer] validate failed", { source: meta.source || "", message: error.message || "validate_failed" }))
+    if (currentActive && currentStoreId === normalizedStoreId) {
+      current.lastVisitAt = now
+      context.storeReferral = current
+      this.saveReferralContext(context)
+      writeStorage("pendingReferrerStoreId", currentStoreId)
+      console.log("[store-referrer] same store source kept", { source: meta.source || "", hasStoreId: true })
+      return Promise.resolve(true)
+    }
+    if (currentActive && currentStoreId !== normalizedStoreId) {
+      return validateStore(currentStoreId).then(valid => {
+        if (valid === null) {
+          console.log("[store-referrer] existing source kept after validate uncertainty", { source: meta.source || "", skipReason: "validate_uncertain" })
+          return false
+        }
+        if (valid) {
+          console.log("[store-referrer] existing valid source kept", { source: meta.source || "", skipReason: "active_store_source_exists" })
+          this.showReferralToast("已记录门店来源，暂不重复绑定。")
+          return false
+        }
+        console.log("[store-referrer] existing source invalid, accepting new source", { source: meta.source || "", skipReason: "existing_store_disabled" })
+        this.clearStoreReferrer()
+        return validateStore(normalizedStoreId).then(newValid => (newValid === true ? saveStoreReferral() : false))
+      })
+    }
+    if (currentStoreId && !currentActive) {
+      console.log("[store-referrer] existing source expired, accepting new source", { source: meta.source || "", expired: true })
+      this.clearStoreReferrer()
+    }
+    return validateStore(normalizedStoreId).then(valid => (valid === true ? saveStoreReferral() : false))
   },
 
   clearStoreReferrer() {
@@ -365,6 +406,9 @@ App({
     if (!storeId) return { referrerStoreId: "", referrerStoreBoundAt: "", referrerStoreExpireAt: "" }
     return {
       referrerStoreId: storeId,
+      sourceType: "store",
+      sourceStoreId: storeId,
+      sourceStoreCode: store.storeCode || "",
       referrerStoreBoundAt: store.boundAt || readStorage("referrerStoreBoundAt") || "",
       referrerStoreExpireAt: store.expiresAt || readStorage("referrerStoreExpireAt") || ""
     }

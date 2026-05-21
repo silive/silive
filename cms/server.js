@@ -2177,6 +2177,12 @@ function normalizeOrder(order, index) {
   const arrivedStoreAt = order.arrivedStoreAt || null
   const pickedUpAt = order.pickedUpAt || null
   const afterSalesStatus = normalizeAfterSalesStatus(order.afterSalesStatus || order.refundStatus)
+  const isStoreMemberOrder = boolValue(order.isStoreMemberOrder ?? order.is_store_member_order)
+  const storeOrderType = order.storeOrderType || order.store_order_type || (isStoreMemberOrder ? "store_self" : (order.referrerStoreId || order.referrer_store_id ? "store_external" : ""))
+  const storeOperatorPhone = normalizePhone(order.storeOperatorPhone || order.store_operator_phone || "")
+  const rawStoreOperatorRole = order.storeOperatorRole || order.store_operator_role || ""
+  const storeOperatorRole = rawStoreOperatorRole ? normalizeStoreMemberRole(rawStoreOperatorRole) : ""
+  const sourceStoreId = order.sourceStoreId || order.source_store_id || order.referrerStoreId || order.referrer_store_id || ""
   return {
     id: order.id || `DD${Date.now()}${index}`,
     productId: order.productId || "",
@@ -2265,7 +2271,20 @@ function normalizeOrder(order, index) {
     userLatitude: order.userLatitude == null || order.userLatitude === "" ? "" : String(order.userLatitude),
     userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
     pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
-    referrerStoreId: order.referrerStoreId || "",
+    referrerStoreId: order.referrerStoreId || order.referrer_store_id || "",
+    sourceType: order.sourceType || order.source_type || (sourceStoreId ? "store" : ""),
+    sourceStoreId,
+    sourceStoreCode: order.sourceStoreCode || order.source_store_code || "",
+    storeOrderType,
+    storeOrderTypeText: storeOrderSourceText(storeOrderType, isStoreMemberOrder),
+    isStoreMemberOrder,
+    storeOperatorUserId: order.storeOperatorUserId || order.store_operator_user_id || "",
+    storeOperatorPhone,
+    storeOperatorPhoneTail: isStoreMemberOrder ? (storeOperatorPhone ? storeOperatorPhone.slice(-4) : "未知") : "",
+    storeOperatorOpenid: order.storeOperatorOpenid || order.store_operator_openid || "",
+    storeOperatorRole,
+    storeOperatorRoleText: isStoreMemberOrder && storeOperatorRole ? storeRoleText(storeOperatorRole) : "",
+    storeOperatorName: order.storeOperatorName || order.store_operator_name || "",
     referrerUserId: order.referrerUserId || "",
     parentReferrerUserId: order.parentReferrerUserId || "",
     supplierStoreId: order.supplierStoreId || "",
@@ -2333,6 +2352,7 @@ function publicOrderView(order = {}) {
 function mysqlOrderParams(order) {
   return {
     ...order,
+    isStoreMemberOrder: order.isStoreMemberOrder ? "true" : "false",
     shippedAt: toMysqlDatetime(order.shippedAt),
     refundReviewedAt: toMysqlDatetime(order.refundReviewedAt),
     afterSalesRequestedAt: toMysqlDatetime(order.afterSalesRequestedAt),
@@ -2457,6 +2477,12 @@ function normalizeSettlementRecord(record = {}, index = 0) {
   const createdAt = record.createdAt || record.created_at || formatDateTime(new Date())
   const settledAt = record.settledAt || record.settled_at || ""
   const status = normalizeSettlementStatus(record.status)
+  const isStoreMemberOrder = boolValue(record.isStoreMemberOrder ?? record.is_store_member_order)
+  const storeOrderType = record.storeOrderType || record.store_order_type || (isStoreMemberOrder ? "store_self" : (isStoreReferralSettlement(record.type || "") ? "store_external" : ""))
+  const storeOperatorPhone = normalizePhone(record.storeOperatorPhone || record.store_operator_phone || "")
+  const rawStoreOperatorRole = record.storeOperatorRole || record.store_operator_role || ""
+  const storeOperatorRole = rawStoreOperatorRole ? normalizeStoreMemberRole(rawStoreOperatorRole) : ""
+  const storeOrderTypeText = storeOrderSourceText(storeOrderType, isStoreMemberOrder) || "未知"
   return {
     id: String(record.id || `SSR${Date.now()}${index}`),
     storeId: record.storeId || record.store_id || "",
@@ -2473,6 +2499,16 @@ function normalizeSettlementRecord(record = {}, index = 0) {
     settleNote: record.settleNote || record.settle_note || "",
     cancelReason: record.cancelReason || record.cancel_reason || "",
     batchId: record.batchId || record.batch_id || "",
+    storeOrderType,
+    storeOrderTypeText,
+    isStoreMemberOrder,
+    storeOperatorUserId: record.storeOperatorUserId || record.store_operator_user_id || "",
+    storeOperatorPhone,
+    storeOperatorPhoneTail: isStoreMemberOrder ? (storeOperatorPhone ? storeOperatorPhone.slice(-4) : "未知") : "",
+    storeOperatorOpenid: record.storeOperatorOpenid || record.store_operator_openid || "",
+    storeOperatorRole,
+    storeOperatorRoleText: isStoreMemberOrder && storeOperatorRole ? storeRoleText(storeOperatorRole) : "",
+    storeOperatorName: record.storeOperatorName || record.store_operator_name || "",
     createdAt,
     createdAtText: record.createdAtText || formatChinaDatetime(createdAt),
     settledAt,
@@ -2610,6 +2646,18 @@ function maskTail(value) {
 
 function storeRoleText(role) {
   return ({ owner: "店主", manager: "店长", staff: "店员", clerk: "店员" })[role] || "店员"
+}
+
+function boolValue(value) {
+  if (value === true || value === 1) return true
+  const text = String(value || "").trim().toLowerCase()
+  return ["true", "1", "yes", "y"].includes(text)
+}
+
+function storeOrderSourceText(type, isMemberOrder = false) {
+  if (type === "store_self" || isMemberOrder) return "门店自营"
+  if (type === "store_external") return "外部顾客"
+  return type ? String(type) : ""
 }
 
 function normalizeStoreMemberRole(role) {
@@ -3359,14 +3407,15 @@ async function saveStoreSettlementRecords(records) {
   for (const record of list) {
     const params = {
       ...record,
+      isStoreMemberOrder: record.isStoreMemberOrder ? "true" : "false",
       createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
       settledAt: toMysqlDatetime(record.settledAt),
       updatedAt: toMysqlDatetime(record.updatedAt, nowMysqlDatetime())
     }
     await query(
-      `INSERT INTO store_settlement_records (id, store_id, order_id, type, amount, commission_type, commission_value, order_paid_amount, status, description, created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, updated_at)
-       VALUES (:id, :storeId, :orderId, :type, :amount, :commissionType, :commissionValue, :orderPaidAmount, :status, :description, :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :updatedAt)
-       ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), settled_by = VALUES(settled_by), settle_note = VALUES(settle_note), cancel_reason = VALUES(cancel_reason), batch_id = VALUES(batch_id), updated_at = VALUES(updated_at), amount = VALUES(amount), description = VALUES(description)`,
+      `INSERT INTO store_settlement_records (id, store_id, order_id, type, amount, commission_type, commission_value, order_paid_amount, status, description, created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, updated_at)
+       VALUES (:id, :storeId, :orderId, :type, :amount, :commissionType, :commissionValue, :orderPaidAmount, :status, :description, :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :updatedAt)
+       ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), settled_by = VALUES(settled_by), settle_note = VALUES(settle_note), cancel_reason = VALUES(cancel_reason), batch_id = VALUES(batch_id), store_order_type = VALUES(store_order_type), is_store_member_order = VALUES(is_store_member_order), store_operator_user_id = VALUES(store_operator_user_id), store_operator_phone = VALUES(store_operator_phone), store_operator_openid = VALUES(store_operator_openid), store_operator_role = VALUES(store_operator_role), store_operator_name = VALUES(store_operator_name), updated_at = VALUES(updated_at), amount = VALUES(amount), description = VALUES(description)`,
       params
     )
   }
@@ -3590,6 +3639,16 @@ async function getOrders(filters = {}) {
     userLongitude: row.user_longitude,
     pickupDistance: row.pickup_distance,
     referrerStoreId: row.referrer_store_id || "",
+    sourceType: row.source_type || "",
+    sourceStoreId: row.source_store_id || "",
+    sourceStoreCode: row.source_store_code || "",
+    storeOrderType: row.store_order_type || "",
+    isStoreMemberOrder: row.is_store_member_order,
+    storeOperatorUserId: row.store_operator_user_id || "",
+    storeOperatorPhone: row.store_operator_phone || "",
+    storeOperatorOpenid: row.store_operator_openid || "",
+    storeOperatorRole: row.store_operator_role || "",
+    storeOperatorName: row.store_operator_name || "",
     referrerUserId: row.referrer_user_id || "",
     parentReferrerUserId: row.parent_referrer_user_id || "",
     supplierStoreId: row.supplier_store_id || "",
@@ -3607,6 +3666,7 @@ async function saveOrders(orders) {
   if (!pool) {
     const existing = readJsonFile(ordersFile, []).map(normalizeOrder)
     const merged = [...existing]
+    const invalidateOrderIds = []
     for (const order of list) {
       const index = merged.findIndex(item => item.id === order.id)
       if (index >= 0) {
@@ -3614,15 +3674,23 @@ async function saveOrders(orders) {
         const next = { ...previous, ...order }
         if (next.status === "已完成" && previous.status !== "已完成") next.completedAt = formatDateTime(new Date())
         if (next.status === "已退款" && previous.status !== "已退款") next.refundAt = formatDateTime(new Date())
+        if (shouldInvalidateStoreSettlementForOrderChange(previous, next)) invalidateOrderIds.push(next.id)
         merged[index] = next
       }
       else merged.push(order)
     }
     writeJsonFile(ordersFile, merged)
     await processRewardState()
+    for (const orderId of [...new Set(invalidateOrderIds)]) {
+      await invalidateStoreSettlementRecordsForOrder(orderId)
+    }
     return list
   }
+  const previousOrders = await getOrders()
+  const invalidateOrderIds = []
   for (const order of list) {
+    const previousOrder = previousOrders.find(item => item.id === order.id)
+    if (previousOrder && shouldInvalidateStoreSettlementForOrderChange(previousOrder, order)) invalidateOrderIds.push(order.id)
     const orderParams = {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -3632,8 +3700,8 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -3692,6 +3760,16 @@ async function saveOrders(orders) {
        user_longitude = VALUES(user_longitude),
        pickup_distance = VALUES(pickup_distance),
        referrer_store_id = VALUES(referrer_store_id),
+       source_type = VALUES(source_type),
+       source_store_id = VALUES(source_store_id),
+       source_store_code = VALUES(source_store_code),
+       store_order_type = VALUES(store_order_type),
+       is_store_member_order = VALUES(is_store_member_order),
+       store_operator_user_id = VALUES(store_operator_user_id),
+       store_operator_phone = VALUES(store_operator_phone),
+       store_operator_openid = VALUES(store_operator_openid),
+       store_operator_role = VALUES(store_operator_role),
+       store_operator_name = VALUES(store_operator_name),
        referrer_user_id = VALUES(referrer_user_id),
        parent_referrer_user_id = VALUES(parent_referrer_user_id),
        supplier_store_id = VALUES(supplier_store_id),
@@ -3704,6 +3782,9 @@ async function saveOrders(orders) {
     )
   }
   await processRewardState()
+  for (const orderId of [...new Set(invalidateOrderIds)]) {
+    await invalidateStoreSettlementRecordsForOrder(orderId)
+  }
   return list
 }
 
@@ -3758,6 +3839,56 @@ async function resolveValidReferrerStoreId(storeId, data = {}) {
   return isValidReferrerStore(store) ? store.id : ""
 }
 
+async function resolveStoreOrderSource(referrerStoreId, data = {}) {
+  if (!referrerStoreId) return {
+    sourceType: "",
+    sourceStoreId: "",
+    sourceStoreCode: "",
+    storeOrderType: "",
+    isStoreMemberOrder: false,
+    storeOperatorUserId: "",
+    storeOperatorPhone: "",
+    storeOperatorOpenid: "",
+    storeOperatorRole: "",
+    storeOperatorName: ""
+  }
+  const phone = normalizePhone(data.phone || data.storeOperatorPhone || "")
+  const openid = String(data.openid || data.storeOperatorOpenid || "").trim()
+  const userId = String(data.userId || data.storeOperatorUserId || "").trim()
+  const members = (await getStoreMembers({ storeId: referrerStoreId })).filter(member => member.status === "active")
+  let member = members.find(item => phone && normalizePhone(item.phone) === phone)
+  if (!member) member = members.find(item => openid && item.openid && item.openid === openid)
+  if (!member) member = members.find(item => userId && item.userId && item.userId === userId)
+  if (member) {
+    console.log("[store-order-source] member order", { storeId: referrerStoreId, role: member.role, phoneTail: member.phone ? member.phone.slice(-4) : "" })
+    return {
+      sourceType: "store",
+      sourceStoreId: referrerStoreId,
+      sourceStoreCode: data.sourceStoreCode || data.storeCode || "",
+      storeOrderType: "store_self",
+      isStoreMemberOrder: true,
+      storeOperatorUserId: member.userId || userId || "",
+      storeOperatorPhone: member.phone || phone || "",
+      storeOperatorOpenid: member.openid || openid || "",
+      storeOperatorRole: member.role || "staff",
+      storeOperatorName: data.storeOperatorName || ""
+    }
+  }
+  console.log("[store-order-source] external order", { storeId: referrerStoreId, hasPhone: !!phone })
+  return {
+    sourceType: "store",
+    sourceStoreId: referrerStoreId,
+    sourceStoreCode: data.sourceStoreCode || data.storeCode || "",
+    storeOrderType: "store_external",
+    isStoreMemberOrder: false,
+    storeOperatorUserId: "",
+    storeOperatorPhone: "",
+    storeOperatorOpenid: "",
+    storeOperatorRole: "",
+    storeOperatorName: ""
+  }
+}
+
 async function resolvePersonalOrderAttribution(phone) {
   const buyerPhone = normalizePhone(phone)
   if (!buyerPhone) return { referrerUserId: "", parentReferrerUserId: "" }
@@ -3805,7 +3936,17 @@ async function createStoreSettlementRecordsForOrder(order) {
   const pickupAmount = pickupStore && Number(order.pickupServiceFee || 0) <= 0
     ? calculatePickupServiceFee(order.amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
     : money(order.pickupServiceFee || 0)
+  const sourceMeta = {
+    storeOrderType: order.storeOrderType || "",
+    isStoreMemberOrder: order.isStoreMemberOrder || false,
+    storeOperatorUserId: order.storeOperatorUserId || "",
+    storeOperatorPhone: order.storeOperatorPhone || "",
+    storeOperatorOpenid: order.storeOperatorOpenid || "",
+    storeOperatorRole: order.storeOperatorRole || "",
+    storeOperatorName: order.storeOperatorName || ""
+  }
   if (referrerStore && Number(referralAmount || 0) > 0) {
+    console.log("[store-settlement] create referral commission", { orderId: order.id, storeId: referrerStore.id, source: sourceMeta.storeOrderType || "unknown", memberOrder: !!sourceMeta.isStoreMemberOrder })
     upsertSettlementRecord({
       id: `SSR${order.id}REF`,
       storeId: referrerStore.id,
@@ -3817,10 +3958,12 @@ async function createStoreSettlementRecordsForOrder(order) {
       orderPaidAmount: order.amount,
       status: order.storeSettlementStatus || "unsettled",
       description: `推广佣金：${order.productName}`,
+      ...sourceMeta,
       createdAt
     })
   }
   if (pickupStore && Number(pickupAmount || 0) > 0) {
+    console.log("[store-settlement] create pickup service fee", { orderId: order.id, storeId: pickupStore.id, source: sourceMeta.storeOrderType || "pickup", memberOrder: !!sourceMeta.isStoreMemberOrder })
     upsertSettlementRecord({
       id: `SSR${order.id}PIC`,
       storeId: pickupStore.id,
@@ -3832,6 +3975,7 @@ async function createStoreSettlementRecordsForOrder(order) {
       orderPaidAmount: order.amount,
       status: order.storeSettlementStatus || "unsettled",
       description: `自提服务费：${order.productName}`,
+      ...sourceMeta,
       createdAt
     })
   }
@@ -4157,6 +4301,12 @@ function storeOrderView(order, mode = "referral") {
     pickupVerifiedAt: order.pickupVerifiedAt || "",
     pickupVerifiedAtText: order.pickupVerifiedAtText || formatChinaDatetime(order.pickupVerifiedAt),
     pickupVerifiedBy: order.pickupVerifiedBy || "",
+    storeOrderType: order.storeOrderType || "",
+    storeOrderTypeText: order.storeOrderTypeText || storeOrderSourceText(order.storeOrderType, order.isStoreMemberOrder),
+    isStoreMemberOrder: !!order.isStoreMemberOrder,
+    storeOperatorRoleText: order.storeOperatorRoleText || (order.isStoreMemberOrder && order.storeOperatorRole ? storeRoleText(order.storeOperatorRole) : ""),
+    storeOperatorPhoneTail: order.storeOperatorPhoneTail || (order.isStoreMemberOrder ? (order.storeOperatorPhone ? String(order.storeOperatorPhone).slice(-4) : "未知") : ""),
+    storeOperatorName: order.storeOperatorName || "",
     referralCommission: mode === "pickup" ? "" : order.referralCommission,
     pickupServiceFee: mode === "referral" ? "" : order.pickupServiceFee,
     storeSettlementStatus: order.storeSettlementStatus
@@ -4289,10 +4439,12 @@ async function createOrder(data) {
     pickupStore = await getPartnerStore(data.pickupStoreId)
     if (!pickupStore || !isStoreEnabled(pickupStore) || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
   }
-  const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.storeId || data.referrer_store_id || "", data)
+  const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.sourceStoreId || data.storeId || data.referrer_store_id || "", data)
+  const storeOrderSource = await resolveStoreOrderSource(referrerStoreId, data)
   const personalAttribution = referrerStoreId
     ? { referrerUserId: "", parentReferrerUserId: "" }
     : await resolvePersonalOrderAttribution(data.phone)
+  if (referrerStoreId) console.log("[promotion-reward] skipped for store source order", { storeId: referrerStoreId, orderSource: storeOrderSource.storeOrderType })
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
   const pickupCode = deliveryType === "pickup" ? await generateUniquePickupCode() : ""
   const pickupQrCodeUrl = pickupCode ? await generatePickupQrCode(pickupCode) : ""
@@ -4334,6 +4486,7 @@ async function createOrder(data) {
     userLongitude: data.userLongitude || "",
     pickupDistance: data.pickupDistance || "",
     referrerStoreId,
+    ...storeOrderSource,
     referrerUserId: personalAttribution.referrerUserId,
     parentReferrerUserId: personalAttribution.parentReferrerUserId,
     supplierStoreId: data.supplierStoreId || "",
@@ -4355,7 +4508,7 @@ async function createOrder(data) {
     return order
   }
   await query(
-    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
     {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -4527,6 +4680,38 @@ function isOrderPaidForAfterSales(order = {}) {
 
 function isOrderRefunded(order = {}) {
   return order.paymentStatus === "已退款" || order.status === "已退款" || order.afterSalesStatus === "refunded" || order.refundStatus === "退款成功"
+}
+
+function isOrderCancelledClosedOrRefunded(order = {}) {
+  const values = [
+    order.status,
+    order.paymentStatus,
+    order.payment_status,
+    order.refundStatus,
+    order.refund_status,
+    order.afterSalesStatus,
+    order.after_sales_status
+  ].map(value => String(value || "").trim().toLowerCase()).filter(Boolean)
+  const terminalValues = new Set([
+    "已取消",
+    "已关闭",
+    "已退款",
+    "cancelled",
+    "canceled",
+    "closed",
+    "refunded",
+    "void",
+    "voided",
+    "退款成功"
+  ])
+  if (values.some(value => terminalValues.has(value))) return true
+  return normalizeAfterSalesStatus(order.afterSalesStatus || order.after_sales_status || order.refundStatus || order.refund_status) === "refunded"
+}
+
+function shouldInvalidateStoreSettlementForOrderChange(previous = {}, next = {}) {
+  return isOrderPaidForPickupCredential(previous) &&
+    !isOrderCancelledClosedOrRefunded(previous) &&
+    isOrderCancelledClosedOrRefunded(next)
 }
 
 function canApplyAfterSales(order = {}) {
@@ -4846,6 +5031,13 @@ async function invalidateStoreSettlementRecordsForOrder(orderId) {
           description: `订单退款冲正，关联原订单号：${orderId}，原收益类型：${isStoreReferralSettlement(record.type) ? "推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type}`,
           settleNote: `订单退款冲正，关联原订单号：${orderId}，原收益记录：${record.id}`,
           batchId: `refund-chargeback:${record.id}`,
+          storeOrderType: record.storeOrderType || "",
+          isStoreMemberOrder: record.isStoreMemberOrder || false,
+          storeOperatorUserId: record.storeOperatorUserId || "",
+          storeOperatorPhone: record.storeOperatorPhone || "",
+          storeOperatorOpenid: record.storeOperatorOpenid || "",
+          storeOperatorRole: record.storeOperatorRole || "",
+          storeOperatorName: record.storeOperatorName || "",
           createdAt: now,
           updatedAt: now
         }, records.length))
@@ -5514,6 +5706,16 @@ async function initDb() {
   await ensureColumn("orders", "user_longitude", "DECIMAL(10,6)")
   await ensureColumn("orders", "pickup_distance", "DECIMAL(10,2)")
   await ensureColumn("orders", "referrer_store_id", "VARCHAR(40)")
+  await ensureColumn("orders", "source_type", "VARCHAR(30)")
+  await ensureColumn("orders", "source_store_id", "VARCHAR(40)")
+  await ensureColumn("orders", "source_store_code", "VARCHAR(80)")
+  await ensureColumn("orders", "store_order_type", "VARCHAR(30)")
+  await ensureColumn("orders", "is_store_member_order", "VARCHAR(10) DEFAULT 'false'")
+  await ensureColumn("orders", "store_operator_user_id", "VARCHAR(80)")
+  await ensureColumn("orders", "store_operator_phone", "VARCHAR(30)")
+  await ensureColumn("orders", "store_operator_openid", "VARCHAR(80)")
+  await ensureColumn("orders", "store_operator_role", "VARCHAR(20)")
+  await ensureColumn("orders", "store_operator_name", "VARCHAR(80)")
   await ensureColumn("orders", "referrer_user_id", "VARCHAR(40)")
   await ensureColumn("orders", "parent_referrer_user_id", "VARCHAR(40)")
   await ensureColumn("orders", "supplier_store_id", "VARCHAR(40)")
@@ -5588,6 +5790,13 @@ async function initDb() {
   await ensureColumn("store_settlement_records", "settle_note", "TEXT")
   await ensureColumn("store_settlement_records", "cancel_reason", "TEXT")
   await ensureColumn("store_settlement_records", "batch_id", "VARCHAR(80)")
+  await ensureColumn("store_settlement_records", "store_order_type", "VARCHAR(30)")
+  await ensureColumn("store_settlement_records", "is_store_member_order", "VARCHAR(10) DEFAULT 'false'")
+  await ensureColumn("store_settlement_records", "store_operator_user_id", "VARCHAR(80)")
+  await ensureColumn("store_settlement_records", "store_operator_phone", "VARCHAR(30)")
+  await ensureColumn("store_settlement_records", "store_operator_openid", "VARCHAR(80)")
+  await ensureColumn("store_settlement_records", "store_operator_role", "VARCHAR(20)")
+  await ensureColumn("store_settlement_records", "store_operator_name", "VARCHAR(80)")
   await ensureColumn("store_settlement_records", "updated_at", "DATETIME")
   await query(`CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(32) PRIMARY KEY,

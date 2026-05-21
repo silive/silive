@@ -2394,6 +2394,8 @@
             ${["none", "preparing", "arrived_store", "picked_up"].map(status => `<option value="${status}" ${order.pickupStatus === status ? "selected" : ""}>${({ none: "无", preparing: "配送到门店中", arrived_store: "已到店/待自提", picked_up: "已自提" })[status]}</option>`).join("")}
           </select></label>
           <label>推广门店ID<input data-order-key="referrerStoreId" value="${escapeHtml(order.referrerStoreId || "")}"></label>
+          <label>订单来源<input value="${escapeHtml(order.storeOrderTypeText || (order.referrerStoreId ? "外部顾客" : "-"))}" disabled></label>
+          <label>门店操作人<input value="${escapeHtml(order.isStoreMemberOrder ? `${order.storeOperatorRoleText || ""} ${order.storeOperatorPhoneTail || "未知"}` : "-")}" disabled></label>
           <label>推广佣金<input data-order-key="referralCommission" value="${escapeHtml(order.referralCommission || "0.00")}"></label>
           <label>自提服务费<input data-order-key="pickupServiceFee" value="${escapeHtml(order.pickupServiceFee || "0.00")}"></label>
           <label>结算状态<select data-order-key="storeSettlementStatus"><option value="unsettled" ${order.storeSettlementStatus === "settled" ? "" : "selected"}>未结算</option><option value="settled" ${order.storeSettlementStatus === "settled" ? "selected" : ""}>已结算</option></select></label>
@@ -2575,12 +2577,14 @@
       $("settlementEndFilter").value = settlementFilters.endAt || ""
       $("storeSettlementSummary").innerHTML = `${renderFinanceSummaryCards(totals)}<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>当前待结算</th><th>退款扣回</th><th>本次应付</th><th>累计已结算</th></tr></thead><tbody>${summary.map(item => `
         <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.payableTotal}</td><td>¥${item.chargebackTotal}</td><td><strong class="finance-payable">¥${item.actualPayable}</strong>${Number(item.remainingChargeback || 0) > 0 ? `<div class="finance-deduct-note">仍有 ¥${item.remainingChargeback} 待抵扣</div>` : ""}</td><td>¥${item.settledTotal}</td></tr>`).join("")}</tbody></table></div>`
-      $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
+      $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>订单来源</th><th>操作人</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
         const store = stores.find(item => item.id === record.storeId) || {}
         return `<tr>
           <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${record.status !== "unsettled" ? "disabled" : ""}></td>
           <td>${escapeHtml(record.orderId)}</td>
           <td>${escapeHtml(store.name || record.storeId)}</td>
+          <td>${escapeHtml(record.storeOrderTypeText || "未知")}</td>
+          <td>${escapeHtml(record.isStoreMemberOrder ? `${record.storeOperatorRoleText || ""} ${record.storeOperatorPhoneTail || "未知"}` : "-")}</td>
           <td>${({ referral: "门店推广佣金", referral_commission: "门店推广佣金", store_referral_commission: "门店推广佣金", pickup: "自提服务费", pickup_service_fee: "自提服务费", supplier: "供货", custom: "定制", adjustment: "调整", chargeback: "退款冲正" })[record.type] || record.type}</td>
           <td>${commissionText(record.commissionType, record.commissionValue)}</td>
           <td><strong class="${financeAmountClass(record.amount)}">${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</strong></td>

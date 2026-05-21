@@ -63,6 +63,9 @@ function getReferrerStoreMeta() {
   if (!storeId) return { referrerStoreId: "", referrerStoreBoundAt: "", referrerStoreExpireAt: "" }
   return {
     referrerStoreId: storeId,
+    sourceType: "store",
+    sourceStoreId: storeId,
+    sourceStoreCode: storeReferral.storeCode || "",
     referrerStoreBoundAt: storeReferral.boundAt || wx.getStorageSync("referrerStoreBoundAt") || "",
     referrerStoreExpireAt: storeReferral.expiresAt || wx.getStorageSync("referrerStoreExpireAt") || ""
   }
