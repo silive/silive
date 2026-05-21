@@ -833,16 +833,16 @@ textarea {
   top: 0;
   bottom: 0;
   z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48rpx 28rpx;
   box-sizing: border-box;
   background: rgba(31, 41, 51, .38);
 }
 
 .refund-panel {
-  width: 100%;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 88vw;
   max-height: 80vh;
   padding: 0;
   display: flex;
@@ -851,6 +851,8 @@ textarea {
   border-radius: 30rpx;
   background: #ffffff;
   box-sizing: border-box;
+  z-index: 10000;
+  box-shadow: 0 28rpx 80rpx rgba(31, 41, 51, .24);
 }
 
 .refund-title {

@@ -816,6 +816,7 @@
 .contact-copy {
   flex: 1;
   min-width: 0;
+  padding-right: 4rpx;
 }
 
 .contact-title {
@@ -828,13 +829,14 @@
   color: rgba(255, 246, 239, .68);
   font-size: 22rpx;
   line-height: 1.4;
+  word-break: break-word;
 }
 
 .contact-btn {
-  flex: 0 0 184rpx;
-  width: 184rpx;
-  max-width: 184rpx;
-  min-width: 184rpx;
+  flex: 0 0 176rpx;
+  width: 176rpx;
+  max-width: 176rpx;
+  min-width: 176rpx;
   height: 76rpx;
   min-height: 76rpx;
   border-radius: 999rpx;
@@ -849,6 +851,24 @@
   padding: 0;
   line-height: 1;
   box-sizing: border-box;
+}
+
+@media (max-width: 360px) {
+  .contact-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .contact-copy {
+    padding-right: 0;
+  }
+
+  .contact-btn {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
 }
 
 /* Youth brand visual refresh */

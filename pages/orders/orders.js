@@ -321,9 +321,9 @@ Page({
     loginVisible: false,
     loginLoading: false,
     loading: true,
-    refundVisible: false,
-    refundOrder: null,
-    refundForm: {
+    showAfterSaleModal: false,
+    currentAfterSaleOrder: null,
+    afterSaleForm: {
       afterSalesType: "退款",
       afterSalesReason: "",
       afterSalesDesc: "",
@@ -554,9 +554,9 @@ Page({
     }
     const order = this.data.recentOrders[event.currentTarget.dataset.index]
     this.setData({
-      refundVisible: true,
-      refundOrder: order,
-      refundForm: {
+      showAfterSaleModal: true,
+      currentAfterSaleOrder: order,
+      afterSaleForm: {
         afterSalesType: event.currentTarget.dataset.type || "退款",
         afterSalesReason: "",
         afterSalesDesc: "",
@@ -567,21 +567,23 @@ Page({
   },
 
   closeRefund() {
-    this.setData({ refundVisible: false, refundOrder: null })
+    this.setData({ showAfterSaleModal: false, currentAfterSaleOrder: null })
   },
+
+  noopTouchMove() {},
 
   onRefundInput(event) {
     const field = event.currentTarget.dataset.field
-    this.setData({ [`refundForm.${field}`]: event.detail.value })
+    this.setData({ [`afterSaleForm.${field}`]: event.detail.value })
   },
 
   onAfterSalesTypeChange(event) {
     const index = Number(event.detail.value || 0)
-    this.setData({ "refundForm.afterSalesType": this.data.afterSalesTypes[index] || "退款" })
+    this.setData({ "afterSaleForm.afterSalesType": this.data.afterSalesTypes[index] || "退款" })
   },
 
   chooseRefundImage() {
-    const current = this.data.refundForm.afterSalesImages || []
+    const current = this.data.afterSaleForm.afterSalesImages || []
     const remain = Math.max(0, 6 - current.length)
     if (!remain) {
       wx.showToast({ title: "最多上传6张凭证", icon: "none" })
@@ -609,7 +611,7 @@ Page({
               wx.showToast({ title: "上传失败，请重试", icon: "none" })
               return
             }
-            this.setData({ "refundForm.afterSalesImages": [...current, ...urls].slice(0, 6) })
+            this.setData({ "afterSaleForm.afterSalesImages": [...current, ...urls].slice(0, 6) })
           }).catch(error => {
             wx.hideLoading()
             wx.showToast({ title: error.message || "上传失败，请重试", icon: "none" })
@@ -620,22 +622,26 @@ Page({
 
   removeRefundImage(event) {
     const index = Number(event.currentTarget.dataset.index)
-    const next = (this.data.refundForm.afterSalesImages || []).filter((_, itemIndex) => itemIndex !== index)
-    this.setData({ "refundForm.afterSalesImages": next })
+    const next = (this.data.afterSaleForm.afterSalesImages || []).filter((_, itemIndex) => itemIndex !== index)
+    this.setData({ "afterSaleForm.afterSalesImages": next })
   },
 
   submitRefund() {
-    const { afterSalesReason, contactPhone } = this.data.refundForm
+    const { afterSalesReason, contactPhone } = this.data.afterSaleForm
     if (!afterSalesReason || !contactPhone) {
       wx.showToast({ title: "请填写售后原因和联系电话", icon: "none" })
       return
     }
+    if (!this.data.currentAfterSaleOrder || !this.data.currentAfterSaleOrder.id) {
+      wx.showToast({ title: "订单信息异常，请刷新后重试", icon: "none" })
+      return
+    }
     this.setData({ submittingRefund: true })
-    request(`/api/orders/${encodeURIComponent(this.data.refundOrder.id)}/after-sales/apply`, {
+    request(`/api/orders/${encodeURIComponent(this.data.currentAfterSaleOrder.id)}/after-sales/apply`, {
       method: "POST",
       data: {
         ...getUserIdentity(),
-        ...this.data.refundForm
+        ...this.data.afterSaleForm
       }
     }).then(() => {
       wx.showToast({ title: "已提交售后申请", icon: "success" })

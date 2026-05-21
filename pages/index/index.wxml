@@ -137,8 +137,8 @@
 
   <view class="contact-panel" style="{{cardStyle}}">
     <view class="contact-copy">
-      <view class="contact-title">需要先沟通方案？</view>
-      <view class="contact-subtitle" style="{{mutedTextStyle}}">客服会确认图片、文件、尺寸和交付时间</view>
+      <view class="contact-title">定制前有疑问？</view>
+      <view class="contact-subtitle" style="{{mutedTextStyle}}">联系客服确认图片、尺寸和交付时间</view>
     </view>
     <button class="contact-btn" style="{{primaryButtonStyle}}" open-type="contact">联系客服</button>
   </view>

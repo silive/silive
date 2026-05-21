@@ -120,19 +120,32 @@
     </view>
   </view>
 
-  <view class="refund-mask" wx:if="{{refundVisible}}">
-    <view class="refund-panel">
+  <login-sheet
+    visible="{{loginVisible}}"
+    loading="{{loginLoading}}"
+    title="手机号快捷登录"
+    desc="我们将申请获取并验证你的手机号，用于订单确认、配送联系、售后服务及账号身份识别。未经你同意，不会用于其他无关用途。"
+    confirm-text="手机号快捷登录"
+    cancel-text="暂不登录"
+    bind:getphonenumber="onLoginPhone"
+    bind:close="closeLoginSheet"
+  />
+</view>
+
+<root-portal>
+  <view class="refund-mask" wx:if="{{showAfterSaleModal}}" catchtouchmove="noopTouchMove">
+    <view class="refund-panel" catchtouchmove="noopTouchMove">
       <view class="refund-title">申请售后</view>
       <scroll-view class="refund-body" scroll-y>
         <picker mode="selector" range="{{afterSalesTypes}}" bindchange="onAfterSalesTypeChange">
-          <view class="field picker-field">售后类型<text>{{refundForm.afterSalesType}}</text></view>
+          <view class="field picker-field">售后类型<text>{{afterSaleForm.afterSalesType}}</text></view>
         </picker>
-        <view class="field">售后原因<textarea value="{{refundForm.afterSalesReason}}" data-field="afterSalesReason" bindinput="onRefundInput" placeholder="请填写售后原因"></textarea></view>
-        <view class="field">问题说明<textarea value="{{refundForm.afterSalesDesc}}" data-field="afterSalesDesc" bindinput="onRefundInput" placeholder="补充说明问题现象、处理诉求"></textarea></view>
-        <view class="field">联系电话<input value="{{refundForm.contactPhone}}" data-field="contactPhone" bindinput="onRefundInput" type="number" placeholder="请填写联系电话" /></view>
+        <view class="field">售后原因<textarea value="{{afterSaleForm.afterSalesReason}}" data-field="afterSalesReason" bindinput="onRefundInput" placeholder="请填写售后原因"></textarea></view>
+        <view class="field">问题说明<textarea value="{{afterSaleForm.afterSalesDesc}}" data-field="afterSalesDesc" bindinput="onRefundInput" placeholder="补充说明问题现象、处理诉求"></textarea></view>
+        <view class="field">联系电话<input value="{{afterSaleForm.contactPhone}}" data-field="contactPhone" bindinput="onRefundInput" type="number" placeholder="请填写联系电话" /></view>
         <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">上传图片凭证（最多6张）</button>
-        <view class="refund-images" wx:if="{{refundForm.afterSalesImages.length}}">
-          <view class="refund-image-wrap" wx:for="{{refundForm.afterSalesImages}}" wx:key="*this">
+        <view class="refund-images" wx:if="{{afterSaleForm.afterSalesImages.length}}">
+          <view class="refund-image-wrap" wx:for="{{afterSaleForm.afterSalesImages}}" wx:key="*this">
             <image class="refund-image" src="{{item}}" mode="aspectFill" />
             <button class="refund-remove" bindtap="removeRefundImage" data-index="{{index}}">×</button>
           </view>
@@ -145,15 +158,4 @@
       </view>
     </view>
   </view>
-
-  <login-sheet
-    visible="{{loginVisible}}"
-    loading="{{loginLoading}}"
-    title="手机号快捷登录"
-    desc="我们将申请获取并验证你的手机号，用于订单确认、配送联系、售后服务及账号身份识别。未经你同意，不会用于其他无关用途。"
-    confirm-text="手机号快捷登录"
-    cancel-text="暂不登录"
-    bind:getphonenumber="onLoginPhone"
-    bind:close="closeLoginSheet"
-  />
-</view>
+</root-portal>
