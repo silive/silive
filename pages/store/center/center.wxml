@@ -11,18 +11,19 @@
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.monthReferralOrders || 0}}</view><view class="stat-label">本月推广订单</view></view>
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.todayPickupOrders || 0}}</view><view class="stat-label">今日自提订单</view></view>
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.pendingPickupOrders || 0}}</view><view class="stat-label">待自提订单</view></view>
-    <view class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.payableTotal || '0.00'}}</view><view class="stat-label">当前待结算</view></view>
-    <view class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.chargebackTotal || '0.00'}}</view><view class="stat-label">当前退款扣回</view></view>
-    <view class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.actualPayable || '0.00'}}</view><view class="stat-label">本次预计到账</view></view>
-    <view class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.settledTotal || '0.00'}}</view><view class="stat-label">累计已结算</view></view>
+    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.payableTotal || '0.00'}}</view><view class="stat-label">当前待结算</view></view>
+    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.chargebackTotal || '0.00'}}</view><view class="stat-label">当前退款扣回</view></view>
+    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.actualPayable || '0.00'}}</view><view class="stat-label">本次预计到账</view></view>
+    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.settledTotal || '0.00'}}</view><view class="stat-label">累计已结算</view></view>
   </view>
 
   <view class="entry-grid">
-    <button class="entry-card" style="{{cardStyle}}" bindtap="goStoreCode"><view class="entry-icon" style="{{iconBadgeStyle}}">码</view><view class="entry-title">我的推广码</view><view class="entry-sub">分享门店小程序</view></button>
-    <button class="entry-card" style="{{cardStyle}}" bindtap="goReferralOrders"><view class="entry-icon" style="{{iconBadgeStyle}}">↗</view><view class="entry-title">我推广的订单</view><view class="entry-sub">展示点收益</view></button>
-    <button class="entry-card" style="{{cardStyle}}" bindtap="goPickupOrders"><view class="entry-icon" style="{{iconBadgeStyle}}">⌂</view><view class="entry-title">我负责的自提</view><view class="entry-sub">取货与状态</view></button>
-    <button class="entry-card" style="{{cardStyle}}" bindtap="goVerify"><view class="entry-icon" style="{{iconBadgeStyle}}">✓</view><view class="entry-title">取货核销</view><view class="entry-sub">输入取货码</view></button>
-    <button class="entry-card" style="{{cardStyle}}" bindtap="goSettlements"><view class="entry-icon" style="{{iconBadgeStyle}}">¥</view><view class="entry-title">收益明细</view><view class="entry-sub">结算统计</view></button>
+    <button wx:if="{{canStoreCode}}" class="entry-card" style="{{cardStyle}}" bindtap="goStoreCode"><view class="entry-icon" style="{{iconBadgeStyle}}">码</view><view class="entry-title">我的推广码</view><view class="entry-sub">分享门店小程序</view></button>
+    <button wx:if="{{canReferralOrders}}" class="entry-card" style="{{cardStyle}}" bindtap="goReferralOrders"><view class="entry-icon" style="{{iconBadgeStyle}}">↗</view><view class="entry-title">我推广的订单</view><view class="entry-sub">展示点收益</view></button>
+    <button wx:if="{{canPickupOrders}}" class="entry-card" style="{{cardStyle}}" bindtap="goPickupOrders"><view class="entry-icon" style="{{iconBadgeStyle}}">⌂</view><view class="entry-title">我负责的自提</view><view class="entry-sub">取货与状态</view></button>
+    <button wx:if="{{canVerifyPickup}}" class="entry-card" style="{{cardStyle}}" bindtap="goVerify"><view class="entry-icon" style="{{iconBadgeStyle}}">✓</view><view class="entry-title">取货核销</view><view class="entry-sub">输入取货码</view></button>
+    <button wx:if="{{canViewSettlements}}" class="entry-card" style="{{cardStyle}}" bindtap="goSettlements"><view class="entry-icon" style="{{iconBadgeStyle}}">¥</view><view class="entry-title">收益明细</view><view class="entry-sub">结算统计</view></button>
+    <button wx:if="{{canManageMembers}}" class="entry-card" style="{{cardStyle}}" bindtap="goMembers"><view class="entry-icon" style="{{iconBadgeStyle}}">员</view><view class="entry-title">门店成员</view><view class="entry-sub">后台管理</view></button>
   </view>
 
   <view wx:if="{{storeInfo}}" class="profile-card" style="{{cardStyle}}">

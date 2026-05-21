@@ -42,12 +42,26 @@ function ensureStorePage(page, callback) {
       })
       return
     }
+    const permissions = Array.isArray(data.permissions) ? data.permissions : []
+    const has = key => permissions.includes(key)
     page.setData({
       storeInfo: {
         ...data.storeInfo,
-        levelText: levelText(data.storeInfo.level)
+        levelText: levelText(data.storeInfo.level),
+        role: data.role || data.storeInfo?.storeRole || "",
+        storeRoleText: data.storeInfo?.storeRoleText || ""
       },
-      stats: data.stats || {}
+      stats: data.stats || {},
+      role: data.role || "",
+      permissions,
+      canStoreCode: has("store.code"),
+      canReferralOrders: has("referral.view"),
+      canPickupOrders: has("pickup.view"),
+      canNotifyPickup: has("pickup.notify"),
+      canVerifyPickup: has("pickup.verify"),
+      canViewEarnings: has("earning.view") || has("settlement.view"),
+      canViewSettlements: has("settlement.view"),
+      canManageMembers: has("member.manage")
     })
     if (callback) callback(data)
   }).catch(error => {

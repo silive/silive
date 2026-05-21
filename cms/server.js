@@ -62,6 +62,7 @@ const orderRecommendationEventsFile = path.join(seedDir, "order-recommendation-e
 const rewardRulesFile = path.join(seedDir, "reward-rules.json")
 const rewardRecordsFile = path.join(seedDir, "reward-records.json")
 const partnerStoresFile = path.join(seedDir, "partner-stores.json")
+const storeMembersFile = path.join(seedDir, "store-members.json")
 const storeSettlementRecordsFile = path.join(seedDir, "store-settlement-records.json")
 const sessions = new Map()
 const userSessions = new Map()
@@ -2608,7 +2609,62 @@ function maskTail(value) {
 }
 
 function storeRoleText(role) {
-  return ({ manager: "负责人", clerk: "店员", owner: "老板" })[role] || "负责人"
+  return ({ owner: "店主", manager: "店长", staff: "店员", clerk: "店员" })[role] || "店员"
+}
+
+function normalizeStoreMemberRole(role) {
+  const text = String(role || "").trim().toLowerCase()
+  if (text === "owner") return "owner"
+  if (text === "manager") return "manager"
+  if (text === "staff" || text === "clerk") return "staff"
+  return "staff"
+}
+
+function normalizeStoreMember(member = {}, index = 0) {
+  const now = formatDateTime(new Date())
+  return {
+    id: String(member.id || `SM${Date.now()}${index}${crypto.randomBytes(2).toString("hex").toUpperCase()}`),
+    storeId: String(member.storeId || member.store_id || ""),
+    userId: String(member.userId || member.user_id || ""),
+    phone: normalizePhone(member.phone || ""),
+    openid: String(member.openid || ""),
+    role: normalizeStoreMemberRole(member.role),
+    status: isDisabledLike(member.status) ? "disabled" : "active",
+    createdAt: member.createdAt || member.created_at || now,
+    updatedAt: member.updatedAt || member.updated_at || now
+  }
+}
+
+function storePermissionsForRole(role) {
+  const normalized = normalizeStoreMemberRole(role)
+  const permissions = {
+    owner: ["store.view", "store.code", "referral.view", "pickup.view", "pickup.notify", "pickup.verify", "earning.view", "settlement.view", "member.manage"],
+    manager: ["store.view", "referral.view", "pickup.view", "pickup.notify", "pickup.verify"],
+    staff: ["store.view", "pickup.view", "pickup.verify"]
+  }
+  return permissions[normalized] || permissions.staff
+}
+
+function storeMemberPublicView(member = {}, options = {}) {
+  const normalized = normalizeStoreMember(member)
+  const view = {
+    id: normalized.id,
+    storeId: normalized.storeId,
+    phone: maskPhone(normalized.phone),
+    hasOpenid: !!normalized.openid,
+    role: normalized.role,
+    roleText: storeRoleText(normalized.role),
+    status: normalized.status,
+    statusText: normalized.status === "active" ? "启用" : "禁用",
+    permissions: storePermissionsForRole(normalized.role)
+  }
+  if (options.includeRawPhone) view.phoneRaw = normalized.phone
+  return view
+}
+
+function hasStorePermission(storeSession, permission) {
+  if (!permission) return true
+  return (storeSession?.permissions || []).includes(permission)
 }
 
 function identityFromRequest(req, payload = {}) {
@@ -3131,7 +3187,112 @@ async function upsertPartnerStore(store) {
   if (index >= 0) list[index] = candidate
   else list.push(normalized)
   await savePartnerStores(list)
-  return normalized
+  const saved = index >= 0 ? candidate : normalized
+  if (Array.isArray(store.members)) await saveStoreMembersForStore(saved.id, store.members)
+  else await ensureLegacyStoreMembersForStore(saved)
+  return saved
+}
+
+async function getStoreMembers(filters = {}) {
+  if (!pool) {
+    let list = readJsonFile(storeMembersFile, []).map(normalizeStoreMember)
+    if (filters.storeId) list = list.filter(member => member.storeId === filters.storeId)
+    if (filters.phone) list = list.filter(member => normalizePhone(member.phone) === normalizePhone(filters.phone))
+    if (filters.status) list = list.filter(member => member.status === filters.status)
+    return list
+  }
+  const where = []
+  const params = {}
+  if (filters.storeId) {
+    where.push("store_id = :storeId")
+    params.storeId = filters.storeId
+  }
+  if (filters.phone) {
+    where.push("phone = :phone")
+    params.phone = normalizePhone(filters.phone)
+  }
+  if (filters.status) {
+    where.push("status = :status")
+    params.status = filters.status
+  }
+  const rows = await query(`SELECT * FROM store_members ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY FIELD(role, 'owner', 'manager', 'staff'), created_at ASC, id ASC`, params)
+  return rows.map(normalizeStoreMember)
+}
+
+async function saveStoreMembers(list = []) {
+  const members = (Array.isArray(list) ? list : []).map(normalizeStoreMember).filter(member => member.storeId && member.phone)
+  const seen = new Set()
+  const deduped = []
+  for (const member of members) {
+    const key = `${member.storeId}:${member.phone}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(member)
+  }
+  if (!pool) {
+    writeJsonFile(storeMembersFile, deduped)
+    return deduped
+  }
+  await query("DELETE FROM store_members")
+  for (const member of deduped) {
+    await query(
+      `INSERT INTO store_members (id, store_id, user_id, phone, openid, role, status, created_at, updated_at)
+       VALUES (:id, :storeId, :userId, :phone, :openid, :role, :status, :createdAt, :updatedAt)`,
+      {
+        ...member,
+        createdAt: toMysqlDatetime(member.createdAt, nowMysqlDatetime()),
+        updatedAt: toMysqlDatetime(member.updatedAt, nowMysqlDatetime())
+      }
+    )
+  }
+  return deduped
+}
+
+async function saveStoreMembersForStore(storeId, members = []) {
+  const all = await getStoreMembers()
+  const other = all.filter(member => member.storeId !== storeId)
+  const now = formatDateTime(new Date())
+  const next = (Array.isArray(members) ? members : [])
+    .map((member, index) => normalizeStoreMember({
+      ...member,
+      storeId,
+      id: member.id || `SM${Date.now()}${index}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+      updatedAt: now
+    }, index))
+    .filter(member => member.phone)
+  const phones = new Set()
+  for (const member of next) {
+    if (phones.has(member.phone)) throw httpError(400, "同一门店不能重复添加相同手机号成员")
+    phones.add(member.phone)
+  }
+  return saveStoreMembers([...other, ...next])
+}
+
+async function ensureLegacyStoreMembersForStore(store) {
+  if (!store?.id || !store.managerPhone) return
+  const members = await getStoreMembers({ storeId: store.id })
+  const phone = normalizePhone(store.managerPhone)
+  if (!phone) return
+  const existing = members.find(member => member.phone === phone)
+  if (existing) return
+  await saveStoreMembers([
+    ...(await getStoreMembers()),
+    normalizeStoreMember({
+      id: `SM${store.id}${phone.slice(-4)}`,
+      storeId: store.id,
+      phone,
+      openid: store.managerOpenid || "",
+      role: normalizeStoreMemberRole(store.storeRole === "clerk" ? "staff" : store.storeRole || "owner") === "staff" ? "staff" : "owner",
+      status: isStoreEnabled(store) ? "active" : "disabled"
+    })
+  ])
+}
+
+async function ensureLegacyStoreMembers() {
+  const stores = await getPartnerStores()
+  for (const store of stores) {
+    await ensureLegacyStoreMembersForStore(store)
+  }
 }
 
 async function getStoreSettlementRecords(filters = {}) {
@@ -3871,8 +4032,12 @@ async function getStoreSession(req) {
     return null
   }
   const stores = await getPartnerStores()
+  await ensureLegacyStoreMembers().catch(error => console.warn("[store-members] legacy sync failed", { message: error.message }))
   const activeStores = stores.filter(isStoreEnabled)
   const sessionPhone = normalizePhone(session.phone)
+  const members = (await getStoreMembers({ phone: sessionPhone, status: "active" }))
+    .map(member => ({ member, store: activeStores.find(store => store.id === member.storeId) }))
+    .filter(item => item.store)
   const managerPhones = stores
     .filter(item => item.managerPhone)
     .map(item => ({
@@ -3883,7 +4048,18 @@ async function getStoreSession(req) {
       enabled: isStoreEnabled(item),
       phoneMatched: normalizePhone(item.managerPhone) === sessionPhone
     }))
-  const matches = activeStores.filter(item => item.managerPhone && normalizePhone(item.managerPhone) === sessionPhone)
+  const legacyMatches = activeStores.filter(item => item.managerPhone && normalizePhone(item.managerPhone) === sessionPhone)
+  const matches = members.length ? members : legacyMatches.map(store => ({
+    store,
+    member: normalizeStoreMember({
+      id: `SM${store.id}${sessionPhone.slice(-4)}`,
+      storeId: store.id,
+      phone: sessionPhone,
+      openid: store.managerOpenid || "",
+      role: "owner",
+      status: "active"
+    })
+  }))
   console.log("[store-me]", {
     hasSession: true,
     sessionPhoneTail: maskTail(sessionPhone),
@@ -3893,18 +4069,27 @@ async function getStoreSession(req) {
     managerPhones: managerPhones.slice(0, 8),
     matchCount: matches.length,
     bound: matches.length === 1,
-    matchedStore: matches[0] ? { id: matches[0].id, name: matches[0].name, status: matches[0].status, storeStatus: matches[0].storeStatus } : null
+    matchedStore: matches[0] ? { id: matches[0].store.id, name: matches[0].store.name, role: matches[0].member.role, status: matches[0].store.status, storeStatus: matches[0].store.storeStatus } : null
   })
   if (matches.length > 1) {
     return { token, session, store: null, duplicated: true, error: "该手机号绑定多个门店，请联系管理员处理" }
   }
-  const store = matches[0]
-  if (!store) return null
-  if (session.openid && !store.managerOpenid) {
+  const matched = matches[0]
+  if (!matched) return null
+  const { store, member } = matched
+  if (session.openid && !member.openid) {
+    const allMembers = await getStoreMembers()
+    const index = allMembers.findIndex(item => item.id === member.id)
+    if (index >= 0) {
+      allMembers[index] = { ...allMembers[index], openid: session.openid, updatedAt: formatDateTime(new Date()) }
+      await saveStoreMembers(allMembers)
+    }
+  }
+  if (session.openid && !store.managerOpenid && normalizePhone(store.managerPhone) === sessionPhone) {
     await upsertPartnerStore({ ...store, managerOpenid: session.openid })
     store.managerOpenid = session.openid
   }
-  return { token, session, store }
+  return { token, session, store, member: { ...member, openid: member.openid || session.openid || "" }, role: member.role, permissions: storePermissionsForRole(member.role) }
 }
 
 async function requireStoreSession(req, res) {
@@ -3915,6 +4100,16 @@ async function requireStoreSession(req, res) {
   }
   if (!storeSession) {
     sendJson(res, 403, { ok: false, message: "当前手机号未绑定门店" })
+    return null
+  }
+  return storeSession
+}
+
+async function requireStorePermission(req, res, permission) {
+  const storeSession = await requireStoreSession(req, res)
+  if (!storeSession) return null
+  if (!hasStorePermission(storeSession, permission)) {
+    sendJson(res, 403, { ok: false, message: "当前门店角色无权操作该功能" })
     return null
   }
   return storeSession
@@ -5358,6 +5553,20 @@ async function initDb() {
   await ensureColumn("partner_stores", "manager_openid", "VARCHAR(80)")
   await ensureColumn("partner_stores", "store_role", "VARCHAR(30) DEFAULT 'manager'")
   await ensureColumn("partner_stores", "store_status", "VARCHAR(30) DEFAULT 'active'")
+  await query(`CREATE TABLE IF NOT EXISTS store_members (
+    id VARCHAR(60) PRIMARY KEY,
+    store_id VARCHAR(40),
+    user_id VARCHAR(80),
+    phone VARCHAR(30),
+    openid VARCHAR(80),
+    role VARCHAR(20) DEFAULT 'staff',
+    status VARCHAR(20) DEFAULT 'active',
+    created_at DATETIME,
+    updated_at DATETIME,
+    UNIQUE KEY uniq_store_member_phone (store_id, phone),
+    INDEX idx_store_member_phone (phone),
+    INDEX idx_store_member_store (store_id)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS store_settlement_records (
     id VARCHAR(60) PRIMARY KEY,
     store_id VARCHAR(40),
@@ -6107,12 +6316,35 @@ async function handle(req, res) {
       return
     }
     const [orders, records] = await Promise.all([getOrders(), getStoreSettlementRecords({ storeId: storeSession.store.id })])
-    sendJson(res, 200, { ok: true, bound: true, storeInfo: storePrivateView(storeSession.store), stats: storeCenterStats(storeSession.store, orders, records) })
+    const fullStats = storeCenterStats(storeSession.store, orders, records)
+    const stats = hasStorePermission(storeSession, "earning.view") || hasStorePermission(storeSession, "settlement.view")
+      ? fullStats
+      : {
+          todayReferralOrders: fullStats.todayReferralOrders,
+          monthReferralOrders: fullStats.monthReferralOrders,
+          todayPickupOrders: fullStats.todayPickupOrders,
+          pendingPickupOrders: fullStats.pendingPickupOrders
+        }
+    sendJson(res, 200, {
+      ok: true,
+      bound: true,
+      storeBound: true,
+      storeId: storeSession.store.id,
+      storeInfo: {
+        ...storePrivateView(storeSession.store),
+        storeRole: storeSession.role,
+        storeRoleText: storeRoleText(storeSession.role)
+      },
+      role: storeSession.role,
+      permissions: storeSession.permissions,
+      member: storeMemberPublicView(storeSession.member || {}),
+      stats
+    })
     return
   }
 
   if (url.pathname === "/api/store/qrcode" && req.method === "GET") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "store.code")
     if (!storeSession) return
     const result = await generateStoreWxacode(storeSession.store)
     sendJson(res, 200, {
@@ -6127,7 +6359,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/store/referral-orders" && req.method === "GET") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "referral.view")
     if (!storeSession) return
     const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id && isOrderPaidForPickupCredential(order) && !isOrderRefunded(order))
     const paidOrderIds = new Set(orders.map(order => order.id))
@@ -6151,7 +6383,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/store/pickup-orders" && req.method === "GET") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "pickup.view")
     if (!storeSession) return
     const orders = (await getOrders()).filter(order => order.pickupStoreId === storeSession.store.id && isPickupOrder(order) && isOrderPaidForPickupCredential(order))
     sendJson(res, 200, { storeInfo: storePrivateView(storeSession.store), orders: orders.map(order => storeOrderView(order, "pickup")) })
@@ -6159,7 +6391,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/store/pickup-orders/batch-arrived" && req.method === "POST") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "pickup.notify")
     if (!storeSession) return
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const result = await markPickupOrdersArrivedForStore(storeSession.store, Array.isArray(body.orderIds) ? body.orderIds : [])
@@ -6169,7 +6401,7 @@ async function handle(req, res) {
 
   const pickupArrivedMatch = url.pathname.match(/^\/api\/store\/pickup-orders\/([^/]+)\/arrived$/)
   if (pickupArrivedMatch && req.method === "POST") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "pickup.notify")
     if (!storeSession) return
     const orderId = decodeURIComponent(pickupArrivedMatch[1])
     const detail = await markPickupOrderArrivedForStore(storeSession.store, orderId)
@@ -6189,7 +6421,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/store/settlements" && req.method === "GET") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "settlement.view")
     if (!storeSession) return
     const paidOrderIds = new Set((await getOrders()).filter(order => isOrderPaidForPickupCredential(order) && !isOrderRefunded(order)).map(order => order.id))
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id }))
@@ -6207,7 +6439,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname.match(/^\/api\/store\/orders\/[^/]+\/verify-pickup$/) && req.method === "POST") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "pickup.verify")
     if (!storeSession) return
     const orderId = decodeURIComponent(url.pathname.split("/")[4])
     const body = JSON.parse((await readBody(req)).toString() || "{}")
@@ -6216,7 +6448,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/store/verify" && req.method === "POST") {
-    const storeSession = await requireStoreSession(req, res)
+    const storeSession = await requireStorePermission(req, res, "pickup.verify")
     if (!storeSession) return
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     sendJson(res, 200, await verifyStorePickupByCode(storeSession.store, body.pickupCode || body.code))
@@ -6769,7 +7001,15 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/admin/stores" && req.method === "GET") {
-    sendJson(res, 200, withStoreManagerWarnings(await getPartnerStores({ keyword: url.searchParams.get("keyword") || "" })))
+    await ensureLegacyStoreMembers().catch(error => console.warn("[store-members] legacy sync failed", { message: error.message }))
+    const [stores, members] = await Promise.all([
+      getPartnerStores({ keyword: url.searchParams.get("keyword") || "" }),
+      getStoreMembers()
+    ])
+    sendJson(res, 200, withStoreManagerWarnings(stores).map(store => ({
+      ...store,
+      members: members.filter(member => member.storeId === store.id).map(member => storeMemberPublicView(member, { includeRawPhone: true }))
+    })))
     return
   }
 
@@ -7160,6 +7400,7 @@ assertProductionRuntimeConfig()
 ensureUploadDirectoryGuards()
 
 initDb().then(async () => {
+  await ensureLegacyStoreMembers().catch(error => console.warn("门店成员兼容迁移失败：", error.message))
   await ensureReferralRewardRecords().catch(error => console.warn("推广收益补偿检查失败：", error.message))
   cleanupOrphanTempUploads(true).catch(error => console.warn("临时图片清理失败：", error.message))
   const serverHandler = (req, res) => {

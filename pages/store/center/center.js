@@ -4,6 +4,16 @@ Page({
   data: {
     storeInfo: null,
     stats: {},
+    role: "",
+    permissions: [],
+    canStoreCode: false,
+    canReferralOrders: false,
+    canPickupOrders: false,
+    canNotifyPickup: false,
+    canVerifyPickup: false,
+    canViewEarnings: false,
+    canViewSettlements: false,
+    canManageMembers: false,
     themeStyle: "",
     themeClass: "theme-skin01"
   },
@@ -30,5 +40,9 @@ Page({
 
   goSettlements() {
     wx.navigateTo({ url: "/pages/store/settlements/settlements" })
+  },
+
+  goMembers() {
+    wx.showToast({ title: "请在后台合作门店管理成员", icon: "none" })
   }
 })

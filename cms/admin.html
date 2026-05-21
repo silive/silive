@@ -2558,6 +2558,25 @@
           <label>二维码场景值<input data-store-key="qrcodeScene" value="${escapeHtml(store.qrcodeScene || `store_id=${store.id}`)}"></label>
           <label>结算周期<select data-store-key="settlementCycle"><option value="weekly" ${store.settlementCycle === "weekly" ? "selected" : ""}>每周</option><option value="monthly" ${store.settlementCycle !== "weekly" ? "selected" : ""}>每月</option></select></label>
         </div></div>
+        <div class="drawer-section"><h4>门店成员</h4>
+          <p class="muted">支持一个门店绑定多个负责人/店员。旧“门店负责人手机号”会自动兼容为店主。</p>
+          <div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>手机号</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody id="storeMemberRows">
+            ${(store.members || []).map((member, memberIndex) => `
+              <tr data-store-member-row>
+                <td><input data-member-key="phone" value="${escapeHtml(member.phoneRaw || member.phone || "")}" placeholder="11位手机号"></td>
+                <td><select data-member-key="role">
+                  <option value="owner" ${member.role === "owner" ? "selected" : ""}>店主 owner</option>
+                  <option value="manager" ${member.role === "manager" ? "selected" : ""}>店长 manager</option>
+                  <option value="staff" ${member.role === "staff" ? "selected" : ""}>店员 staff</option>
+                </select></td>
+                <td><select data-member-key="status"><option value="active" ${member.status !== "disabled" ? "selected" : ""}>启用</option><option value="disabled" ${member.status === "disabled" ? "selected" : ""}>禁用</option></select></td>
+                <td><button class="danger" data-action="remove-store-member" data-index="${memberIndex}">删除</button></td>
+                <input type="hidden" data-member-key="id" value="${escapeHtml(member.id || "")}">
+              </tr>
+            `).join("")}
+          </tbody></table></div>
+          <div class="toolbar" style="margin-top:12px"><button class="secondary" data-action="add-store-member">新增成员</button></div>
+        </div>
         <div class="drawer-section"><h4>门店能力</h4><div class="form-grid">
           <label>展示点<select data-store-key="isDisplayEnabled"><option value="true" ${store.isDisplayEnabled === "true" ? "selected" : ""}>支持</option><option value="false" ${store.isDisplayEnabled === "false" ? "selected" : ""}>不支持</option></select></label>
           <label>自提点<select data-store-key="isPickupEnabled"><option value="true" ${store.isPickupEnabled === "true" ? "selected" : ""}>支持</option><option value="false" ${store.isPickupEnabled === "false" ? "selected" : ""}>不支持</option></select></label>
@@ -2593,6 +2612,13 @@
       $("drawerBody").querySelectorAll("[data-store-key]").forEach(input => {
         target[input.dataset.storeKey] = input.value
       })
+      target.members = Array.from($("drawerBody").querySelectorAll("[data-store-member-row]")).map(row => {
+        const member = {}
+        row.querySelectorAll("[data-member-key]").forEach(input => {
+          member[input.dataset.memberKey] = input.value
+        })
+        return member
+      }).filter(member => (member.phone || "").trim())
       ;["referralCommissionValue", "pickupFeeValue"].forEach(key => {
         target[key] = Math.max(0, Number(target[key] || 0)).toFixed(2)
       })
@@ -3302,6 +3328,22 @@
       if (event.target.dataset.action === "save-product-drawer") saveProductDrawer(event.target)
       if (event.target.dataset.action === "save-order-drawer") saveOrderDrawer()
       if (event.target.dataset.action === "save-store-drawer") saveStoreDrawer()
+      if (event.target.dataset.action === "add-store-member") {
+        const body = $("storeMemberRows")
+        if (body) {
+          body.insertAdjacentHTML("beforeend", `<tr data-store-member-row>
+            <td><input data-member-key="phone" value="" placeholder="11位手机号"></td>
+            <td><select data-member-key="role"><option value="owner">店主 owner</option><option value="manager">店长 manager</option><option value="staff" selected>店员 staff</option></select></td>
+            <td><select data-member-key="status"><option value="active" selected>启用</option><option value="disabled">禁用</option></select></td>
+            <td><button class="danger" data-action="remove-store-member">删除</button></td>
+            <input type="hidden" data-member-key="id" value="">
+          </tr>`)
+        }
+      }
+      if (event.target.dataset.action === "remove-store-member") {
+        const row = event.target.closest("[data-store-member-row]")
+        if (row && confirm("确认删除该门店成员吗？")) row.remove()
+      }
       if (event.target.dataset.action === "add-media") {
         const key = event.target.dataset.key
         const kind = event.target.dataset.kind
