@@ -34,6 +34,7 @@ const ENABLE_HTTPS = process.env.ENABLE_HTTPS !== "false"
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || (ENABLE_HTTPS ? `https://127.0.0.1:${HTTPS_PORT}` : `http://127.0.0.1:${PORT}`)
 const WECHAT_APPID = process.env.WECHAT_APPID || ""
 const WECHAT_SECRET = process.env.WECHAT_SECRET || ""
+const WECHAT_PICKUP_TEMPLATE_ID = process.env.WECHAT_PICKUP_TEMPLATE_ID || ""
 const PAY_MOCK_ENV = String(process.env.PAY_MOCK || "").toLowerCase()
 const PAY_MOCK = IS_PRODUCTION ? false : process.env.PAY_MOCK !== "false"
 const MOCK_WECHAT_OPENID = "mock-openid-local"
@@ -3689,15 +3690,60 @@ async function createStoreSettlementRecordsForOrder(order) {
 }
 
 async function sendPickupArrivedNotice(orderId) {
-  const templateId = process.env.WECHAT_PICKUP_TEMPLATE_ID || ""
+  const templateId = process.env.WECHAT_PICKUP_TEMPLATE_ID || WECHAT_PICKUP_TEMPLATE_ID || ""
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (!order) return { ok: false, message: "订单不存在" }
   if (!templateId) {
     console.log(`[pickup] subscription template not configured order=${orderId}`)
     return { ok: false, skipped: true, message: "未配置订阅消息模板，已标记到店但通知未发送" }
   }
-  console.log(`[pickup] ready to send arrived notice order=${orderId} store=${order.pickupStore?.name || ""}`)
-  return { ok: false, skipped: true, message: "订阅消息发送方法已预留，已标记到店但通知未发送" }
+  if (!order.openid) {
+    console.warn("[pickup-subscribe] missing openid", { orderId })
+    return { ok: false, message: "客户未完成订阅授权或缺少 openid，通知未发送" }
+  }
+  const trimSubscribeValue = (value, max = 20) => {
+    const text = String(value || "").replace(/\s+/g, " ").trim()
+    const chars = Array.from(text)
+    return chars.length > max ? chars.slice(0, max).join("") : text
+  }
+  const pickupCode = trimSubscribeValue(order.pickupCode || order.pickup_code || "-", 32)
+  const storeName = trimSubscribeValue(order.pickupStore?.name || order.pickupStoreName || "自提门店")
+  const storeAddress = trimSubscribeValue(order.pickupStore?.address || order.pickupStoreAddress || "请联系门店确认地址")
+  const productName = trimSubscribeValue(order.productName || (Array.isArray(order.items) && order.items[0]?.name) || "定制商品")
+  const body = JSON.stringify({
+    touser: order.openid,
+    template_id: templateId,
+    page: "pages/orders/orders",
+    data: {
+      character_string1: { value: pickupCode },
+      thing2: { value: storeName },
+      thing3: { value: storeAddress },
+      thing5: { value: "请凭取货码到店领取" },
+      thing6: { value: productName }
+    }
+  })
+  try {
+    const accessToken = await getAccessToken()
+    const result = await requestJson(`https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${accessToken}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      timeout: 12000
+    }, body)
+    const data = result.data || {}
+    if (data.errcode === 0) {
+      console.log("[pickup-subscribe] sent", { orderId, hasTemplate: !!templateId })
+      return { ok: true, message: "订阅消息已发送" }
+    }
+    console.warn("[pickup-subscribe] send failed", {
+      orderId,
+      errcode: data.errcode,
+      errmsg: data.errmsg
+    })
+    return { ok: false, message: data.errmsg || "订阅消息发送失败" }
+  } catch (error) {
+    console.warn("[pickup-subscribe] send error", { orderId, message: error.message })
+    return { ok: false, message: error.message || "订阅消息发送失败" }
+  }
 }
 
 function pickupArrivedBlockedReason(order = {}, storeId = "") {

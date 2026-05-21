@@ -4,6 +4,8 @@ const { applyTheme } = require("../../utils/theme")
 const { isPaymentEnabled, isPromotionEnabled, isReviewMode, isStoreFeaturesEnabled } = require("../../utils/review")
 const { getLocation } = require("../../utils/privacy")
 
+const PICKUP_TEMPLATE_ID = "qH6WLpiS448uM0W_NHBGvDLt9ZaPBTxgaFeU_cS7RwE"
+
 function safeJson(value, fallback = null) {
   try {
     return JSON.parse(decodeURIComponent(value || ""))
@@ -353,11 +355,16 @@ Page({
 
   requestPickupSubscribe() {
     if (!wx.requestSubscribeMessage) return
-    const tmplId = wx.getStorageSync("PICKUP_TEMPLATE_ID") || ""
+    const tmplId = PICKUP_TEMPLATE_ID
     if (!tmplId) return
     wx.requestSubscribeMessage({
       tmplIds: [tmplId],
-      complete: () => {}
+      success: result => {
+        console.log("[pickup-subscribe] checkout result", { accepted: result[tmplId] === "accept" })
+      },
+      fail: error => {
+        console.log("[pickup-subscribe] checkout failed", { errMsg: error.errMsg || "" })
+      }
     })
   },
 
@@ -752,6 +759,7 @@ Page({
         })
       })
     }).then(() => {
+      if (this.data.deliveryType === "pickup") this.requestPickupSubscribe()
       wx.showToast({ title: "支付成功", icon: "success" })
       setTimeout(() => wx.switchTab({ url: "/pages/orders/orders" }), 800)
     })

@@ -19,6 +19,7 @@ const STATUS_TABS = [
 ]
 
 const ORDER_PAGE_SIZE = 10
+const PICKUP_TEMPLATE_ID = "qH6WLpiS448uM0W_NHBGvDLt9ZaPBTxgaFeU_cS7RwE"
 
 function pickImage(...values) {
   return values.find(value => !!value) || ""
@@ -156,6 +157,16 @@ function canShowPickupCode(order = {}) {
   return isStrictPaid(order) && pickup && !!code
 }
 
+function canSubscribePickupNotice(order = {}) {
+  const pickup = order.deliveryType === "pickup" || order.delivery_type === "pickup" || !!order.pickupStoreId || !!order.pickup_store_id
+  const pickupStatus = String(order.pickupStatus || order.pickup_status || "")
+  const notifyStatus = String(order.notifyStatus || order.notify_status || "")
+  if (!pickup || !isStrictPaid(order) || isRefunded(order) || isRefunding(order)) return false
+  if (pickupStatus === "picked_up" || ["已完成", "已退款", "已取消"].includes(order.status || "")) return false
+  if (notifyStatus === "sent") return false
+  return !!wx.requestSubscribeMessage
+}
+
 function isRefunding(order) {
   return ["requested", "refund_pending", "remake", "reship"].includes(afterSalesStatus(order)) ||
     ["待审核", "售后处理中", "退款处理中", "补发处理中", "重新制作中"].includes(order.refundStatus) ||
@@ -225,6 +236,7 @@ function normalizeOrder(order, products = []) {
     canContact: ["待报价", "待确认", "制作中", "待自提", "售后已拒绝"].includes(display),
     canViewDetail: display === "待收货",
     canShowPickupCode: canShowPickupCode(order),
+    canSubscribePickupNotice: canSubscribePickupNotice(order),
     canConfirmReceive: display === "待收货",
     canAfterSale: canApplyAfterSales(order),
     pickupLine: order.deliveryType === "pickup" && order.pickupStore
@@ -510,6 +522,27 @@ Page({
       title: "取货码",
       content: `${order.pickupCode || "-"}\n${order.pickupStore?.name || order.pickupLine || ""}`,
       showCancel: false
+    })
+  },
+
+  subscribePickupNotice(event) {
+    if (!wx.requestSubscribeMessage) {
+      wx.showToast({ title: "当前版本暂不支持订阅提醒", icon: "none" })
+      return
+    }
+    wx.requestSubscribeMessage({
+      tmplIds: [PICKUP_TEMPLATE_ID],
+      success: result => {
+        if (result[PICKUP_TEMPLATE_ID] === "accept") {
+          wx.showToast({ title: "已订阅取货提醒", icon: "success" })
+          return
+        }
+        wx.showToast({ title: "未订阅提醒，不影响取货", icon: "none" })
+      },
+      fail: error => {
+        console.log("[pickup-subscribe] orders failed", { errMsg: error.errMsg || "" })
+        wx.showToast({ title: "订阅失败，不影响取货", icon: "none" })
+      }
     })
   },
 
