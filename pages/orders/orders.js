@@ -115,8 +115,9 @@ function displayStatus(order) {
   if (status === "制作中") return "制作中"
   if (status === "已完成" || order.pickupStatus === "picked_up") return order.deliveryType === "pickup" ? "已自提" : "已完成"
   if (order.deliveryType === "pickup") {
-    if (status === "已发货" || order.pickupStatus === "arrived_store") return "待自提"
-    if (status === "待发货" || order.pickupStatus === "preparing") return "待确认"
+    if (status === "已发货" || ["arrived_store", "ready_for_pickup", "arrived"].includes(order.pickupStatus)) return "待自提"
+    if (order.pickupStatus === "preparing") return "配送到门店中"
+    if (status === "待发货") return "待确认"
     return status
   }
   if (status === "待发货") return "待发货"
@@ -231,7 +232,7 @@ function normalizeOrder(order, products = []) {
       : "",
     canShowPickupCredential: canShowPickupCode(order) && !!(order.pickupQrCodeUrl || order.pickup_qrcode_url),
     pickupTip: order.deliveryType === "pickup"
-      ? (order.pickupStatus === "arrived_store" ? "请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "商品到店后，我们会通知你到店自提")
+      ? (["arrived_store", "ready_for_pickup", "arrived"].includes(order.pickupStatus) ? "商品已到达自提点，请凭取货码到店领取" : order.pickupStatus === "picked_up" ? "订单已完成自提" : "配送到门店中，商品到店后我们会通知你自提")
       : "",
     refundLine: afterSalesText(order) || (order.refundStatus ? `${order.refundStatus}${order.refundAmount && Number(order.refundAmount) > 0 ? ` · ¥${order.refundAmount}` : ""}` : ""),
     canRefund: canApplyAfterSales(order)
@@ -262,7 +263,7 @@ function statusMatches(order, key) {
     return isPaid(order) && ["待发货", "制作中"].includes(order.status || "")
   }
   if (key === "receiving") {
-    if (order.deliveryType === "pickup") return order.status === "已发货" || order.pickupStatus === "arrived_store"
+    if (order.deliveryType === "pickup") return order.status === "已发货" || ["arrived_store", "ready_for_pickup", "arrived"].includes(order.pickupStatus)
     return order.status === "已发货"
   }
   return true

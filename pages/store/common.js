@@ -9,8 +9,10 @@ function money(value) {
 function statusText(status) {
   return {
     none: "无",
-    preparing: "备货中",
+    preparing: "配送到门店中",
     arrived_store: "已到店，待自提",
+    ready_for_pickup: "已到店，待自提",
+    arrived: "已到店，待自提",
     picked_up: "已自提"
   }[status] || status || "-"
 }

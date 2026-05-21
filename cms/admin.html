@@ -2328,7 +2328,7 @@
             ? `<label>取货码<input data-order-key="pickupCode" value="${escapeHtml(order.pickupCode || "")}"></label>`
             : `<label>取货码<input value="未支付，取货码暂不可用" disabled></label>`}
           <label>自提状态<select data-order-key="pickupStatus">
-            ${["none", "preparing", "arrived_store", "picked_up"].map(status => `<option value="${status}" ${order.pickupStatus === status ? "selected" : ""}>${({ none: "无", preparing: "备货中", arrived_store: "已到店/待自提", picked_up: "已自提" })[status]}</option>`).join("")}
+            ${["none", "preparing", "arrived_store", "picked_up"].map(status => `<option value="${status}" ${order.pickupStatus === status ? "selected" : ""}>${({ none: "无", preparing: "配送到门店中", arrived_store: "已到店/待自提", picked_up: "已自提" })[status]}</option>`).join("")}
           </select></label>
           <label>推广门店ID<input data-order-key="referrerStoreId" value="${escapeHtml(order.referrerStoreId || "")}"></label>
           <label>推广佣金<input data-order-key="referralCommission" value="${escapeHtml(order.referralCommission || "0.00")}"></label>
@@ -3347,18 +3347,26 @@
       if (event.target.dataset.action === "order-arrived-store") {
         const order = orders[Number(event.target.dataset.index)]
         if (!order) return
-        api(`/api/admin/orders/${encodeURIComponent(order.id)}/arrived-store`, "POST", {})
+        if (!confirm("确认该订单货物已到店，并通知客户到店自提吗？")) return
+        withButtonLoading(event.target, "通知中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/arrived-store`, "POST", {})
           .then(() => loadAll())
-          .then(() => setStatus("已标记到店，已预留通知发送"))
-          .catch(error => setStatus(error.message))
+          .then(() => setStatus("已标记到店，已尝试通知客户"))
+          .catch(error => {
+            console.error(error)
+            setStatus(error.message || "标记到店失败")
+          }))
       }
       if (event.target.dataset.action === "order-picked-up") {
         const order = orders[Number(event.target.dataset.index)]
         if (!order) return
-        api(`/api/admin/orders/${encodeURIComponent(order.id)}/picked-up`, "POST", {})
+        if (!confirm("确认标记该订单已自提/完成？")) return
+        withButtonLoading(event.target, "标记中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/picked-up`, "POST", {})
           .then(() => loadAll())
           .then(() => setStatus("已标记自提完成"))
-          .catch(error => setStatus(error.message))
+          .catch(error => {
+            console.error(error)
+            setStatus(error.message || "标记自提失败")
+          }))
       }
       if (event.target.dataset.action === "refund-approve") {
         const order = orders[Number(event.target.dataset.index)]

@@ -2246,6 +2246,9 @@ function normalizeOrder(order, index) {
     pickupCode: normalizePickupCode(order.pickupCode || order.pickup_code || ""),
     pickupQrCodeUrl: publicAssetUrl(order.pickupQrCodeUrl || order.pickup_qrcode_url || ""),
     pickupStatus: order.pickupStatus || "none",
+    notifyStatus: order.notifyStatus || order.notify_status || "",
+    notifiedAt: order.notifiedAt || order.notified_at || null,
+    notifiedAtText: order.notifiedAtText || formatChinaDatetime(order.notifiedAt || order.notified_at),
     isPaid: isOrderPaidForPickupCredential(order),
     isPickup: isPickupOrder(order),
     canShowPickupCode: canShowPickupCodeForOrder(order),
@@ -2339,7 +2342,8 @@ function mysqlOrderParams(order) {
     refundAt: toMysqlDatetime(order.refundAt),
     arrivedStoreAt: toMysqlDatetime(order.arrivedStoreAt),
     pickedUpAt: toMysqlDatetime(order.pickedUpAt),
-    pickupVerifiedAt: toMysqlDatetime(order.pickupVerifiedAt)
+    pickupVerifiedAt: toMysqlDatetime(order.pickupVerifiedAt),
+    notifiedAt: toMysqlDatetime(order.notifiedAt)
   }
 }
 
@@ -3410,6 +3414,9 @@ async function getOrders(filters = {}) {
     pickupCode: row.pickup_code || "",
     pickupQrCodeUrl: row.pickup_qrcode_url || "",
     pickupStatus: row.pickup_status || "none",
+    notifyStatus: row.notify_status || "",
+    notifiedAt: formatChinaDatetime(row.notified_at),
+    notifiedAtText: formatChinaDatetime(row.notified_at),
     arrivedStoreAt: formatChinaDatetime(row.arrived_store_at),
     arrivedStoreAtText: formatChinaDatetime(row.arrived_store_at),
     pickedUpAt: formatChinaDatetime(row.picked_up_at),
@@ -3463,8 +3470,8 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -3513,6 +3520,8 @@ async function saveOrders(orders) {
        pickup_code = VALUES(pickup_code),
        pickup_qrcode_url = VALUES(pickup_qrcode_url),
        pickup_status = VALUES(pickup_status),
+       notify_status = VALUES(notify_status),
+       notified_at = VALUES(notified_at),
        arrived_store_at = VALUES(arrived_store_at),
        picked_up_at = VALUES(picked_up_at),
        pickup_verified_at = VALUES(pickup_verified_at),
@@ -3685,10 +3694,89 @@ async function sendPickupArrivedNotice(orderId) {
   if (!order) return { ok: false, message: "订单不存在" }
   if (!templateId) {
     console.log(`[pickup] subscription template not configured order=${orderId}`)
-    return { ok: true, skipped: true, message: "未配置订阅消息模板，已跳过真实发送" }
+    return { ok: false, skipped: true, message: "未配置订阅消息模板，已标记到店但通知未发送" }
   }
   console.log(`[pickup] ready to send arrived notice order=${orderId} store=${order.pickupStore?.name || ""}`)
-  return { ok: true, skipped: true, message: "订阅消息发送方法已预留" }
+  return { ok: false, skipped: true, message: "订阅消息发送方法已预留，已标记到店但通知未发送" }
+}
+
+function pickupArrivedBlockedReason(order = {}, storeId = "") {
+  if (!order) return "订单不存在"
+  if (storeId && order.pickupStoreId !== storeId) return "非本门店订单"
+  if (!isOrderPaidForPickupCredential(order)) return "订单未支付"
+  if (!isPickupOrder(order)) return "非自提订单"
+  if (isOrderRefunded(order) || ["已取消", "已退款", "退款中"].includes(order.status || "")) return "已退款/已取消"
+  if (order.pickupStatus === "picked_up" || order.status === "已完成") return "已自提"
+  if (["arrived_store", "ready_for_pickup", "arrived"].includes(String(order.pickupStatus || "")) || order.notifyStatus === "sent") return "已通知"
+  return ""
+}
+
+async function markPickupOrderArrivedForStore(store, orderId) {
+  const orders = await getOrders()
+  const index = orders.findIndex(order => order.id === orderId)
+  const order = orders[index]
+  const blockedReason = pickupArrivedBlockedReason(order, store.id)
+  if (blockedReason) {
+    return {
+      ok: false,
+      skipped: true,
+      orderId,
+      reason: blockedReason,
+      order: order ? storeOrderView(order, "pickup") : null
+    }
+  }
+  if (!order.pickupCode) {
+    order.pickupCode = await generateUniquePickupCode()
+    order.pickupQrCodeUrl = await generatePickupQrCode(order.pickupCode)
+  }
+  const now = formatDateTime(new Date())
+  orders[index] = {
+    ...order,
+    status: "已发货",
+    pickupStatus: "arrived_store",
+    arrivedStoreAt: order.arrivedStoreAt || now,
+    notifiedAt: now,
+    notifyStatus: "failed"
+  }
+  await saveOrders([orders[index]])
+  const notice = await sendPickupArrivedNotice(orderId)
+  orders[index].notifyStatus = notice.ok && !notice.skipped ? "sent" : "failed"
+  orders[index].notifiedAt = now
+  await saveOrders([orders[index]])
+  return {
+    ok: true,
+    orderId,
+    notifyOk: notice.ok && !notice.skipped,
+    notifyMessage: notice.message || "",
+    order: storeOrderView(orders[index], "pickup")
+  }
+}
+
+async function markPickupOrdersArrivedForStore(store, orderIds = []) {
+  const uniqueIds = Array.from(new Set((orderIds || []).map(id => String(id || "").trim()).filter(Boolean)))
+  const details = []
+  for (const orderId of uniqueIds) {
+    try {
+      details.push(await markPickupOrderArrivedForStore(store, orderId))
+    } catch (error) {
+      details.push({ ok: false, orderId, reason: error.message || "处理失败" })
+    }
+  }
+  const successCount = details.filter(item => item.ok).length
+  const skippedCount = details.filter(item => item.skipped).length
+  const failedCount = details.length - successCount - skippedCount
+  const notifySuccessCount = details.filter(item => item.ok && item.notifyOk).length
+  const notifyFailedCount = details.filter(item => item.ok && !item.notifyOk).length
+  return {
+    success: true,
+    total: uniqueIds.length,
+    successCount,
+    failedCount,
+    skippedCount,
+    notifySuccessCount,
+    notifyFailedCount,
+    details
+  }
 }
 
 async function getStoreSettlementSummary(filters = {}) {
@@ -3788,6 +3876,7 @@ async function requireStoreSession(req, res) {
 
 function storeOrderView(order, mode = "referral") {
   const showPickupCode = canShowPickupCodeForOrder(order)
+  const notifyBlockedReason = pickupArrivedBlockedReason(order, order.pickupStoreId)
   return {
     id: order.id,
     createdAt: order.createdAt,
@@ -3815,6 +3904,11 @@ function storeOrderView(order, mode = "referral") {
     pickupCode: showPickupCode ? order.pickupCode : "",
     pickupQrCodeUrl: showPickupCode ? (order.pickupQrCodeUrl || "") : "",
     pickupStatus: order.pickupStatus,
+    notifyStatus: order.notifyStatus || "",
+    notifiedAt: order.notifiedAt || "",
+    notifiedAtText: order.notifiedAtText || formatChinaDatetime(order.notifiedAt),
+    canNotifyPickup: !notifyBlockedReason,
+    notifyBlockedReason,
     arrivedStoreAt: order.arrivedStoreAt,
     arrivedStoreAtText: order.arrivedStoreAtText || formatChinaDatetime(order.arrivedStoreAt),
     pickedUpAt: order.pickedUpAt,
@@ -4145,16 +4239,26 @@ async function markOrderArrivedStore(orderId) {
   const orders = await getOrders()
   const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
-  if (orders[index].deliveryType !== "pickup") throw new Error("该订单不是到店自提订单")
-  if (!isOrderPaidForPickupCredential(orders[index])) throw new Error("订单未支付，暂不能标记到店")
+  const order = orders[index]
+  const blockedReason = pickupArrivedBlockedReason(order)
+  if (blockedReason) throw httpError(400, blockedReason === "已通知" ? "该订单已通知客户自提，请勿重复操作" : blockedReason)
+  if (!order.pickupCode) {
+    order.pickupCode = await generateUniquePickupCode()
+    order.pickupQrCodeUrl = await generatePickupQrCode(order.pickupCode)
+  }
+  const now = formatDateTime(new Date())
   orders[index] = {
-    ...orders[index],
-    status: "已到店",
+    ...order,
+    status: "已发货",
     pickupStatus: "arrived_store",
-    arrivedStoreAt: formatDateTime(new Date())
+    arrivedStoreAt: order.arrivedStoreAt || now,
+    notifiedAt: now,
+    notifyStatus: "failed"
   }
   await saveOrders([orders[index]])
-  await sendPickupArrivedNotice(orderId)
+  const notice = await sendPickupArrivedNotice(orderId)
+  orders[index].notifyStatus = notice.ok && !notice.skipped ? "sent" : "failed"
+  await saveOrders([orders[index]])
   return orders[index]
 }
 
@@ -5159,6 +5263,8 @@ async function initDb() {
   await ensureColumn("orders", "pickup_code", "VARCHAR(20)")
   await ensureColumn("orders", "pickup_qrcode_url", "VARCHAR(500)")
   await ensureColumn("orders", "pickup_status", "VARCHAR(30) DEFAULT 'none'")
+  await ensureColumn("orders", "notify_status", "VARCHAR(30)")
+  await ensureColumn("orders", "notified_at", "DATETIME")
   await ensureColumn("orders", "arrived_store_at", "DATETIME")
   await ensureColumn("orders", "picked_up_at", "DATETIME")
   await ensureColumn("orders", "pickup_verified_at", "DATETIME")
@@ -6003,6 +6109,36 @@ async function handle(req, res) {
     if (!storeSession) return
     const orders = (await getOrders()).filter(order => order.pickupStoreId === storeSession.store.id && isPickupOrder(order) && isOrderPaidForPickupCredential(order))
     sendJson(res, 200, { storeInfo: storePrivateView(storeSession.store), orders: orders.map(order => storeOrderView(order, "pickup")) })
+    return
+  }
+
+  if (url.pathname === "/api/store/pickup-orders/batch-arrived" && req.method === "POST") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const result = await markPickupOrdersArrivedForStore(storeSession.store, Array.isArray(body.orderIds) ? body.orderIds : [])
+    sendJson(res, 200, result)
+    return
+  }
+
+  const pickupArrivedMatch = url.pathname.match(/^\/api\/store\/pickup-orders\/([^/]+)\/arrived$/)
+  if (pickupArrivedMatch && req.method === "POST") {
+    const storeSession = await requireStoreSession(req, res)
+    if (!storeSession) return
+    const orderId = decodeURIComponent(pickupArrivedMatch[1])
+    const detail = await markPickupOrderArrivedForStore(storeSession.store, orderId)
+    sendJson(res, 200, {
+      success: !!detail.ok,
+      total: 1,
+      successCount: detail.ok ? 1 : 0,
+      failedCount: detail.ok || detail.skipped ? 0 : 1,
+      skippedCount: detail.skipped ? 1 : 0,
+      notifySuccessCount: detail.ok && detail.notifyOk ? 1 : 0,
+      notifyFailedCount: detail.ok && !detail.notifyOk ? 1 : 0,
+      details: [detail],
+      order: detail.order,
+      message: detail.notifyMessage || detail.reason || ""
+    })
     return
   }
 

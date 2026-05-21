@@ -7,9 +7,17 @@
   <view class="tabs">
     <button class="tab {{active === item.key ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="key" data-key="{{item.key}}" bindtap="switchTab">{{item.label}}</button>
   </view>
+  <view class="batch-bar" style="{{cardStyle}}">
+    <view class="batch-text">{{batchMode ? ('已选 ' + selectedOrderIds.length + ' 单') : '配送中订单可批量通知客户自提'}}</view>
+    <button class="batch-link" bindtap="toggleBatchMode">{{batchMode ? '退出多选' : '多选模式'}}</button>
+    <button wx:if="{{batchMode}}" class="batch-link" bindtap="selectAllNotifiable">全选可通知</button>
+  </view>
   <view class="list">
     <view class="order-card" style="{{cardStyle}}" wx:for="{{visibleOrders}}" wx:key="id">
-      <view class="store-order-row">
+      <view class="store-order-row {{batchMode ? 'batching' : ''}}">
+        <button wx:if="{{batchMode}}" class="select-dot {{item.selected ? 'selected' : ''}} {{!item.canNotifyPickup ? 'disabled' : ''}}" data-id="{{item.id}}" bindtap="toggleSelect">
+          <text wx:if="{{item.selected}}">✓</text>
+        </button>
         <view class="store-order-cover">
           <image wx:if="{{item.productImage}}" class="store-order-image" src="{{item.productImage}}" mode="aspectFill" lazy-load />
           <view wx:else class="store-order-placeholder">非常智造</view>
@@ -18,9 +26,17 @@
           <view class="order-head"><view><view class="order-title">{{item.productName}}</view><view class="order-sub">{{item.id}}</view></view><view class="pill">{{item.pickupText}}</view></view>
           <view class="order-sub">客户：{{item.phone}} · 取货码：{{item.pickupCode}}</view>
           <view class="order-sub">到店：{{item.arrivedStoreAtText || item.arrivedStoreAt || '-'}} · 自提：{{item.pickedUpAtText || item.pickedUpAt || '-'}}</view>
+          <view class="order-sub">通知：{{item.notifyStatus === 'sent' ? '已通知' : item.notifyStatus === 'failed' ? '通知失败' : '未通知'}}</view>
           <view class="amount">自提服务费 ¥{{item.pickupServiceFee || '0.00'}}</view>
+          <view class="pickup-actions">
+            <button wx:if="{{item.canNotifyPickup && !batchMode}}" class="primary-btn mini" data-id="{{item.id}}" bindtap="notifyOne" loading="{{notifyingOrderId === item.id}}">货已到店，通知客户</button>
+            <view wx:elif="{{!item.canNotifyPickup}}" class="disabled-reason">{{item.notifyBlockedReason || '暂不可通知'}}</view>
+          </view>
         </view>
       </view>
     </view>
+  </view>
+  <view wx:if="{{batchMode}}" class="batch-footer">
+    <button class="primary-btn batch-submit" bindtap="batchNotify" loading="{{batchLoading}}">批量通知自提</button>
   </view>
 </view>
