@@ -804,7 +804,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18rpx;
+  gap: 24rpx;
   margin-top: 42rpx;
   padding: 28rpx;
   border-radius: 24rpx;
@@ -816,37 +816,39 @@
 .contact-copy {
   flex: 1;
   min-width: 0;
-  padding-right: 4rpx;
+  padding-right: 0;
 }
 
 .contact-title {
-  font-size: 31rpx;
-  font-weight: 850;
+  color: #1F2933;
+  font-size: 30rpx;
+  font-weight: 950;
+  line-height: 1.25;
 }
 
 .contact-subtitle {
   margin-top: 8rpx;
-  color: rgba(255, 246, 239, .68);
-  font-size: 22rpx;
-  line-height: 1.4;
+  color: #6B7280;
+  font-size: 25rpx;
+  line-height: 1.45;
   word-break: break-word;
 }
 
 .contact-btn {
-  flex: 0 0 176rpx;
-  width: 176rpx;
-  max-width: 176rpx;
-  min-width: 176rpx;
-  height: 76rpx;
-  min-height: 76rpx;
+  flex: 0 0 220rpx;
+  width: 220rpx;
+  max-width: 220rpx;
+  min-width: 220rpx;
+  height: 80rpx;
+  min-height: 80rpx;
   border-radius: 999rpx;
   background: #f8fbff;
   color: #1F2933;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24rpx;
-  font-weight: 850;
+  font-size: 26rpx;
+  font-weight: 950;
   margin: 0;
   padding: 0;
   line-height: 1;
@@ -1065,8 +1067,8 @@
 .contact-panel {
   border-radius: 30rpx;
   background:
-    radial-gradient(circle at 88% 0%, rgba(255, 255, 255, .24), transparent 30%),
-    linear-gradient(135deg, #FF7A00 0%, #FFD21A 100%);
+    radial-gradient(circle at 88% 0%, rgba(255, 210, 26, .20), transparent 30%),
+    linear-gradient(135deg, #ffffff 0%, #FFF3E8 100%);
   box-shadow: 0 24rpx 56rpx rgba(255,106,0,.13);
 }
 
