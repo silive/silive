@@ -357,25 +357,75 @@
     .mini-tag { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; background: #f5f5f7; color: #6B7280; font-size: 12px; font-weight: 800; white-space: nowrap; }
     .table-actions { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
     .table-actions button { height: 30px; padding: 0 10px; font-size: 12px; }
-    .drawer-mask { position: fixed; inset: 0; display: none; justify-content: flex-end; background: rgba(29,29,31,.22); z-index: 35; }
+    .drawer-mask {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 20px;
+      overflow: hidden;
+      background: rgba(29,29,31,.22);
+      z-index: 35;
+    }
     .drawer-mask.show { display: flex; }
     .drawer {
-      width: min(520px, 100%);
-      height: 100vh;
-      padding: 22px;
-      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      width: min(920px, calc(100vw - 40px));
+      max-width: calc(100vw - 40px);
+      max-height: calc(100vh - 40px);
+      min-height: min(720px, calc(100vh - 40px));
+      padding: 0;
+      overflow: hidden;
       background: rgba(255,255,255,.96);
+      border: 1px solid rgba(255,106,0,.14);
+      border-radius: 22px;
       box-shadow: -24px 0 70px rgba(0,0,0,.16);
       backdrop-filter: blur(26px);
     }
-    .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .drawer-head {
+      flex-shrink: 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 22px 22px 16px;
+      border-bottom: 1px solid #FFD9BF;
+    }
     .drawer-title { margin: 0; font-size: 21px; letter-spacing: 0; }
     .drawer-desc { margin: 7px 0 0; color: #6B7280; font-size: 13px; }
+    .drawer-head > div { min-width: 0; }
+    .drawer-desc { overflow-wrap: anywhere; }
     .drawer-close { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #f5f5f7; color: #E94B00; font-size: 22px; cursor: pointer; }
-    .drawer-body { display: grid; gap: 14px; }
+    .drawer-body {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      padding: 18px 22px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
     .drawer-section { padding: 14px; border: 1px solid #FFD9BF; border-radius: 16px; background: #FFF7EF; }
     .drawer-section h4 { margin: 0 0 12px; font-size: 14px; }
-    .drawer-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; margin: 18px -22px -22px; padding: 16px 22px; background: rgba(255,255,255,.94); border-top: 1px solid #FFD9BF; backdrop-filter: blur(18px); }
+    .drawer .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .drawer .form-grid label,
+    .drawer-section,
+    .drawer-pane,
+    .dense-table-wrap { min-width: 0; max-width: 100%; }
+    .drawer input, .drawer textarea, .drawer select { max-width: 100%; }
+    .drawer-actions {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 16px 22px;
+      background: rgba(255,255,255,.96);
+      border-top: 1px solid #FFD9BF;
+      backdrop-filter: blur(18px);
+    }
     .media-list { display: grid; gap: 10px; }
     .media-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px; border: 1px solid #FFD9BF; border-radius: 14px; background: rgba(255,255,255,.82); }
     .media-thumb { width: 58px; height: 58px; border-radius: 12px; object-fit: cover; background: #f5f5f7; border: 1px solid #FFD9BF; }
@@ -452,6 +502,11 @@
       .finance-summary-grid, .finance-filter-row, .finance-filter-row.compact { grid-template-columns: 1fr; }
       .topbar { display: block; }
       .toolbar { margin-top: 14px; }
+      .drawer-mask { align-items: stretch; padding: 12px; }
+      .drawer { width: 100%; max-width: 100%; max-height: calc(100vh - 24px); min-height: 0; border-radius: 18px; }
+      .drawer .form-grid { grid-template-columns: 1fr; }
+      .drawer-actions { justify-content: stretch; }
+      .drawer-actions button { flex: 1; }
     }
   </style>
 </head>
@@ -891,6 +946,7 @@
     let collapsedCategories = JSON.parse(localStorage.getItem("collapsedCategories") || "{}")
     let drawerMode = ""
     let drawerIndex = -1
+    let drawerDirty = false
     const selectedProducts = new Set()
     const defaultCategoryTree = {
       "激光定制": ["照片雕刻", "刻字礼品", "首饰吊牌", "文具刻字", "手机配件", "自带物品加工", "企业LOGO"],
@@ -1536,12 +1592,15 @@
         reader.readAsText(file)
       })
     }
-    function closeDrawer() {
+    function closeDrawer(force = false) {
+      if (!force && drawerDirty && !confirm("当前内容尚未保存，确认关闭吗？")) return false
       $("detailDrawer").classList.remove("show")
       drawerMode = ""
       drawerIndex = -1
+      drawerDirty = false
       $("drawerBody").innerHTML = ""
       $("drawerActions").innerHTML = ""
+      return true
     }
     async function api(path, method = "GET", body) {
       const controller = new AbortController()
@@ -2244,6 +2303,7 @@
         </div>
       `
       $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-product-drawer">保存商品</button>`
+      drawerDirty = false
       $("detailDrawer").classList.add("show")
     }
     function collectProductDrawer() {
@@ -2268,7 +2328,10 @@
     }
     function saveProductDrawer(button) {
       collectProductDrawer()
-      return withButtonLoading(button, "保存中...", () => saveProductsAndRefresh("商品已保存").then(closeDrawer))
+      return withButtonLoading(button, "保存中...", () => saveProductsAndRefresh("商品已保存").then(() => {
+        drawerDirty = false
+        closeDrawer(true)
+      }))
     }
     function openOrderDrawer(index) {
       const order = orders[index]
@@ -2373,6 +2436,7 @@
         </div>
       `
       $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button><button class="primary" data-action="save-order-drawer">保存订单</button>`
+      drawerDirty = false
       $("detailDrawer").classList.add("show")
     }
     function collectOrderDrawer() {
@@ -2392,7 +2456,8 @@
         .then(() => loadAll())
         .then(() => {
           setStatus("订单已保存")
-          closeDrawer()
+          drawerDirty = false
+          closeDrawer(true)
         })
         .catch(error => setStatus(error.message))
     }
@@ -2604,6 +2669,7 @@
           </div>
         </div>`
       $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-store-drawer">保存门店</button>`
+      drawerDirty = false
       $("detailDrawer").classList.add("show")
     }
     function collectStoreDrawer() {
@@ -2632,7 +2698,8 @@
         .then(() => loadAll())
         .then(() => {
           setStatus("门店已保存")
-          closeDrawer()
+          drawerDirty = false
+          closeDrawer(true)
         })
         .catch(error => setStatus(error.message))
     }
@@ -2921,9 +2988,17 @@
     })
     $("reloadBtn").addEventListener("click", () => loadAll().catch(error => setStatus(error.message)))
     $("saveBtn").addEventListener("click", event => withButtonLoading(event.currentTarget, "保存中...", saveCurrent))
-    $("closeDrawer").addEventListener("click", closeDrawer)
+    $("closeDrawer").addEventListener("click", () => closeDrawer())
     $("detailDrawer").addEventListener("click", event => {
-      if (event.target.id === "detailDrawer") closeDrawer()
+      if (event.target.id === "detailDrawer") {
+        setStatus("请使用右上角关闭按钮或底部取消按钮关闭编辑抽屉")
+      }
+    })
+    $("detailDrawer").addEventListener("input", event => {
+      if (event.target.closest(".drawer")) drawerDirty = true
+    })
+    $("detailDrawer").addEventListener("change", event => {
+      if (event.target.closest(".drawer")) drawerDirty = true
     })
     $("addProductBtn").addEventListener("click", () => {
       products.unshift({ id: `P${Date.now()}`, name: "新商品", intro: "", price: "0", costPrice: "0", badge: "new", cover: "keyring", imageUrl: "", galleryImages: [], videoUrl: "", detailImages: [], detailText: "", categories: ["潮玩手办", "潮玩手办/新品上架"], status: "on", stock: "0", isHot: "false", promotionHot: "false", aiPreviewEnabled: "false", aiPreviewType: "gift", rewardEnabled: "true", firstReward: "0", secondReward: "0" })
@@ -3205,7 +3280,7 @@
           startAt: "",
           endAt: ""
         }
-        closeDrawer()
+        if (!closeDrawer()) return
         switchView("stores")
         switchSubview("storeSettlement")
         loadAll().then(() => setStatus("已筛选该门店结算与关联订单收益")).catch(error => setStatus(error.message))
@@ -3331,6 +3406,7 @@
       if (event.target.dataset.action === "add-store-member") {
         const body = $("storeMemberRows")
         if (body) {
+          drawerDirty = true
           body.insertAdjacentHTML("beforeend", `<tr data-store-member-row>
             <td><input data-member-key="phone" value="" placeholder="11位手机号"></td>
             <td><select data-member-key="role"><option value="owner">店主 owner</option><option value="manager">店长 manager</option><option value="staff" selected>店员 staff</option></select></td>
@@ -3342,7 +3418,10 @@
       }
       if (event.target.dataset.action === "remove-store-member") {
         const row = event.target.closest("[data-store-member-row]")
-        if (row && confirm("确认删除该门店成员吗？")) row.remove()
+        if (row && confirm("确认删除该门店成员吗？")) {
+          drawerDirty = true
+          row.remove()
+        }
       }
       if (event.target.dataset.action === "add-media") {
         const key = event.target.dataset.key
@@ -3445,7 +3524,8 @@
           .then(() => loadAll())
           .then(() => {
             setStatus("已拒绝售后申请")
-            closeDrawer()
+            drawerDirty = false
+            closeDrawer(true)
           })
           .catch(error => setStatus(error.message))
       }
