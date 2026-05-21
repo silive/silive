@@ -1,12 +1,31 @@
 @import "../store.wxss";
 
+.store-page {
+  padding-bottom: 180rpx;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+}
+
+.tab {
+  width: 100%;
+  padding: 0 12rpx;
+}
+
 .batch-bar {
   margin-top: 18rpx;
-  padding: 18rpx;
+  padding: 18rpx 20rpx;
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  justify-content: space-between;
+  gap: 16rpx;
   box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .batch-text {
@@ -17,10 +36,18 @@
   line-height: 1.4;
 }
 
+.batch-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
 .batch-link {
   height: 58rpx;
   margin: 0;
-  padding: 0 18rpx;
+  padding: 0 16rpx;
+  min-width: 96rpx;
   border-radius: 999rpx;
   background: #FFF3E8;
   color: #FF5A00;
@@ -34,15 +61,44 @@
   white-space: nowrap;
 }
 
+.pickup-order-card {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.pickup-order-card.batch-card {
+  padding-top: 62rpx;
+}
+
+.store-order-row {
+  display: grid;
+  grid-template-columns: 140rpx minmax(0, 1fr);
+  gap: 18rpx;
+  width: 100%;
+  max-width: 100%;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+
 .store-order-row.batching {
-  grid-template-columns: auto 112rpx minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: 140rpx minmax(0, 1fr);
+  align-items: flex-start;
 }
 
 .select-dot {
+  position: absolute;
+  top: 18rpx;
+  right: 18rpx;
+  z-index: 2;
   width: 42rpx;
   height: 42rpx;
   min-width: 42rpx;
+  max-width: 42rpx;
+  min-height: 42rpx;
+  max-height: 42rpx;
   margin: 0;
   padding: 0;
   border-radius: 50%;
@@ -68,6 +124,57 @@
   background: #f3f4f6;
 }
 
+.store-order-cover {
+  width: 140rpx;
+  height: 140rpx;
+  min-width: 140rpx;
+  min-height: 140rpx;
+  max-width: 140rpx;
+  max-height: 140rpx;
+  border-radius: 20rpx;
+  overflow: hidden;
+  background: #FFF3E8;
+}
+
+.store-order-image,
+.store-order-placeholder {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.store-order-info {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.order-head {
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.order-head > view:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.order-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-sub {
+  word-break: break-all;
+}
+
+.pill {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .pickup-actions {
   margin-top: 14rpx;
 }
@@ -90,19 +197,29 @@
 }
 
 .batch-footer {
-  position: sticky;
-  bottom: 24rpx;
-  margin-top: 24rpx;
+  position: fixed;
+  left: 28rpx;
+  right: 28rpx;
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
+  bottom: calc(24rpx + constant(safe-area-inset-bottom));
+  z-index: 20;
   padding: 16rpx;
-  border-radius: 28rpx;
+  border-radius: 30rpx;
   background: rgba(255, 255, 255, .92);
   box-shadow: 0 18rpx 48rpx rgba(255,106,0,.14);
   box-sizing: border-box;
+  backdrop-filter: blur(10px);
 }
 
 .batch-submit {
   width: 100%;
   margin-top: 0;
+}
+
+.batch-submit.disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  box-shadow: none;
 }
 
 button::after {

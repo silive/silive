@@ -9,15 +9,17 @@
   </view>
   <view class="batch-bar" style="{{cardStyle}}">
     <view class="batch-text">{{batchMode ? ('已选 ' + selectedOrderIds.length + ' 单') : '配送中订单可批量通知客户自提'}}</view>
-    <button class="batch-link" bindtap="toggleBatchMode">{{batchMode ? '退出多选' : '多选模式'}}</button>
-    <button wx:if="{{batchMode}}" class="batch-link" bindtap="selectAllNotifiable">全选可通知</button>
+    <view class="batch-actions">
+      <button class="batch-link" bindtap="toggleBatchMode">{{batchMode ? '退出' : '多选模式'}}</button>
+      <button wx:if="{{batchMode}}" class="batch-link" bindtap="selectAllNotifiable">全选</button>
+    </view>
   </view>
   <view class="list">
-    <view class="order-card" style="{{cardStyle}}" wx:for="{{visibleOrders}}" wx:key="id">
+    <view class="order-card pickup-order-card {{batchMode ? 'batch-card' : ''}}" style="{{cardStyle}}" wx:for="{{visibleOrders}}" wx:key="id">
+      <button wx:if="{{batchMode}}" class="select-dot {{item.selected ? 'selected' : ''}} {{!item.canNotifyPickup ? 'disabled' : ''}}" data-id="{{item.id}}" bindtap="toggleSelect">
+        <text wx:if="{{item.selected}}">✓</text>
+      </button>
       <view class="store-order-row {{batchMode ? 'batching' : ''}}">
-        <button wx:if="{{batchMode}}" class="select-dot {{item.selected ? 'selected' : ''}} {{!item.canNotifyPickup ? 'disabled' : ''}}" data-id="{{item.id}}" bindtap="toggleSelect">
-          <text wx:if="{{item.selected}}">✓</text>
-        </button>
         <view class="store-order-cover">
           <image wx:if="{{item.productImage}}" class="store-order-image" src="{{item.productImage}}" mode="aspectFill" lazy-load />
           <view wx:else class="store-order-placeholder">非常智造</view>
@@ -37,6 +39,8 @@
     </view>
   </view>
   <view wx:if="{{batchMode}}" class="batch-footer">
-    <button class="primary-btn batch-submit" bindtap="batchNotify" loading="{{batchLoading}}">批量通知自提</button>
+    <button class="primary-btn batch-submit {{selectedOrderIds.length ? '' : 'disabled'}}" bindtap="batchNotify" loading="{{batchLoading}}" disabled="{{!selectedOrderIds.length || batchLoading}}">
+      {{selectedOrderIds.length ? '批量通知自提' : '请选择订单'}}
+    </button>
   </view>
 </view>
