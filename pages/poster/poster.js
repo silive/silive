@@ -23,26 +23,18 @@ function downloadImage(url) {
   })
 }
 
-function drawCover(ctx, image, x, y, width, height) {
+function drawImageContain(ctx, image, x, y, width, height) {
   if (!image || !image.path) return false
   if (!image.width || !image.height) {
     ctx.drawImage(image.path, x, y, width, height)
     return true
   }
-  const sourceRatio = image.width / image.height
-  const targetRatio = width / height
-  let sx = 0
-  let sy = 0
-  let sw = image.width
-  let sh = image.height
-  if (sourceRatio > targetRatio) {
-    sw = image.height * targetRatio
-    sx = (image.width - sw) / 2
-  } else {
-    sh = image.width / targetRatio
-    sy = (image.height - sh) / 2
-  }
-  ctx.drawImage(image.path, sx, sy, sw, sh, x, y, width, height)
+  const scale = Math.min(width / image.width, height / image.height)
+  const drawWidth = image.width * scale
+  const drawHeight = image.height * scale
+  const drawX = x + (width - drawWidth) / 2
+  const drawY = y + (height - drawHeight) / 2
+  ctx.drawImage(image.path, drawX, drawY, drawWidth, drawHeight)
   return true
 }
 
@@ -112,7 +104,7 @@ Page({
         } else {
           ctx.setFillStyle("#FFF3E8")
           ctx.fillRoundRect ? ctx.fillRoundRect(72, 76, 606, 360, 28) : ctx.fillRect(72, 76, 606, 360)
-          const hasShareImage = drawCover(ctx, shareImage, 72, 76, 606, 360)
+          const hasShareImage = drawImageContain(ctx, shareImage, 72, 76, 606, 360)
           if (!hasShareImage) {
             const grad = ctx.createLinearGradient(72, 76, 678, 376)
             grad.addColorStop(0, "#FF5A00")
