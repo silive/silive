@@ -33,6 +33,7 @@
     </view>
     <view>
       <view class="wallet-pending">当前待结算 ¥{{storeStats.payableTotal || '0.00'}}</view>
+      <view class="wallet-pending">累计已结算 ¥{{storeStats.settledTotal || '0.00'}}</view>
       <view class="wallet-note">订单与收益请进入门店中心查看</view>
     </view>
   </view>

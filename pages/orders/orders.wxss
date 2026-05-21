@@ -37,9 +37,9 @@
 
 .login-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 22rpx;
   margin-top: 28rpx;
   padding: 26rpx;
   border-radius: 24rpx;
@@ -48,14 +48,14 @@
 }
 
 .login-copy {
-  flex: 1;
   min-width: 0;
+  text-align: left;
 }
 
 .login-action-block {
-  width: 256rpx;
-  max-width: 44%;
-  flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .login-title {
@@ -72,11 +72,16 @@
 }
 
 .orders-login-agreement {
-  margin-top: 10rpx;
+  width: 100%;
+  max-width: 560rpx;
+  margin: 12rpx auto 0;
   color: #8b8582;
-  font-size: 19rpx;
+  font-size: 21rpx;
   line-height: 1.5;
   text-align: center;
+  white-space: normal;
+  word-break: break-word;
+  box-sizing: border-box;
 }
 
 .protocol-link {
@@ -87,6 +92,8 @@
 
 .login-btn {
   width: 100%;
+  max-width: 520rpx;
+  margin: 0 auto;
   min-width: 0;
   height: 72rpx;
   padding: 0 18rpx;
