@@ -6,7 +6,7 @@ Component({
       observer(value) {
         if (value) {
           clearTimeout(this._closeTimer)
-          this.setData({ rendered: true, leaving: false })
+          this.setData({ rendered: true, leaving: false, agreed: false })
           return
         }
         if (this.data.rendered) this.beginClose(false)
@@ -36,7 +36,8 @@ Component({
 
   data: {
     rendered: false,
-    leaving: false
+    leaving: false,
+    agreed: false
   },
 
   lifetimes: {
@@ -48,7 +49,22 @@ Component({
   methods: {
     noop() {},
 
+    toggleAgreement() {
+      this.setData({ agreed: !this.data.agreed })
+    },
+
+    handleAgreementRequired() {
+      wx.showToast({
+        title: "请先阅读并同意用户服务协议和隐私政策",
+        icon: "none"
+      })
+    },
+
     handlePhoneNumber(event) {
+      if (!this.data.agreed) {
+        this.handleAgreementRequired()
+        return
+      }
       const detail = event.detail || {}
       console.log("[login] getPhoneNumber detail", {
         errMsg: detail.errMsg,
@@ -66,7 +82,7 @@ Component({
       clearTimeout(this._closeTimer)
       this.setData({ leaving: true })
       this._closeTimer = setTimeout(() => {
-        this.setData({ rendered: false, leaving: false })
+        this.setData({ rendered: false, leaving: false, agreed: false })
         if (emitClose) this.triggerEvent("close")
       }, 180)
     }

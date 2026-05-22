@@ -15,7 +15,7 @@
     <view class="login-action-block">
       <button class="login-btn" style="{{primaryButtonStyle}}" catchtap="showLoginSheet">手机号快捷登录</button>
       <view class="orders-login-agreement">
-        登录即表示你已阅读并同意
+        登录前请阅读
         <navigator class="protocol-link" url="/pages/agreement/service">《用户服务协议》</navigator>
         和
         <navigator class="protocol-link" url="/pages/agreement/privacy">《隐私政策》</navigator>

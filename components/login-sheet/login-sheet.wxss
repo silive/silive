@@ -63,12 +63,52 @@
   font-weight: 800;
 }
 
+.login-phone-btn-disabled {
+  opacity: .78;
+}
+
 .login-agreement {
-  margin-top: 18rpx;
+  margin-top: 22rpx;
   color: #8b8582;
-  font-size: 22rpx;
+  font-size: 24rpx;
   line-height: 1.55;
-  text-align: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4rpx;
+  text-align: left;
+}
+
+.login-check {
+  width: 40rpx;
+  height: 40rpx;
+  margin-right: 4rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-check-icon {
+  width: 30rpx;
+  height: 30rpx;
+  border: 2rpx solid rgba(255, 106, 0, .45);
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 1;
+  background: #fff;
+}
+
+.login-check-icon.checked {
+  border-color: #FF5A00;
+  background: linear-gradient(135deg, #FF7A00, #FF4D00);
 }
 
 .login-agreement-link {

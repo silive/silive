@@ -3,13 +3,17 @@
     <view class="login-panel {{leaving ? 'leaving' : ''}}" catchtap="noop">
       <view class="login-title">{{title}}</view>
       <view class="login-desc">{{desc}}</view>
-      <button class="login-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="handlePhoneNumber" loading="{{loading}}">{{confirmText}}</button>
       <view class="login-agreement">
-        登录即表示你已阅读并同意
+        <view class="login-check" bindtap="toggleAgreement" aria-role="checkbox" aria-checked="{{agreed}}">
+          <view class="login-check-icon {{agreed ? 'checked' : ''}}">{{agreed ? '✓' : ''}}</view>
+        </view>
+        <text>我已阅读并同意</text>
         <navigator class="login-agreement-link" url="/pages/agreement/service">《用户服务协议》</navigator>
         和
         <navigator class="login-agreement-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
       </view>
+      <button wx:if="{{!agreed}}" class="login-phone-btn login-phone-btn-disabled" bindtap="handleAgreementRequired" loading="{{loading}}">{{confirmText}}</button>
+      <button wx:else class="login-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="handlePhoneNumber" loading="{{loading}}">{{confirmText}}</button>
       <button class="login-cancel-btn" bindtap="handleClose">{{cancelText}}</button>
     </view>
   </view>
