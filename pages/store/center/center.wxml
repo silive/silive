@@ -11,7 +11,8 @@
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.monthReferralOrders || 0}}</view><view class="stat-label">本月推广订单</view></view>
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.todayPickupOrders || 0}}</view><view class="stat-label">今日自提订单</view></view>
     <view class="stat-card" style="{{cardStyle}}"><view class="stat-value">{{stats.pendingPickupOrders || 0}}</view><view class="stat-label">待自提订单</view></view>
-    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.payableTotal || '0.00'}}</view><view class="stat-label">当前待结算</view></view>
+    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.payableTotal || '0.00'}}</view><view class="stat-label">当前可结算</view></view>
+    <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.estimatedTotal || '0.00'}}</view><view class="stat-label">预计收益</view></view>
     <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.chargebackTotal || '0.00'}}</view><view class="stat-label">当前退款扣回</view></view>
     <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.actualPayable || '0.00'}}</view><view class="stat-label">本次预计到账</view></view>
     <view wx:if="{{canViewEarnings}}" class="stat-card wide" style="{{cardStyle}}"><view class="stat-value">¥{{stats.settledTotal || '0.00'}}</view><view class="stat-label">累计已结算</view></view>

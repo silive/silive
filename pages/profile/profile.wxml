@@ -22,8 +22,10 @@
       <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
     </view>
     <view>
-      <view class="wallet-pending">当前待结算 ¥{{pendingReward}}</view>
-      <view class="wallet-note">本次预计到账，平台人工审核后结算</view>
+      <view class="wallet-pending">当前可结算 ¥{{pendingReward}}</view>
+      <view class="wallet-pending">预计奖励 ¥{{estimatedReward}}</view>
+      <view class="wallet-pending">累计已结算 ¥{{shoppingMoney}}</view>
+      <view class="wallet-note">订单完成后进入可结算</view>
     </view>
   </view>
   <view wx:elif="{{loggedIn && storeChecked && isStoreManager}}" class="wallet-card store-wallet-card" style="{{walletCardStyle}}">
@@ -32,8 +34,9 @@
       <view class="wallet-value">¥{{storeStats.actualPayable || storeStats.payableTotal || '0.00'}}</view>
     </view>
     <view>
+      <view class="wallet-pending">预计收益 ¥{{storeStats.estimatedTotal || '0.00'}}</view>
       <view class="wallet-pending">累计已结算 ¥{{storeStats.settledTotal || '0.00'}}</view>
-      <view class="wallet-note">订单与收益请进入门店中心查看</view>
+      <view class="wallet-note">完成自提/订单确认后进入可结算</view>
     </view>
   </view>
   <view wx:elif="{{promotionEnabled && !loggedIn}}" class="reward-login-tip" style="{{cardStyle}}">

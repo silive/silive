@@ -13,6 +13,7 @@ Page({
     loginLoading: false,
     shoppingMoney: "0.00",
     pendingReward: "0.00",
+    estimatedReward: "0.00",
     actualPayable: "0.00",
     themeStyle: "",
     themeClass: "theme-skin01",
@@ -243,7 +244,7 @@ Page({
   loadPromotionSummary() {
     const phone = wx.getStorageSync("memberPhone")
     if (!phone) {
-      this.setData({ shoppingMoney: "0.00", pendingReward: "0.00", actualPayable: "0.00" })
+      this.setData({ shoppingMoney: "0.00", pendingReward: "0.00", estimatedReward: "0.00", actualPayable: "0.00" })
       return
     }
     request("/api/promotion/summary")
@@ -251,6 +252,7 @@ Page({
         this.setData({
           shoppingMoney: data.profile?.settledTotal || data.profile?.shoppingMoney || "0.00",
           pendingReward: data.profile?.payableTotal || data.profile?.pendingReward || "0.00",
+          estimatedReward: data.profile?.estimatedTotal || "0.00",
           actualPayable: data.profile?.actualPayable || data.profile?.pendingReward || "0.00"
         })
       })

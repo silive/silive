@@ -2292,7 +2292,7 @@ function normalizeOrder(order, index) {
     pickupServiceFee: order.pickupServiceFee == null || order.pickupServiceFee === "" ? "0.00" : String(order.pickupServiceFee),
     supplierSettlementAmount: order.supplierSettlementAmount == null || order.supplierSettlementAmount === "" ? "0.00" : String(order.supplierSettlementAmount),
     customCommissionAmount: order.customCommissionAmount == null || order.customCommissionAmount === "" ? "0.00" : String(order.customCommissionAmount),
-    storeSettlementStatus: order.storeSettlementStatus || "unsettled",
+    storeSettlementStatus: order.storeSettlementStatus || "pending_confirm",
     ...orderProductImageFields(order, {})
   }
 }
@@ -2478,11 +2478,11 @@ function normalizeSettlementRecord(record = {}, index = 0) {
   const settledAt = record.settledAt || record.settled_at || ""
   const status = normalizeSettlementStatus(record.status)
   const isStoreMemberOrder = boolValue(record.isStoreMemberOrder ?? record.is_store_member_order)
-  const storeOrderType = record.storeOrderType || record.store_order_type || (isStoreMemberOrder ? "store_self" : (isStoreReferralSettlement(record.type || "") ? "store_external" : ""))
+  const storeOrderType = record.storeOrderType || record.store_order_type || (isStoreMemberOrder ? "store_self" : (isStoreReferralSettlement(record.type || "") ? "store_external" : isPickupServiceSettlement(record.type || "") ? "pickup_service" : "store_external"))
   const storeOperatorPhone = normalizePhone(record.storeOperatorPhone || record.store_operator_phone || "")
   const rawStoreOperatorRole = record.storeOperatorRole || record.store_operator_role || ""
   const storeOperatorRole = rawStoreOperatorRole ? normalizeStoreMemberRole(rawStoreOperatorRole) : ""
-  const storeOrderTypeText = storeOrderSourceText(storeOrderType, isStoreMemberOrder) || "未知"
+  const storeOrderTypeText = storeOrderSourceText(storeOrderType, isStoreMemberOrder) || "外部顾客"
   return {
     id: String(record.id || `SSR${Date.now()}${index}`),
     storeId: record.storeId || record.store_id || "",
@@ -2657,6 +2657,7 @@ function boolValue(value) {
 function storeOrderSourceText(type, isMemberOrder = false) {
   if (type === "store_self" || isMemberOrder) return "门店自营"
   if (type === "store_external") return "外部顾客"
+  if (type === "pickup_service") return "到店自提"
   return type ? String(type) : ""
 }
 
@@ -2945,44 +2946,88 @@ function isChargebackRecord(record = {}) {
 
 function normalizeRewardStatus(status) {
   const text = String(status || "").trim()
+  if (["pending_confirm", "pending", "待确认", "预计收益"].includes(text)) return "pending_confirm"
+  if (["chargeback", "refunded", "退款扣回"].includes(text)) return "chargeback"
   if (["settled", "已结算", "已发放"].includes(text)) return "settled"
   if (["cancelled", "canceled", "已取消", "已扣回", "扣回"].includes(text)) return "cancelled"
   return "unsettled"
 }
 
 function rewardStatusText(status) {
+  if (status === "pending_confirm") return "待确认"
   if (status === "settled") return "已结算"
+  if (status === "chargeback" || status === "refunded") return "退款扣回"
   if (status === "cancelled") return "已取消"
   return "未结算"
 }
 
 function normalizeSettlementStatus(status) {
   const text = String(status || "").trim()
+  if (["pending_confirm", "pending", "待确认", "预计收益"].includes(text)) return "pending_confirm"
+  if (["chargeback", "refunded", "退款扣回"].includes(text)) return "chargeback"
   if (["settled", "已结算"].includes(text)) return "settled"
   if (["cancelled", "canceled", "已取消", "invalid", "失效"].includes(text)) return "cancelled"
   return "unsettled"
 }
 
 function settlementStatusText(status) {
+  if (status === "pending_confirm") return "待确认"
   if (status === "settled") return "已结算"
+  if (status === "chargeback" || status === "refunded") return "退款扣回"
   if (status === "cancelled") return "已取消"
   return "未结算"
 }
 
-function buildSettlementSummary(records = []) {
+function isOrderRewardConfirmed(order = {}) {
+  if (!order) return false
+  const status = String(order.status || "").trim().toLowerCase()
+  const pickupStatus = String(order.pickupStatus || order.pickup_status || "").trim().toLowerCase()
+  return ["已完成", "completed", "complete", "done"].includes(status) ||
+    ["picked_up", "pickedup", "已自提"].includes(pickupStatus) ||
+    !!order.completedAt ||
+    !!order.completed_at ||
+    !!order.pickedUpAt ||
+    !!order.picked_up_at
+}
+
+function buildOrderLookup(orders = []) {
+  const lookup = new Map()
+  ;(Array.isArray(orders) ? orders : []).forEach(order => {
+    if (order?.id) lookup.set(order.id, order)
+  })
+  return lookup
+}
+
+function effectiveSettlementStatus(record = {}, orderLookup = new Map()) {
+  const status = normalizeSettlementStatus(record.status)
+  const amount = Number(record.amount || 0)
+  if (status === "settled" || status === "cancelled") return status
+  if (status === "chargeback" || amount < 0 || isChargebackRecord(record)) return "chargeback"
+  const order = record.orderId ? orderLookup.get(record.orderId) : null
+  if (record.orderId && order) return isOrderRewardConfirmed(order) ? "unsettled" : "pending_confirm"
+  if (status === "pending_confirm") return "pending_confirm"
+  return "unsettled"
+}
+
+function buildSettlementSummary(records = [], orders = []) {
   const list = Array.isArray(records) ? records : []
+  const orderLookup = orders instanceof Map ? orders : buildOrderLookup(orders)
   const settledTotal = list
-    .filter(record => record.status === "settled" && Number(record.amount || 0) > 0)
+    .filter(record => effectiveSettlementStatus(record, orderLookup) === "settled" && Number(record.amount || 0) > 0)
+    .reduce((sum, record) => sum + Number(record.amount || 0), 0)
+  const estimatedTotal = list
+    .filter(record => effectiveSettlementStatus(record, orderLookup) === "pending_confirm" && Number(record.amount || 0) > 0)
     .reduce((sum, record) => sum + Number(record.amount || 0), 0)
   const payableTotal = list
-    .filter(record => record.status === "unsettled" && Number(record.amount || 0) > 0)
+    .filter(record => effectiveSettlementStatus(record, orderLookup) === "unsettled" && Number(record.amount || 0) > 0)
     .reduce((sum, record) => sum + Number(record.amount || 0), 0)
   const chargebackTotal = Math.abs(list
-    .filter(record => record.status === "unsettled" && Number(record.amount || 0) < 0)
+    .filter(record => effectiveSettlementStatus(record, orderLookup) === "chargeback")
     .reduce((sum, record) => sum + Number(record.amount || 0), 0))
   const actualPayable = Math.max(payableTotal - chargebackTotal, 0)
   const remainingChargeback = Math.max(chargebackTotal - payableTotal, 0)
   return {
+    estimatedTotal: money(estimatedTotal),
     settledTotal: money(settledTotal),
     payableTotal: money(payableTotal),
     chargebackTotal: money(chargebackTotal),
@@ -2992,6 +3037,36 @@ function buildSettlementSummary(records = []) {
     unsettledAmount: money(payableTotal),
     pendingReward: money(payableTotal)
   }
+}
+
+function decorateSettlementRecord(record = {}, orders = []) {
+  const orderLookup = orders instanceof Map ? orders : buildOrderLookup(orders)
+  const status = effectiveSettlementStatus(record, orderLookup)
+  return {
+    ...record,
+    effectiveStatus: status,
+    statusText: settlementStatusText(status)
+  }
+}
+
+function decorateRewardRecord(record = {}, orders = []) {
+  const orderLookup = orders instanceof Map ? orders : buildOrderLookup(orders)
+  const status = effectiveSettlementStatus(record, orderLookup)
+  return {
+    ...record,
+    effectiveStatus: status,
+    statusText: rewardStatusText(status)
+  }
+}
+
+function isFinancialRecordReadyToSettle(record = {}, orders = []) {
+  const effective = effectiveSettlementStatus(record, orders instanceof Map ? orders : buildOrderLookup(orders))
+  return effective === "unsettled" || effective === "chargeback"
+}
+
+function includeSettlementRecordForStats(record = {}, activeOrderIds = new Set()) {
+  if (normalizeSettlementStatus(record.status) === "chargeback" || isChargebackRecord(record)) return true
+  return !record.orderId || activeOrderIds.has(record.orderId)
 }
 
 async function query(sql, params) {
@@ -3656,7 +3731,7 @@ async function getOrders(filters = {}) {
     pickupServiceFee: row.pickup_service_fee,
     supplierSettlementAmount: row.supplier_settlement_amount,
     customCommissionAmount: row.custom_commission_amount,
-    storeSettlementStatus: row.store_settlement_status || "unsettled"
+    storeSettlementStatus: row.store_settlement_status || "pending_confirm"
   }, 0), products))
   return filters.publicOnly ? orders.map(publicOrderView) : orders
 }
@@ -3667,6 +3742,7 @@ async function saveOrders(orders) {
     const existing = readJsonFile(ordersFile, []).map(normalizeOrder)
     const merged = [...existing]
     const invalidateOrderIds = []
+    const confirmOrderIds = []
     for (const order of list) {
       const index = merged.findIndex(item => item.id === order.id)
       if (index >= 0) {
@@ -3675,22 +3751,31 @@ async function saveOrders(orders) {
         if (next.status === "已完成" && previous.status !== "已完成") next.completedAt = formatDateTime(new Date())
         if (next.status === "已退款" && previous.status !== "已退款") next.refundAt = formatDateTime(new Date())
         if (shouldInvalidateStoreSettlementForOrderChange(previous, next)) invalidateOrderIds.push(next.id)
+        if (isOrderRewardConfirmed(next)) confirmOrderIds.push(next.id)
         merged[index] = next
       }
-      else merged.push(order)
+      else {
+        if (isOrderRewardConfirmed(order)) confirmOrderIds.push(order.id)
+        merged.push(order)
+      }
     }
     writeJsonFile(ordersFile, merged)
     await processRewardState()
     for (const orderId of [...new Set(invalidateOrderIds)]) {
       await invalidateStoreSettlementRecordsForOrder(orderId)
     }
+    for (const orderId of [...new Set(confirmOrderIds)]) {
+      await confirmOrderRewards(orderId)
+    }
     return list
   }
   const previousOrders = await getOrders()
   const invalidateOrderIds = []
+  const confirmOrderIds = []
   for (const order of list) {
     const previousOrder = previousOrders.find(item => item.id === order.id)
     if (previousOrder && shouldInvalidateStoreSettlementForOrderChange(previousOrder, order)) invalidateOrderIds.push(order.id)
+    if (isOrderRewardConfirmed(order)) confirmOrderIds.push(order.id)
     const orderParams = {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -3784,6 +3869,9 @@ async function saveOrders(orders) {
   await processRewardState()
   for (const orderId of [...new Set(invalidateOrderIds)]) {
     await invalidateStoreSettlementRecordsForOrder(orderId)
+  }
+  for (const orderId of [...new Set(confirmOrderIds)]) {
+    await confirmOrderRewards(orderId)
   }
   return list
 }
@@ -3956,7 +4044,7 @@ async function createStoreSettlementRecordsForOrder(order) {
       commissionType: referrerStore.referralCommissionType,
       commissionValue: referrerStore.referralCommissionValue,
       orderPaidAmount: order.amount,
-      status: order.storeSettlementStatus || "unsettled",
+      status: order.storeSettlementStatus || "pending_confirm",
       description: `推广佣金：${order.productName}`,
       ...sourceMeta,
       createdAt
@@ -3973,7 +4061,7 @@ async function createStoreSettlementRecordsForOrder(order) {
       commissionType: pickupStore.pickupFeeType,
       commissionValue: pickupStore.pickupFeeValue,
       orderPaidAmount: order.amount,
-      status: order.storeSettlementStatus || "unsettled",
+      status: order.storeSettlementStatus || "pending_confirm",
       description: `自提服务费：${order.productName}`,
       ...sourceMeta,
       createdAt
@@ -4131,16 +4219,25 @@ async function markPickupOrdersArrivedForStore(store, orderIds = []) {
 }
 
 async function getStoreSettlementSummary(filters = {}) {
+  const { status: statusFilter = "", ...recordFilters } = filters
   const [stores, orders, records] = await Promise.all([
     getPartnerStores(),
     getOrders(),
-    getStoreSettlementRecords(filters)
+    getStoreSettlementRecords(recordFilters)
   ])
+  const orderLookup = buildOrderLookup(orders)
+  const effectiveRecords = records
+    .map(record => decorateSettlementRecord(record, orderLookup))
+    .filter(record => {
+      if (!statusFilter) return true
+      if (statusFilter === "chargeback") return record.effectiveStatus === "chargeback"
+      return record.effectiveStatus === statusFilter
+    })
   const targetStores = filters.storeId ? stores.filter(store => store.id === filters.storeId) : stores
   const summary = targetStores.map(store => {
-    const storeRecords = records.filter(record => record.storeId === store.id)
+    const storeRecords = effectiveRecords.filter(record => record.storeId === store.id)
     const activeStoreRecords = storeRecords.filter(record => record.status !== "cancelled")
-    const settlementSummary = buildSettlementSummary(activeStoreRecords)
+    const settlementSummary = buildSettlementSummary(activeStoreRecords, orderLookup)
     const referralRecords = activeStoreRecords.filter(record => isStoreReferralSettlement(record.type))
     const pickupRecords = activeStoreRecords.filter(record => isPickupServiceSettlement(record.type))
     const supplierRecords = activeStoreRecords.filter(record => record.type === "supplier")
@@ -4159,7 +4256,7 @@ async function getStoreSettlementSummary(filters = {}) {
       ...settlementSummary
     }
   })
-  return { summary, totals: buildSettlementSummary(records.filter(record => record.status !== "cancelled")), records }
+  return { summary, totals: buildSettlementSummary(effectiveRecords.filter(record => record.status !== "cancelled"), orderLookup), records: effectiveRecords }
 }
 
 async function getStoreSession(req) {
@@ -4320,8 +4417,8 @@ function storeCenterStats(store, orders, records) {
   const paidOrderIds = new Set(paidOrders.map(order => order.id))
   const referralOrders = paidOrders.filter(order => order.referrerStoreId === store.id)
   const pickupOrders = paidOrders.filter(order => order.pickupStoreId === store.id && isPickupOrder(order))
-  const validRecords = records.filter(record => !record.orderId || paidOrderIds.has(record.orderId))
-  const settlementSummary = buildSettlementSummary(validRecords.filter(record => record.status !== "cancelled"))
+  const validRecords = records.filter(record => includeSettlementRecordForStats(record, paidOrderIds))
+  const settlementSummary = buildSettlementSummary(validRecords.filter(record => record.status !== "cancelled"), paidOrders)
   return {
     todayReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(today)).length,
     monthReferralOrders: referralOrders.filter(order => String(order.createdAt || "").startsWith(month)).length,
@@ -4494,7 +4591,7 @@ async function createOrder(data) {
     pickupServiceFee: income.pickupServiceFee,
     supplierSettlementAmount: "0.00",
     customCommissionAmount: "0.00",
-    storeSettlementStatus: "unsettled"
+    storeSettlementStatus: "pending_confirm"
   }, 0)
   await ensureCustomerFromOrder(order)
   if (!order.referrerStoreId) await bindPromotionFromOrder(order)
@@ -5057,6 +5154,40 @@ async function invalidateStoreSettlementRecordsForOrder(orderId) {
   return records
 }
 
+async function confirmOrderRewards(orderId) {
+  const order = (await getOrders()).find(item => item.id === orderId)
+  if (!order || !isOrderRewardConfirmed(order) || isOrderRefunded(order)) return { changed: false }
+  const now = formatDateTime(new Date())
+  let changed = false
+  const rewardRecords = await getRewardRecords()
+  for (const record of rewardRecords) {
+    if (record.orderId !== orderId || isChargebackRecord(record)) continue
+    if (record.status === "pending_confirm") {
+      record.status = "unsettled"
+      record.releaseAt = record.releaseAt || now
+      record.updatedAt = now
+      changed = true
+    }
+  }
+  if (changed) await saveRewardRecords(rewardRecords)
+
+  let settlementChanged = false
+  const settlementRecords = await getStoreSettlementRecords()
+  for (const record of settlementRecords) {
+    if (record.orderId !== orderId || isChargebackRecord(record)) continue
+    if (record.status === "pending_confirm") {
+      record.status = "unsettled"
+      record.updatedAt = now
+      settlementChanged = true
+    }
+  }
+  if (settlementChanged) await saveStoreSettlementRecords(settlementRecords)
+  if (changed || settlementChanged) {
+    console.log("[settlement-confirm] order rewards confirmed", { orderId, rewardChanged: changed, settlementChanged })
+  }
+  return { changed: changed || settlementChanged }
+}
+
 async function getCustomers() {
   if (!pool) return readJsonFile(customersFile, []).map(normalizeCustomer)
   const rows = await query("SELECT * FROM customers ORDER BY last_contact DESC, id ASC")
@@ -5370,7 +5501,7 @@ async function createRewardsForOrder(order) {
       level,
       type: level === 2 ? "level2" : "level1",
       amount,
-      status: "unsettled",
+      status: "pending_confirm",
       releaseAt: "",
       createdAt: formatDateTime(new Date())
     }, existing.length)
@@ -5409,6 +5540,7 @@ async function ensureReferralRewardRecords() {
       await createRewardsForOrder(order)
       personalOrdersChecked += 1
     }
+    if (isOrderRewardConfirmed(order)) await confirmOrderRewards(order.id)
   }
   console.log("[referral-settlement-backfill]", {
     paidStoreReferralOrdersChecked: storeOrdersChecked,
@@ -5427,18 +5559,22 @@ async function processRewardState() {
     if (!order) continue
     const refunded = order.status === "已退款" || order.paymentStatus === "已退款" || order.afterSalesStatus === "refunded"
     if (refunded && record.status !== "cancelled") {
+      if (record.status === "settled") continue
       record.status = "cancelled"
       record.cancelReason = record.cancelReason || "订单已退款，推广奖励失效"
       record.updatedAt = formatDateTime(now)
       changed = true
       continue
     }
-    if (record.status === "unsettled" && order.status === "已完成") {
-      if (!record.releaseAt) {
-        record.releaseAt = addDays(order.completedAt || now, 7)
-        record.updatedAt = formatDateTime(now)
-        changed = true
-      }
+    if (record.status === "pending_confirm" && isOrderRewardConfirmed(order)) {
+      record.status = "unsettled"
+      record.releaseAt = record.releaseAt || addDays(order.completedAt || now, 7)
+      record.updatedAt = formatDateTime(now)
+      changed = true
+    } else if (record.status === "unsettled" && isOrderRewardConfirmed(order) && !record.releaseAt) {
+      record.releaseAt = addDays(order.completedAt || now, 7)
+      record.updatedAt = formatDateTime(now)
+      changed = true
     }
   }
   if (changed) await saveRewardRecords(records)
@@ -5454,8 +5590,10 @@ async function getPromotionSummary(phone) {
   const invited = relations.filter(item => normalizePhone(item.inviterPhone) === phone)
   const orders = await getOrders()
   const inviteCode = customer.inviteCode || inviteCodeFor(phone)
-  const myRewards = records.filter(item => normalizePhone(item.promoterPhone) === phone)
-  const rewardSummary = buildSettlementSummary(myRewards.filter(item => item.status !== "cancelled"))
+  const myRewards = records
+    .filter(item => normalizePhone(item.promoterPhone) === phone)
+    .map(item => decorateRewardRecord(item, orders))
+  const rewardSummary = buildSettlementSummary(myRewards.filter(item => item.status !== "cancelled"), orders)
   const rewardOrderIds = new Set(myRewards.filter(item => item.orderId).map(item => item.orderId))
   const rewardOrders = orders.filter(order => rewardOrderIds.has(order.id) && !order.referrerStoreId)
   const inviteAmount = rewardOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
@@ -5474,7 +5612,7 @@ async function getPromotionSummary(phone) {
       inviteQrText: `非常智造 邀请码：${inviteCode}`
     },
     invited,
-    rewards: myRewards.map(item => ({ ...item, statusText: rewardStatusText(item.status) })),
+    rewards: myRewards,
     orders: rewardOrders
   }
 }
@@ -5723,7 +5861,7 @@ async function initDb() {
   await ensureColumn("orders", "pickup_service_fee", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "supplier_settlement_amount", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "custom_commission_amount", "DECIMAL(10,2) DEFAULT 0")
-  await ensureColumn("orders", "store_settlement_status", "VARCHAR(30) DEFAULT 'unsettled'")
+  await ensureColumn("orders", "store_settlement_status", "VARCHAR(30) DEFAULT 'pending_confirm'")
   await query(`CREATE TABLE IF NOT EXISTS partner_stores (
     id VARCHAR(40) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -5778,7 +5916,7 @@ async function initDb() {
     commission_type VARCHAR(20),
     commission_value DECIMAL(10,2) DEFAULT 0,
     order_paid_amount DECIMAL(10,2) DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'unsettled',
+    status VARCHAR(20) DEFAULT 'pending_confirm',
     description VARCHAR(255),
     created_at DATETIME,
     settled_at DATETIME,
@@ -6572,9 +6710,11 @@ async function handle(req, res) {
     if (!storeSession) return
     const orders = (await getOrders()).filter(order => order.referrerStoreId === storeSession.store.id && isOrderPaidForPickupCredential(order) && !isOrderRefunded(order))
     const paidOrderIds = new Set(orders.map(order => order.id))
+    const orderLookup = buildOrderLookup(orders)
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "store_referral_commission" }))
-      .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
-    const commissionSummary = buildSettlementSummary(records.filter(record => record.status !== "cancelled"))
+      .filter(record => includeSettlementRecordForStats(record, paidOrderIds))
+      .map(record => decorateSettlementRecord(record, orderLookup))
+    const commissionSummary = buildSettlementSummary(records.filter(record => record.status !== "cancelled"), orderLookup)
     const today = new Date().toISOString().slice(0, 10)
     const month = new Date().toISOString().slice(0, 7)
     sendJson(res, 200, {
@@ -6586,7 +6726,10 @@ async function handle(req, res) {
         settledCommission: commissionSummary.settledTotal,
         ...commissionSummary
       },
-      orders: orders.map(order => storeOrderView(order, "referral"))
+      orders: orders.map(order => {
+        const record = records.find(item => item.orderId === order.id && isStoreReferralSettlement(item.type))
+        return { ...storeOrderView(order, "referral"), storeSettlementStatus: record?.effectiveStatus || order.storeSettlementStatus, storeSettlementStatusText: record?.statusText || settlementStatusText(order.storeSettlementStatus) }
+      })
     })
     return
   }
@@ -6632,17 +6775,20 @@ async function handle(req, res) {
   if (url.pathname === "/api/store/settlements" && req.method === "GET") {
     const storeSession = await requireStorePermission(req, res, "settlement.view")
     if (!storeSession) return
-    const paidOrderIds = new Set((await getOrders()).filter(order => isOrderPaidForPickupCredential(order) && !isOrderRefunded(order)).map(order => order.id))
+    const orders = (await getOrders()).filter(order => isOrderPaidForPickupCredential(order) && !isOrderRefunded(order))
+    const orderLookup = buildOrderLookup(orders)
+    const paidOrderIds = new Set(orders.map(order => order.id))
     const records = (await getStoreSettlementRecords({ storeId: storeSession.store.id }))
-      .filter(record => !record.orderId || paidOrderIds.has(record.orderId))
+      .filter(record => includeSettlementRecordForStats(record, paidOrderIds))
+      .map(record => decorateSettlementRecord(record, orderLookup))
     const activeRecords = records.filter(record => record.status !== "cancelled")
-    const settlementSummary = buildSettlementSummary(activeRecords)
+    const settlementSummary = buildSettlementSummary(activeRecords, orderLookup)
     const referral = activeRecords.filter(record => isStoreReferralSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
     const pickup = activeRecords.filter(record => isPickupServiceSettlement(record.type)).reduce((sum, record) => sum + Number(record.amount || 0), 0)
     sendJson(res, 200, {
       storeInfo: storePrivateView(storeSession.store),
       summary: { ...settlementSummary, referralAmount: money(referral), pickupAmount: money(pickup) },
-      records: records.map(record => ({ ...record, statusText: settlementStatusText(record.status), typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type === "adjustment" ? "手动调整" : record.type === "chargeback" ? "退款冲正" : record.type }))
+      records: records.map(record => ({ ...record, typeText: isStoreReferralSettlement(record.type) ? "门店推广佣金" : isPickupServiceSettlement(record.type) ? "自提服务费" : record.type === "adjustment" ? "手动调整" : record.type === "chargeback" ? "退款冲正" : record.type }))
     })
     return
   }
@@ -7279,9 +7425,10 @@ async function handle(req, res) {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : []
     const records = await getStoreSettlementRecords()
+    const orderLookup = buildOrderLookup(await getOrders())
     const now = formatDateTime(new Date())
     records.forEach(record => {
-      if (ids.includes(record.id) && record.status === "unsettled") {
+      if (ids.includes(record.id) && isFinancialRecordReadyToSettle(record, orderLookup)) {
         record.status = "settled"
         record.settledAt = now
         record.settledBy = "admin"
@@ -7315,6 +7462,8 @@ async function handle(req, res) {
     if (action === "settle") {
       if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
       if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
+      const orderLookup = buildOrderLookup(await getOrders())
+      if (!isFinancialRecordReadyToSettle(record, orderLookup)) throw httpError(400, "该记录仍为待确认，订单完成后才能结算。")
       record.status = "settled"
       record.settledAt = formatDateTime(new Date())
       record.settledBy = "admin"
@@ -7364,17 +7513,17 @@ async function handle(req, res) {
     const batchId = `BATCH${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
     const records = await getStoreSettlementRecords({
       storeId: body.storeId || "",
-      status: "unsettled",
       type: body.type || "",
       startAt: body.startAt || "",
       endAt: body.endAt || ""
     })
+    const orderLookup = buildOrderLookup(await getOrders())
     const allRecords = await getStoreSettlementRecords()
-    const ids = new Set(records.map(item => item.id))
+    const ids = new Set(records.filter(item => isFinancialRecordReadyToSettle(item, orderLookup)).map(item => item.id))
     const now = formatDateTime(new Date())
     let count = 0
     allRecords.forEach(record => {
-      if (!ids.has(record.id) || record.status !== "unsettled") return
+      if (!ids.has(record.id) || !isFinancialRecordReadyToSettle(record, orderLookup)) return
       record.status = "settled"
       record.settledAt = now
       record.settledBy = "admin"
@@ -7414,23 +7563,25 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/admin/reward-records" && req.method === "GET") {
-    sendJson(res, 200, await processRewardState())
+    const [records, orders] = await Promise.all([processRewardState(), getOrders()])
+    sendJson(res, 200, records.map(record => decorateRewardRecord(record, orders)))
     return
   }
 
   if (url.pathname === "/api/admin/rewards" && req.method === "GET") {
-    let records = await processRewardState()
+    const orders = await getOrders()
+    let records = (await processRewardState()).map(record => decorateRewardRecord(record, orders))
     const status = url.searchParams.get("status") || ""
     const keyword = String(url.searchParams.get("keyword") || "").toLowerCase()
-    if (status === "chargeback") records = records.filter(record => record.status === "unsettled" && Number(record.amount || 0) < 0)
-    else if (status) records = records.filter(record => record.status === status)
+    if (status === "chargeback") records = records.filter(record => record.effectiveStatus === "chargeback")
+    else if (status) records = records.filter(record => record.effectiveStatus === status)
     if (keyword) {
       records = records.filter(record => [record.id, record.orderId, record.productName, record.buyerPhone, record.promoterPhone, record.promoterName].some(value => String(value || "").toLowerCase().includes(keyword)))
     }
     sendJson(res, 200, {
       ok: true,
       summary: {
-        ...buildSettlementSummary(records.filter(record => record.status !== "cancelled")),
+        ...buildSettlementSummary(records.filter(record => record.status !== "cancelled"), orders),
         cancelledAmount: money(records.filter(record => record.status === "cancelled").reduce((sum, record) => sum + Number(record.amount || 0), 0))
       },
       records
@@ -7448,6 +7599,8 @@ async function handle(req, res) {
     if (action === "settle") {
       if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
       if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
+      const orderLookup = buildOrderLookup(await getOrders())
+      if (!isFinancialRecordReadyToSettle(record, orderLookup)) throw httpError(400, "该奖励仍为待确认，订单完成后才能结算。")
       record.status = "settled"
       record.settledAt = formatDateTime(new Date())
       record.settledBy = "admin"
