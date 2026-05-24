@@ -3866,6 +3866,11 @@ async function createProductDraftFromModel(candidateId) {
   const settings = await getSettings()
   const estimate = modelPriceEstimate(candidate, settings)
   const products = await getProducts()
+  const existingDraft = products.find(product => String(product.modelCandidateId || "") === String(candidate.id))
+  if (existingDraft) {
+    if (candidate.status !== "draft_created") await upsertModelCandidate({ ...candidate, status: "draft_created" })
+    return { product: existingDraft, estimate, reused: true }
+  }
   const draftId = `MODEL${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
   const categories = [candidate.category || "潮玩手办"]
   const second = candidate.tagsJson.find(tag => ["钥匙扣", "摆件", "收纳", "灯饰"].some(keyword => tag.includes(keyword)))
