@@ -4,6 +4,7 @@ const fs = require("fs")
 const path = require("path")
 const crypto = require("crypto")
 const { execFileSync } = require("child_process")
+const makerworldProvider = require("../providers/makerworldProvider")
 
 let mysql
 try {
@@ -64,6 +65,7 @@ const rewardRecordsFile = path.join(seedDir, "reward-records.json")
 const partnerStoresFile = path.join(seedDir, "partner-stores.json")
 const storeMembersFile = path.join(seedDir, "store-members.json")
 const storeSettlementRecordsFile = path.join(seedDir, "store-settlement-records.json")
+const modelCandidatesFile = path.join(seedDir, "model-candidates.json")
 const sessions = new Map()
 const userSessions = new Map()
 const publicUploadHits = new Map()
@@ -1519,14 +1521,18 @@ function homepageProductSort(a, b) {
   return Number(a.sortOrder || a.sort || 999) - Number(b.sortOrder || b.sort || 999)
 }
 
+function isPublicProduct(product = {}) {
+  return normalizeProductStatus(product.status) === "on"
+}
+
 function homepageRecommendedProducts(products = []) {
-  const online = products.filter(product => product.status !== "off")
+  const online = products.filter(isPublicProduct)
   return online.filter(product => String(product.isHot) === "true").sort(homepageProductSort).slice(0, 6)
 }
 
 function homepageBurstProducts(products = []) {
   return products
-    .filter(product => product.status !== "off" && product.badge === "best" && String(product.isHot) !== "true")
+    .filter(product => isPublicProduct(product) && product.badge === "best" && String(product.isHot) !== "true")
     .sort(homepageProductSort)
     .slice(0, 4)
 }
@@ -1640,6 +1646,7 @@ function normalizeBooleanText(value, defaultValue = false) {
 
 function normalizeProductStatus(value) {
   const text = String(value == null ? "on" : value).trim().toLowerCase()
+  if (["draft", "草稿"].includes(text)) return "draft"
   if (["off", "下架", "disabled", "inactive", "false", "0"].includes(text)) return "off"
   return "on"
 }
@@ -2050,8 +2057,177 @@ function normalizeProduct(product, index) {
     rewardEnabled: String(product.rewardEnabled == null ? "true" : product.rewardEnabled) === "false" ? "false" : "true",
     firstReward: String(product.firstReward || "0"),
     secondReward: String(product.secondReward || "0"),
+    modelCandidateId: product.modelCandidateId || product.model_candidate_id || "",
+    modelSourceUrl: product.modelSourceUrl || product.model_source_url || "",
+    modelAuthorName: product.modelAuthorName || product.model_author_name || "",
+    modelAuthorizationStatus: product.modelAuthorizationStatus || product.model_authorization_status || "",
+    modelAuthorizationNote: product.modelAuthorizationNote || product.model_authorization_note || "",
     sort: String(sortOrder),
     sortOrder: String(sortOrder)
+  }
+}
+
+function normalizeModelStatus(value) {
+  const allowed = new Set(["pending", "approved", "rejected", "draft_created", "published"])
+  const text = String(value || "").trim()
+  return allowed.has(text) ? text : "pending"
+}
+
+function normalizeCommercialStatus(value) {
+  const allowed = new Set(["offline_authorized", "commercial_allowed", "commercial_license_required", "unknown", "forbidden"])
+  const text = String(value || "").trim()
+  return allowed.has(text) ? text : "unknown"
+}
+
+function normalizeAuthorizationType(value) {
+  const allowed = new Set(["offline", "platform", "unknown"])
+  const text = String(value || "").trim()
+  return allowed.has(text) ? text : "unknown"
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) return value.map(item => String(item || "").trim()).filter(Boolean)
+  if (!value) return []
+  if (typeof value === "string") {
+    const parsed = parseJsonValue(value, null)
+    if (Array.isArray(parsed)) return normalizeStringList(parsed)
+    return value.split(/[，,\n]/).map(item => item.trim()).filter(Boolean)
+  }
+  return []
+}
+
+function modelRiskReasons(model = {}) {
+  const text = `${model.title || ""} ${model.category || ""} ${normalizeStringList(model.tags || model.tagsJson).join(" ")}`.toLowerCase()
+  const riskWords = [
+    ["ip", "可能涉及 IP 授权范围"],
+    ["角色", "可能涉及角色形象授权"],
+    ["电影", "可能涉及影视内容授权"],
+    ["动漫", "可能涉及动漫形象授权"],
+    ["logo", "可能涉及品牌商标授权"],
+    ["品牌", "可能涉及品牌商标授权"],
+    ["pokemon", "可能涉及 IP 授权范围"],
+    ["disney", "可能涉及 IP 授权范围"],
+    ["marvel", "可能涉及 IP 授权范围"]
+  ]
+  return riskWords.filter(([word]) => text.includes(word)).map(([, reason]) => reason)
+}
+
+function scoreModelCandidate(model = {}) {
+  let score = 50
+  const printTime = Number(model.printTimeMinutes || model.print_time_minutes || 0)
+  const weight = Number(model.filamentWeightG || model.filament_weight_g || 0)
+  const downloads = Number(model.downloadCount || model.download_count || 0)
+  const likes = Number(model.likeCount || model.like_count || 0)
+  const collects = Number(model.collectCount || model.collect_count || 0)
+  const prints = Number(model.printCount || model.print_count || 0)
+  const images = normalizeStringList(model.images || model.imagesJson || model.images_json)
+  const tags = normalizeStringList(model.tags || model.tagsJson || model.tags_json)
+  if (printTime > 0 && printTime <= 240) score += 12
+  if (printTime > 360) score -= 12
+  if (weight > 0 && weight <= 150) score += 12
+  if (weight > 220) score -= 10
+  score += Math.min(12, Math.floor(downloads / 1500))
+  score += Math.min(10, Math.floor(likes / 180))
+  score += Math.min(10, Math.floor(collects / 260))
+  score += Math.min(10, Math.floor(prints / 120))
+  if (images.length >= 3) score += 6
+  if (images.length <= 1) score -= 4
+  const goodKeywords = ["礼品", "礼物", "桌面", "收纳", "钥匙扣", "摆件", "支架", "灯饰", "文创", "快速打印"]
+  if (tags.some(tag => goodKeywords.some(keyword => tag.includes(keyword))) || goodKeywords.some(keyword => String(model.title || "").includes(keyword))) score += 10
+  if (normalizeCommercialStatus(model.commercialStatus || model.commercial_status) === "offline_authorized") score += 8
+  if (modelRiskReasons(model).length) score -= 8
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function normalizeModelCandidate(model = {}, index = 0) {
+  const tags = normalizeStringList(model.tagsJson || model.tags_json || model.tags)
+  const images = normalizeStringList(model.imagesJson || model.images_json || model.images)
+  const riskReasons = normalizeStringList(model.riskReasonsJson || model.risk_reasons_json || model.riskReasons)
+  const computedRisks = Array.from(new Set([...riskReasons, ...modelRiskReasons({ ...model, tags })]))
+  const commercialStatus = normalizeCommercialStatus(model.commercialStatus || model.commercial_status || "offline_authorized")
+  const authorizationType = normalizeAuthorizationType(model.authorizationType || model.authorization_type || (commercialStatus === "offline_authorized" ? "offline" : "unknown"))
+  const score = model.score == null || model.score === "" ? scoreModelCandidate({ ...model, commercialStatus, tags, images }) : Number(model.score || 0)
+  return {
+    id: String(model.id || `MC${Date.now()}${index}${crypto.randomBytes(2).toString("hex").toUpperCase()}`),
+    source: model.source || "manual",
+    sourceModelId: String(model.sourceModelId || model.source_model_id || model.id || `manual-${Date.now()}-${index}`),
+    sourceUrl: publicAssetUrl(model.sourceUrl || model.source_url || ""),
+    title: model.title || "未命名模型",
+    authorName: model.authorName || model.author_name || "",
+    authorUrl: model.authorUrl || model.author_url || "",
+    category: model.category || "潮玩手办",
+    tagsJson: tags,
+    coverImage: publicAssetUrl(model.coverImage || model.cover_image || images[0] || ""),
+    imagesJson: normalizeAssetUrls(images.length ? images : [model.coverImage || model.cover_image].filter(Boolean)),
+    downloadCount: Number(model.downloadCount || model.download_count || 0),
+    likeCount: Number(model.likeCount || model.like_count || 0),
+    collectCount: Number(model.collectCount || model.collect_count || 0),
+    printCount: Number(model.printCount || model.print_count || 0),
+    printTimeMinutes: Number(model.printTimeMinutes || model.print_time_minutes || 0),
+    filamentWeightG: Number(model.filamentWeightG || model.filament_weight_g || 0),
+    licenseType: model.licenseType || model.license_type || "",
+    commercialStatus,
+    authorizationType,
+    authorizationParty: model.authorizationParty || model.authorization_party || (authorizationType === "offline" ? "非常智造线下合作渠道" : ""),
+    authorizationNote: model.authorizationNote || model.authorization_note || "",
+    authorizationProofUrl: publicAssetUrl(model.authorizationProofUrl || model.authorization_proof_url || ""),
+    authorizedAt: model.authorizedAt || model.authorized_at || "",
+    authorizedBy: model.authorizedBy || model.authorized_by || "",
+    riskLevel: model.riskLevel || model.risk_level || (computedRisks.length ? "high" : "low"),
+    riskReasonsJson: computedRisks,
+    score,
+    status: normalizeModelStatus(model.status),
+    rawJson: model.rawJson || model.raw_json || model,
+    createdAt: model.createdAt || model.created_at || formatDateTime(new Date()),
+    updatedAt: model.updatedAt || model.updated_at || formatDateTime(new Date())
+  }
+}
+
+function modelCandidateDbParams(candidate = {}) {
+  return {
+    ...candidate,
+    tagsJsonText: JSON.stringify(candidate.tagsJson || []),
+    imagesJsonText: JSON.stringify(candidate.imagesJson || []),
+    riskReasonsJsonText: JSON.stringify(candidate.riskReasonsJson || []),
+    rawJsonText: JSON.stringify(candidate.rawJson || {}),
+    authorizedAt: toMysqlDatetime(candidate.authorizedAt),
+    createdAt: toMysqlDatetime(candidate.createdAt, nowMysqlDatetime()),
+    updatedAt: toMysqlDatetime(candidate.updatedAt, nowMysqlDatetime())
+  }
+}
+
+function modelCandidatePublicView(candidate = {}) {
+  return {
+    ...candidate,
+    tags: candidate.tagsJson || [],
+    images: candidate.imagesJson || [],
+    riskReasons: candidate.riskReasonsJson || []
+  }
+}
+
+function modelPricingSettings(settings = {}) {
+  const modelPricing = settings.modelPricing || {}
+  return {
+    materialCostPerG: Number(modelPricing.materialCostPerG ?? settings.materialCostPerG ?? 0.05),
+    machineHourCost: Number(modelPricing.machineHourCost ?? settings.machineHourCost ?? 2),
+    packageCost: Number(modelPricing.packageCost ?? settings.packageCost ?? 2),
+    wasteCost: Number(modelPricing.wasteCost ?? settings.wasteCost ?? 2),
+    markupRate: Number(modelPricing.markupRate ?? settings.markupRate ?? 3.5)
+  }
+}
+
+function modelPriceEstimate(candidate = {}, settings = {}) {
+  const pricing = modelPricingSettings(settings)
+  const materialCost = Number(candidate.filamentWeightG || 0) * pricing.materialCostPerG
+  const machineCost = Number(candidate.printTimeMinutes || 0) / 60 * pricing.machineHourCost
+  const totalCost = materialCost + machineCost + pricing.packageCost + pricing.wasteCost
+  const suggestedPrice = totalCost * pricing.markupRate
+  return {
+    pricing,
+    materialCost: money(materialCost),
+    machineCost: money(machineCost),
+    totalCost: money(totalCost),
+    suggestedPrice: money(Math.max(1, suggestedPrice))
   }
 }
 
@@ -3149,6 +3325,11 @@ async function getProducts() {
     rewardEnabled: String(row.reward_enabled == null ? "true" : row.reward_enabled) === "false" ? "false" : "true",
     firstReward: String(row.first_reward || "0"),
     secondReward: String(row.second_reward || "0"),
+    modelCandidateId: row.model_candidate_id || "",
+    modelSourceUrl: row.model_source_url || "",
+    modelAuthorName: row.model_author_name || "",
+    modelAuthorizationStatus: row.model_authorization_status || "",
+    modelAuthorizationNote: row.model_authorization_note || "",
     sortOrder: String(row.sort_order || "0")
     }
     const normalized = normalizeProduct(product, index)
@@ -3517,7 +3698,7 @@ async function saveProducts(products) {
   for (let index = 0; index < list.length; index += 1) {
     const product = list[index]
     await query(
-      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, product_type, categories, status, stock, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder)",
+      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, product_type, categories, status, stock, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order, model_candidate_id, model_source_url, model_author_name, model_authorization_status, model_authorization_note) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl, :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote)",
       { ...product, galleryImagesJson: JSON.stringify(product.galleryImages || []), detailImagesJson: JSON.stringify(product.detailImages || []), categoriesJson: JSON.stringify(product.categories || []), sortOrder: Number(product.sortOrder || index) }
     )
   }
@@ -3526,6 +3707,198 @@ async function saveProducts(products) {
   await saveHome(home)
   await saveRewardRules(rewardList)
   return list
+}
+
+async function getModelCandidates(filters = {}) {
+  if (!pool) {
+    let list = readJsonFile(modelCandidatesFile, []).map(normalizeModelCandidate)
+    if (filters.status) list = list.filter(item => item.status === filters.status)
+    if (filters.commercialStatus) list = list.filter(item => item.commercialStatus === filters.commercialStatus)
+    if (filters.riskLevel) list = list.filter(item => item.riskLevel === filters.riskLevel)
+    if (filters.category) list = list.filter(item => item.category === filters.category)
+    if (filters.keyword) {
+      const keyword = String(filters.keyword).toLowerCase()
+      list = list.filter(item => [item.title, item.authorName, item.sourceModelId, item.sourceUrl, item.authorizationParty].some(value => String(value || "").toLowerCase().includes(keyword)))
+    }
+    return sortModelCandidates(list, filters.sort)
+  }
+  const where = []
+  const params = {}
+  if (filters.status) {
+    where.push("status = :status")
+    params.status = filters.status
+  }
+  if (filters.commercialStatus) {
+    where.push("commercial_status = :commercialStatus")
+    params.commercialStatus = filters.commercialStatus
+  }
+  if (filters.riskLevel) {
+    where.push("risk_level = :riskLevel")
+    params.riskLevel = filters.riskLevel
+  }
+  if (filters.category) {
+    where.push("category = :category")
+    params.category = filters.category
+  }
+  if (filters.keyword) {
+    where.push("(title LIKE :keyword OR author_name LIKE :keyword OR source_model_id LIKE :keyword OR source_url LIKE :keyword OR authorization_party LIKE :keyword)")
+    params.keyword = `%${filters.keyword}%`
+  }
+  const rows = await query(`SELECT * FROM model_candidates ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`)
+  const list = rows.map((row, index) => normalizeModelCandidate({
+    id: row.id,
+    source: row.source,
+    sourceModelId: row.source_model_id,
+    sourceUrl: row.source_url,
+    title: row.title,
+    authorName: row.author_name,
+    authorUrl: row.author_url,
+    category: row.category,
+    tagsJson: parseJsonValue(row.tags_json, []),
+    coverImage: row.cover_image,
+    imagesJson: parseJsonValue(row.images_json, []),
+    downloadCount: row.download_count,
+    likeCount: row.like_count,
+    collectCount: row.collect_count,
+    printCount: row.print_count,
+    printTimeMinutes: row.print_time_minutes,
+    filamentWeightG: row.filament_weight_g,
+    licenseType: row.license_type,
+    commercialStatus: row.commercial_status,
+    authorizationType: row.authorization_type,
+    authorizationParty: row.authorization_party,
+    authorizationNote: row.authorization_note,
+    authorizationProofUrl: row.authorization_proof_url,
+    authorizedAt: row.authorized_at,
+    authorizedBy: row.authorized_by,
+    riskLevel: row.risk_level,
+    riskReasonsJson: parseJsonValue(row.risk_reasons_json, []),
+    score: row.score,
+    status: row.status,
+    rawJson: parseJsonValue(row.raw_json, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }, index))
+  return sortModelCandidates(list, filters.sort)
+}
+
+function sortModelCandidates(list = [], sort = "") {
+  const next = [...list]
+  const sortKey = sort || "score"
+  if (sortKey === "downloads") next.sort((a, b) => b.downloadCount - a.downloadCount)
+  else if (sortKey === "collects") next.sort((a, b) => b.collectCount - a.collectCount)
+  else if (sortKey === "prints") next.sort((a, b) => b.printCount - a.printCount)
+  else if (sortKey === "latest") next.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+  else next.sort((a, b) => b.score - a.score)
+  return next
+}
+
+async function saveModelCandidates(candidates = []) {
+  const list = (Array.isArray(candidates) ? candidates : []).map(normalizeModelCandidate)
+  if (!pool) {
+    writeJsonFile(modelCandidatesFile, list)
+    return list
+  }
+  for (const candidate of list) {
+    await query(
+      `INSERT INTO model_candidates (id, source, source_model_id, source_url, title, author_name, author_url, category, tags_json, cover_image, images_json, download_count, like_count, collect_count, print_count, print_time_minutes, filament_weight_g, license_type, commercial_status, authorization_type, authorization_party, authorization_note, authorization_proof_url, authorized_at, authorized_by, risk_level, risk_reasons_json, score, status, raw_json, created_at, updated_at)
+       VALUES (:id, :source, :sourceModelId, :sourceUrl, :title, :authorName, :authorUrl, :category, :tagsJsonText, :coverImage, :imagesJsonText, :downloadCount, :likeCount, :collectCount, :printCount, :printTimeMinutes, :filamentWeightG, :licenseType, :commercialStatus, :authorizationType, :authorizationParty, :authorizationNote, :authorizationProofUrl, :authorizedAt, :authorizedBy, :riskLevel, :riskReasonsJsonText, :score, :status, :rawJsonText, :createdAt, :updatedAt)
+       ON DUPLICATE KEY UPDATE source_url = VALUES(source_url), title = VALUES(title), author_name = VALUES(author_name), author_url = VALUES(author_url), category = VALUES(category), tags_json = VALUES(tags_json), cover_image = VALUES(cover_image), images_json = VALUES(images_json), download_count = VALUES(download_count), like_count = VALUES(like_count), collect_count = VALUES(collect_count), print_count = VALUES(print_count), print_time_minutes = VALUES(print_time_minutes), filament_weight_g = VALUES(filament_weight_g), license_type = VALUES(license_type), commercial_status = VALUES(commercial_status), authorization_type = VALUES(authorization_type), authorization_party = VALUES(authorization_party), authorization_note = VALUES(authorization_note), authorization_proof_url = VALUES(authorization_proof_url), authorized_at = VALUES(authorized_at), authorized_by = VALUES(authorized_by), risk_level = VALUES(risk_level), risk_reasons_json = VALUES(risk_reasons_json), score = VALUES(score), status = VALUES(status), raw_json = VALUES(raw_json), updated_at = VALUES(updated_at)`,
+      modelCandidateDbParams(candidate)
+    )
+  }
+  return list
+}
+
+async function upsertModelCandidate(candidate) {
+  const normalized = normalizeModelCandidate({ ...candidate, updatedAt: formatDateTime(new Date()) })
+  if (!pool) {
+    const list = await getModelCandidates()
+    const index = list.findIndex(item => item.source === normalized.source && item.sourceModelId === normalized.sourceModelId)
+    if (index >= 0) list[index] = { ...list[index], ...normalized, id: list[index].id }
+    else list.unshift(normalized)
+    await saveModelCandidates(list)
+    return index >= 0 ? list[index] : normalized
+  }
+  await saveModelCandidates([normalized])
+  return (await getModelCandidates({ keyword: normalized.sourceModelId })).find(item => item.source === normalized.source && item.sourceModelId === normalized.sourceModelId) || normalized
+}
+
+async function syncModelCandidatesFromProvider(options = {}) {
+  const current = await getModelCandidates()
+  const currentKeys = new Set(current.map(item => `${item.source}:${item.sourceModelId}`))
+  const providerModels = Array.isArray(options.urls) && options.urls.length
+    ? await makerworldProvider.fetchModelsFromUrls(options.urls)
+    : await makerworldProvider.fetchPopularModels()
+  let created = 0
+  let updated = 0
+  let skipped = 0
+  let riskCount = 0
+  for (const model of providerModels) {
+    const normalized = normalizeModelCandidate({
+      ...model,
+      commercialStatus: model.commercialStatus || "offline_authorized",
+      authorizationType: model.authorizationType || "offline",
+      status: "pending"
+    })
+    const key = `${normalized.source}:${normalized.sourceModelId}`
+    if (normalized.riskLevel === "high") riskCount += 1
+    const previous = current.find(item => `${item.source}:${item.sourceModelId}` === key)
+    if (previous && ["draft_created", "published"].includes(previous.status)) {
+      skipped += 1
+      continue
+    }
+    await upsertModelCandidate(previous ? { ...previous, ...normalized, id: previous.id, status: previous.status } : normalized)
+    if (currentKeys.has(key)) updated += 1
+    else created += 1
+  }
+  return { ok: true, created, updated, skipped, riskCount, total: providerModels.length, provider: "makerworldProvider", mode: Array.isArray(options.urls) && options.urls.length ? "web" : "default" }
+}
+
+function canCreateDraftFromModel(candidate = {}) {
+  return ["offline_authorized", "commercial_allowed"].includes(candidate.commercialStatus)
+}
+
+async function createProductDraftFromModel(candidateId) {
+  const candidate = (await getModelCandidates()).find(item => item.id === candidateId)
+  if (!candidate) throw httpError(404, "模型不存在")
+  if (!canCreateDraftFromModel(candidate)) throw httpError(400, "请先确认授权信息，再生成商品草稿")
+  const settings = await getSettings()
+  const estimate = modelPriceEstimate(candidate, settings)
+  const products = await getProducts()
+  const draftId = `MODEL${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+  const categories = [candidate.category || "潮玩手办"]
+  const second = candidate.tagsJson.find(tag => ["钥匙扣", "摆件", "收纳", "灯饰"].some(keyword => tag.includes(keyword)))
+  if (candidate.category === "潮玩手办") categories.push(second?.includes("钥匙扣") ? "潮玩手办/钥匙挂件" : "潮玩手办/桌面摆件")
+  if (candidate.category === "3D打印") categories.push("3D打印/模型定制")
+  const draft = normalizeProduct({
+    id: draftId,
+    name: candidate.title,
+    intro: `授权模型 · 打印约 ${candidate.printTimeMinutes || 0} 分钟 · 耗材约 ${candidate.filamentWeightG || 0}g`,
+    price: estimate.suggestedPrice,
+    costPrice: estimate.totalCost,
+    badge: candidate.score >= 75 ? "hot" : "new",
+    imageUrl: candidate.coverImage,
+    galleryImages: candidate.imagesJson,
+    detailImages: candidate.imagesJson,
+    detailText: `模型来源：${candidate.sourceUrl || "-"}\n作者：${candidate.authorName || "-"}\n授权状态：${candidate.commercialStatus}\n授权备注：${candidate.authorizationNote || "-"}`,
+    productType: "normal",
+    categories,
+    status: "draft",
+    stock: "0",
+    isHot: "false",
+    promotionHot: candidate.score >= 80 ? "true" : "false",
+    rewardEnabled: "true",
+    sortOrder: products.length + 1,
+    modelCandidateId: candidate.id,
+    modelSourceUrl: candidate.sourceUrl,
+    modelAuthorName: candidate.authorName,
+    modelAuthorizationStatus: candidate.commercialStatus,
+    modelAuthorizationNote: candidate.authorizationNote
+  }, products.length)
+  await saveProducts([draft, ...products])
+  await upsertModelCandidate({ ...candidate, status: "draft_created" })
+  return { product: draft, estimate }
 }
 
 async function migrateProductCategoriesToCanonical() {
@@ -5740,6 +6113,11 @@ async function initDb() {
   await ensureColumn("products", "detail_images", "JSON")
   await ensureColumn("products", "detail_text", "TEXT")
   await ensureColumn("products", "product_type", "VARCHAR(20) DEFAULT 'custom'")
+  await ensureColumn("products", "model_candidate_id", "VARCHAR(60)")
+  await ensureColumn("products", "model_source_url", "VARCHAR(500)")
+  await ensureColumn("products", "model_author_name", "VARCHAR(100)")
+  await ensureColumn("products", "model_authorization_status", "VARCHAR(40)")
+  await ensureColumn("products", "model_authorization_note", "TEXT")
   await query(`CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(32) PRIMARY KEY,
     customer_name VARCHAR(50) NOT NULL,
@@ -5999,6 +6377,43 @@ async function initDb() {
   await ensureColumn("reward_records", "settle_note", "TEXT")
   await ensureColumn("reward_records", "cancel_reason", "TEXT")
   await ensureColumn("reward_records", "batch_id", "VARCHAR(80)")
+  await query(`CREATE TABLE IF NOT EXISTS model_candidates (
+    id VARCHAR(60) PRIMARY KEY,
+    source VARCHAR(60),
+    source_model_id VARCHAR(120),
+    source_url VARCHAR(500),
+    title VARCHAR(180),
+    author_name VARCHAR(120),
+    author_url VARCHAR(500),
+    category VARCHAR(80),
+    tags_json JSON,
+    cover_image VARCHAR(500),
+    images_json JSON,
+    download_count INT DEFAULT 0,
+    like_count INT DEFAULT 0,
+    collect_count INT DEFAULT 0,
+    print_count INT DEFAULT 0,
+    print_time_minutes INT DEFAULT 0,
+    filament_weight_g DECIMAL(10,2) DEFAULT 0,
+    license_type VARCHAR(80),
+    commercial_status VARCHAR(40),
+    authorization_type VARCHAR(40),
+    authorization_party VARCHAR(120),
+    authorization_note TEXT,
+    authorization_proof_url VARCHAR(500),
+    authorized_at DATETIME,
+    authorized_by VARCHAR(80),
+    risk_level VARCHAR(20),
+    risk_reasons_json JSON,
+    score INT DEFAULT 0,
+    status VARCHAR(30) DEFAULT 'pending',
+    raw_json JSON,
+    created_at DATETIME,
+    updated_at DATETIME,
+    UNIQUE KEY uniq_model_source (source, source_model_id),
+    INDEX idx_model_status (status),
+    INDEX idx_model_score (score)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS system_settings (
     id INT PRIMARY KEY,
     data JSON NOT NULL,
@@ -6641,7 +7056,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/products" && req.method === "GET") {
-    sendJson(res, 200, await getProducts())
+    sendJson(res, 200, (await getProducts()).filter(isPublicProduct))
     return
   }
 
@@ -7303,6 +7718,41 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/products" && req.method === "PUT") {
     sendJson(res, 200, { ok: true, data: await saveProducts(JSON.parse((await readBody(req)).toString())) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/model-candidates" && req.method === "GET") {
+    const candidates = await getModelCandidates({
+      keyword: url.searchParams.get("keyword") || "",
+      status: url.searchParams.get("status") || "",
+      commercialStatus: url.searchParams.get("commercialStatus") || "",
+      riskLevel: url.searchParams.get("riskLevel") || "",
+      category: url.searchParams.get("category") || "",
+      sort: url.searchParams.get("sort") || "score"
+    })
+    sendJson(res, 200, { ok: true, data: candidates.map(modelCandidatePublicView) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/model-candidates/sync" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, await syncModelCandidatesFromProvider({ urls: Array.isArray(body.urls) ? body.urls : [] }))
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/model-candidates\/[^/]+$/) && req.method === "PUT") {
+    const id = decodeURIComponent(url.pathname.split("/").pop())
+    const current = (await getModelCandidates()).find(item => item.id === id)
+    if (!current) throw httpError(404, "模型不存在")
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const saved = await upsertModelCandidate({ ...current, ...body, id: current.id, source: current.source, sourceModelId: current.sourceModelId })
+    sendJson(res, 200, { ok: true, data: modelCandidatePublicView(saved) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/model-candidates\/[^/]+\/draft$/) && req.method === "POST") {
+    const id = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await createProductDraftFromModel(id) })
     return
   }
 
