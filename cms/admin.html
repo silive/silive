@@ -1656,8 +1656,9 @@
       try {
         const res = await fetch(path, options)
         if (res.status === 401) {
-          location.href = "/login"
-          return null
+          setStatus("登录已过期，请重新登录后台")
+          setTimeout(() => { location.href = "/login" }, 800)
+          throw new Error("登录已过期，请重新登录后台")
         }
         const data = await res.json()
         if (!res.ok || data.ok === false) throw new Error(data.message || "请求失败")
@@ -3209,13 +3210,30 @@
       openProductDrawer(0)
     })
     $("syncModelsBtn").addEventListener("click", event => {
+      console.debug("开始同步热门模型")
       const urls = ($("modelSyncUrls")?.value || "").split(/\n|,|，/).map(item => item.trim()).filter(Boolean)
-      withButtonLoading(event.currentTarget, "同步中...", () => api("/api/admin/model-candidates/sync", "POST", { urls })
-        .then(result => {
-          $("modelSyncResult").textContent = `同步完成：新增 ${result.created || 0}，更新 ${result.updated || 0}，跳过 ${result.skipped || 0}，风险模型 ${result.riskCount || 0}。模式：${result.mode === "web" ? "网页抓取" : "Provider默认/mock"}`
-          return loadAll()
-        })
-        .then(() => setStatus("模型同步完成")))
+      const resultNode = $("modelSyncResult")
+      if (resultNode) resultNode.textContent = "正在同步热门模型，请稍候..."
+      setStatus("正在同步热门模型...")
+      withButtonLoading(event.currentTarget, "同步中...", async () => {
+        try {
+          const result = await api("/api/admin/model-candidates/sync", "POST", { urls })
+          const created = Number(result.created ?? result.added ?? 0)
+          const updated = Number(result.updated || 0)
+          const skipped = Number(result.skipped || 0)
+          const riskCount = Number(result.riskCount ?? result.risk ?? 0)
+          const message = `同步完成：新增 ${created} 条，更新 ${updated} 条，跳过 ${skipped} 条，风险 ${riskCount} 条。模式：${result.mode === "web" ? "网页抓取" : "Provider默认/mock"}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          await loadAll()
+        } catch (error) {
+          console.error("[admin-model-sync]", error)
+          const message = `同步失败：${error.message || "请稍后重试"}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          throw error
+        }
+      })
     })
     $("filterModelsBtn").addEventListener("click", () => {
       modelFilters = {
