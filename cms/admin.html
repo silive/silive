@@ -731,12 +731,34 @@
             <select id="modelStatusFilter"><option value="">全部状态</option><option value="pending">待审核</option><option value="approved">已通过</option><option value="rejected">已淘汰</option><option value="draft_created">已生成草稿</option><option value="published">已上架</option></select>
             <select id="modelAuthFilter"><option value="">全部授权状态</option><option value="offline_authorized">线下已授权</option><option value="commercial_allowed">平台允许商用</option><option value="commercial_license_required">需要商用授权</option><option value="unknown">待确认</option><option value="forbidden">禁止商用</option></select>
             <select id="modelRiskFilter"><option value="">全部风险</option><option value="low">低风险</option><option value="high">需确认授权范围</option></select>
+            <select id="modelProductionFilter"><option value="">全部生产状态</option><option value="ready">符合生产参数</option><option value="needs_review">需补生产参数</option></select>
+            <select id="modelDraftFilter"><option value="">全部草稿状态</option><option value="not_created">未生成草稿</option><option value="created">已生成草稿</option></select>
+            <select id="modelScoreFilter"><option value="">全部分数</option><option value="80">分数 ≥ 80</option><option value="70">分数 ≥ 70</option></select>
+            <select id="modelParamFilter"><option value="">全部参数</option><option value="fit">打印≤240分钟 / 耗材≤150g</option></select>
             <select id="modelSortFilter"><option value="score">分数最高</option><option value="downloads">下载量最高</option><option value="collects">收藏量最高</option><option value="prints">打印量最高</option><option value="latest">最新同步</option></select>
             <button class="secondary" id="filterModelsBtn">筛选</button>
           </div>
           <label style="margin:12px 0 0">授权渠道网页 URL（可选，每行一个；留空时使用 Provider 默认/mock 数据）
             <textarea id="modelSyncUrls" placeholder="https://makerworld.com/...\nhttps://授权渠道页面..."></textarea>
           </label>
+          <div class="drawer-section" style="margin-top:16px">
+            <h4>自动发现模型</h4>
+            <div class="upload-help">默认使用 mock discovery 测试数据；服务器配置网页发现模式后，会低频解析公开搜索页。不会自动下载模型、切片或上架。</div>
+            <div class="filters">
+              <input id="discoverKeywords" value="桌面 收纳 钥匙扣 摆件 支架 灯饰 家居" placeholder="关键词，空格分隔">
+              <select id="discoverCategory"><option value="">自动分类</option><option value="3D打印">3D打印</option><option value="潮玩手办">潮玩手办</option></select>
+              <input id="discoverMaxPages" type="number" min="1" max="3" value="3" placeholder="最大页数">
+              <input id="discoverLimit" type="number" min="1" max="30" value="30" placeholder="最多导入">
+              <input id="discoverMaxPrintTime" type="number" value="240" placeholder="打印分钟上限">
+              <input id="discoverMaxWeight" type="number" value="150" placeholder="耗材g上限">
+              <input id="discoverMinDownloads" type="number" value="100" placeholder="最低下载量">
+              <input id="discoverMinCollects" type="number" value="0" placeholder="最低收藏量">
+              <input id="discoverMinScore" type="number" value="0" placeholder="最低评分">
+              <select id="discoverRequireCover"><option value="true">只导入有主图</option><option value="false">允许无主图</option></select>
+              <button class="primary" id="discoverModelsBtn">开始发现</button>
+              <button class="secondary" id="batchDraftModelsBtn">批量生成草稿</button>
+            </div>
+          </div>
           <div id="modelSyncResult" class="upload-help">等待同步或筛选模型。</div>
           <div id="modelCandidatesTable"></div>
         </div>
@@ -976,7 +998,7 @@
     let settlementFilters = { storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
-    let modelFilters = { keyword: "", status: "", commercialStatus: "", riskLevel: "", sort: "score" }
+    let modelFilters = { keyword: "", status: "", commercialStatus: "", riskLevel: "", productionStatus: "", draftState: "", minScore: "", maxPrintTimeMinutes: "", maxFilamentWeightG: "", sort: "score" }
     let productImportToken = ""
     let categorySearch = ""
     let activityProductSearch = {}
@@ -2158,6 +2180,10 @@
       $("modelStatusFilter").value = modelFilters.status || ""
       $("modelAuthFilter").value = modelFilters.commercialStatus || ""
       $("modelRiskFilter").value = modelFilters.riskLevel || ""
+      $("modelProductionFilter").value = modelFilters.productionStatus || ""
+      $("modelDraftFilter").value = modelFilters.draftState || ""
+      $("modelScoreFilter").value = modelFilters.minScore || ""
+      $("modelParamFilter").value = modelFilters.maxPrintTimeMinutes || modelFilters.maxFilamentWeightG ? "fit" : ""
       $("modelSortFilter").value = modelFilters.sort || "score"
       $("modelCandidatesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
         <thead><tr><th>模型</th><th>热度</th><th>生产参数</th><th>授权</th><th>评分/风险</th><th>状态</th><th>操作</th></tr></thead>
@@ -2165,7 +2191,7 @@
           <tr>
             <td><div style="display:flex;gap:10px;align-items:center;min-width:240px"><img class="table-image" src="${escapeHtml(item.coverImage || "")}" alt=""><div><div class="table-title">${escapeHtml(item.title)}</div><div class="table-sub">${escapeHtml(item.authorName || "-")} · ${escapeHtml(item.source || "")}</div><div class="table-sub">${escapeHtml(item.sourceModelId || "")}</div></div></div></td>
             <td>下载 ${Number(item.downloadCount || 0)}<div class="muted">收藏 ${Number(item.collectCount || 0)} · 打印 ${Number(item.printCount || 0)}</div></td>
-            <td>${Number(item.printTimeMinutes || 0)} 分钟<div class="muted">${Number(item.filamentWeightG || 0)}g 耗材</div></td>
+            <td>${Number(item.printTimeMinutes || 0) || "待补"} 分钟<div class="muted">${Number(item.filamentWeightG || 0) || "待补"}g 耗材 · ${item.productionStatus === "ready" ? "符合生产参数" : "需补生产参数"}</div></td>
             <td><span class="pill">${commercialStatusText(item.commercialStatus)}</span><div class="muted">${escapeHtml(item.authorizationParty || "")}</div></td>
             <td><strong style="color:#FF5A00">${Number(item.score || 0)}</strong><div class="muted">${item.riskLevel === "high" ? "需确认授权范围" : "低风险"}</div></td>
             <td><span class="pill">${modelStatusText(item.status)}</span></td>
@@ -2193,6 +2219,10 @@
           <label>封面图<input data-model-key="coverImage" value="${escapeHtml(item.coverImage)}"></label>
           <label>状态<select data-model-key="status">
             ${["pending", "approved", "rejected", "draft_created", "published"].map(value => `<option value="${value}" ${item.status === value ? "selected" : ""}>${modelStatusText(value)}</option>`).join("")}
+          </select></label>
+          <label>生产状态<select data-model-key="productionStatus">
+            <option value="ready" ${item.productionStatus === "ready" ? "selected" : ""}>符合生产参数</option>
+            <option value="needs_review" ${item.productionStatus !== "ready" ? "selected" : ""}>需补生产参数</option>
           </select></label>
         </div></div>
         <div class="drawer-section"><h4>生产与评分</h4><div class="form-grid">
@@ -2253,7 +2283,7 @@
       }
       return withButtonLoading(button, "生成中...", () => api(`/api/admin/model-candidates/${encodeURIComponent(item.id)}/draft`, "POST", {})
         .then(result => loadAll().then(() => result))
-        .then(result => setStatus(`商品草稿已生成：${result.data?.product?.name || item.title}`)))
+        .then(result => setStatus(`${result.reused ? "已存在商品草稿" : "商品草稿已生成"}：${result.product?.name || item.title}`)))
     }
     function renderProducts() {
       renderProductFilters()
@@ -3236,12 +3266,63 @@
         }
       })
     })
+    $("discoverModelsBtn").addEventListener("click", event => {
+      console.debug("开始自动发现模型")
+      const resultNode = $("modelSyncResult")
+      const payload = {
+        keywords: ($("discoverKeywords")?.value || "").split(/[\s,，\n]+/).map(item => item.trim()).filter(Boolean),
+        category: $("discoverCategory")?.value || "",
+        maxPages: Number($("discoverMaxPages")?.value || 3),
+        limit: Number($("discoverLimit")?.value || 30),
+        maxPrintTimeMinutes: Number($("discoverMaxPrintTime")?.value || 240),
+        maxFilamentWeightG: Number($("discoverMaxWeight")?.value || 150),
+        minDownloadCount: Number($("discoverMinDownloads")?.value || 100),
+        minCollectCount: Number($("discoverMinCollects")?.value || 0),
+        minScore: Number($("discoverMinScore")?.value || 0),
+        requireCoverImage: ($("discoverRequireCover")?.value || "true") === "true"
+      }
+      if (resultNode) resultNode.textContent = "正在搜索关键词、解析模型列表并筛选入库..."
+      setStatus("正在自动发现模型...")
+      withButtonLoading(event.currentTarget, "发现中...", async () => {
+        try {
+          const result = await api("/api/admin/model-candidates/discover", "POST", payload)
+          const message = `自动发现完成：发现 ${result.found || 0} 个，新增 ${result.created || 0} 个，更新 ${result.updated || 0} 个，跳过 ${result.skipped || 0} 个，需补参数 ${result.needsReview || 0} 个，风险 ${result.riskCount || 0} 个。模式：${result.mode === "web_discovery" ? "网页解析" : "mock discovery"}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          await loadAll()
+        } catch (error) {
+          console.error("[admin-model-discover]", error)
+          const message = `自动发现失败：${error.message || "请稍后重试"}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          throw error
+        }
+      })
+    })
+    $("batchDraftModelsBtn").addEventListener("click", event => {
+      const ids = (modelCandidates || [])
+        .filter(item => ["offline_authorized", "commercial_allowed"].includes(item.commercialStatus) && item.title && item.coverImage && !["draft_created", "published"].includes(item.status))
+        .map(item => item.id)
+      if (!ids.length) {
+        setStatus("当前筛选结果没有可生成草稿的模型")
+        return
+      }
+      if (!confirm(`确认为当前筛选结果中 ${ids.length} 个模型批量生成商品草稿吗？`)) return
+      withButtonLoading(event.currentTarget, "生成中...", () => api("/api/admin/model-candidates/batch-draft", "POST", { ids })
+        .then(result => loadAll().then(() => result))
+        .then(result => setStatus(`批量生成草稿完成：新增 ${result.created || 0} 个，跳过 ${result.skipped || 0} 个`)))
+    })
     $("filterModelsBtn").addEventListener("click", () => {
       modelFilters = {
         keyword: $("modelKeywordFilter").value.trim(),
         status: $("modelStatusFilter").value,
         commercialStatus: $("modelAuthFilter").value,
         riskLevel: $("modelRiskFilter").value,
+        productionStatus: $("modelProductionFilter").value,
+        draftState: $("modelDraftFilter").value,
+        minScore: $("modelScoreFilter").value,
+        maxPrintTimeMinutes: $("modelParamFilter").value === "fit" ? "240" : "",
+        maxFilamentWeightG: $("modelParamFilter").value === "fit" ? "150" : "",
         sort: $("modelSortFilter").value
       }
       loadAll().catch(error => setStatus(error.message))
