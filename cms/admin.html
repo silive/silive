@@ -384,6 +384,9 @@
       box-shadow: -24px 0 70px rgba(0,0,0,.16);
       backdrop-filter: blur(26px);
     }
+    .drawer.sales-agent-drawer {
+      width: min(620px, calc(100vw - 40px));
+    }
     .drawer-head {
       flex-shrink: 0;
       display: flex;
@@ -416,6 +419,17 @@
     .drawer-pane,
     .dense-table-wrap { min-width: 0; max-width: 100%; }
     .drawer input, .drawer textarea, .drawer select { max-width: 100%; }
+    .drawer-error {
+      display: none;
+      padding: 10px 12px;
+      border: 1px solid #ffd1c4;
+      border-radius: 12px;
+      background: #fff1ee;
+      color: #b42318;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.5;
+    }
     .drawer-actions {
       flex-shrink: 0;
       display: flex;
@@ -1044,6 +1058,7 @@
     let categorySearch = ""
     let activityProductSearch = {}
     let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
+    let salesAgentDraft = null
     let draggedCategory = null
     let draggedSecond = null
     let collapsedCategories = JSON.parse(localStorage.getItem("collapsedCategories") || "{}")
@@ -1703,8 +1718,10 @@
     function closeDrawer(force = false) {
       if (!force && drawerDirty && !confirm("当前内容尚未保存，确认关闭吗？")) return false
       $("detailDrawer").classList.remove("show")
+      $("detailDrawer").querySelector(".drawer")?.classList.remove("sales-agent-drawer")
       drawerMode = ""
       drawerIndex = -1
+      salesAgentDraft = null
       drawerDirty = false
       $("drawerBody").innerHTML = ""
       $("drawerActions").innerHTML = ""
@@ -2898,6 +2915,85 @@
           <td><div class="table-actions"><button class="secondary" data-action="sales-commission-settle" data-id="${escapeHtml(record.id)}" ${!["unsettled", "chargeback"].includes(record.effectiveStatus || record.status) ? "disabled" : ""}>结算</button><button class="danger" data-action="sales-commission-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
         </tr>`).join("")}</tbody></table></div>`
     }
+    function openSalesAgentDrawer(agentId = "") {
+      const agent = salesAgents.find(item => item.id === agentId) || null
+      const isEdit = !!agent
+      salesAgentDraft = agent ? { ...agent } : { name: "", phone: "", commissionRate: "1.00", status: "active", remark: "" }
+      drawerMode = "salesAgent"
+      drawerIndex = isEdit ? salesAgents.findIndex(item => item.id === agent.id) : -1
+      $("detailDrawer").querySelector(".drawer")?.classList.add("sales-agent-drawer")
+      $("drawerTitle").textContent = isEdit ? "编辑业务员" : "新增业务员"
+      $("drawerDesc").textContent = isEdit ? `${agent.name || "业务员"} · ${agent.phone || ""}` : "创建业务员网页登录账号，并配置默认佣金比例。"
+      $("drawerBody").innerHTML = `
+        <div class="drawer-error" id="salesAgentFormError"></div>
+        <div class="drawer-section"><h4>基础信息</h4><div class="form-grid">
+          <label>业务员姓名<input data-sales-agent-key="name" value="${escapeHtml(salesAgentDraft.name || "")}" placeholder="请输入姓名"></label>
+          <label>手机号<input data-sales-agent-key="phone" value="${escapeHtml(salesAgentDraft.phone || "")}" placeholder="11位手机号"></label>
+          <label>佣金比例（%）<input data-sales-agent-key="commissionRate" value="${escapeHtml(salesAgentDraft.commissionRate || "1.00")}" placeholder="例如 1 表示 1%"></label>
+          <label>状态<select data-sales-agent-key="status">
+            <option value="active" ${salesAgentDraft.status !== "disabled" ? "selected" : ""}>启用</option>
+            <option value="disabled" ${salesAgentDraft.status === "disabled" ? "selected" : ""}>停用</option>
+          </select></label>
+        </div></div>
+        <div class="drawer-section"><h4>${isEdit ? "重置密码" : "初始密码"}</h4><div class="form-grid">
+          <label>${isEdit ? "重置密码" : "初始密码"}<input data-sales-agent-key="password" type="password" value="" autocomplete="new-password" placeholder="${isEdit ? "留空表示不修改密码" : "请输入初始密码"}"></label>
+          <label style="grid-column:1/-1">备注<textarea data-sales-agent-key="remark" placeholder="选填">${escapeHtml(salesAgentDraft.remark || "")}</textarea></label>
+        </div>${isEdit ? `<div class="upload-help">留空表示不修改密码。</div>` : ""}</div>
+      `
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-sales-agent-drawer">${isEdit ? "保存" : "保存"}</button>`
+      drawerDirty = false
+      $("detailDrawer").classList.add("show")
+    }
+    function showSalesAgentFormError(message) {
+      const node = $("salesAgentFormError")
+      if (!node) return setStatus(message)
+      node.textContent = message
+      node.style.display = "block"
+      setStatus(message)
+    }
+    function collectSalesAgentDrawer() {
+      if (drawerMode !== "salesAgent" || !salesAgentDraft) return null
+      const payload = {}
+      $("drawerBody").querySelectorAll("[data-sales-agent-key]").forEach(input => {
+        payload[input.dataset.salesAgentKey] = input.value.trim()
+      })
+      return payload
+    }
+    function validateSalesAgentPayload(payload = {}, isEdit = false) {
+      if (!payload.name) return "请填写业务员姓名"
+      if (!payload.phone) return "请填写手机号"
+      if (!/^\d{11}$/.test(payload.phone)) return "手机号格式不正确，请填写11位手机号"
+      if (payload.commissionRate === "" || Number.isNaN(Number(payload.commissionRate))) return "佣金比例必须为数字"
+      if (Number(payload.commissionRate) < 0) return "佣金比例不能小于 0"
+      if (!isEdit && !payload.password) return "新增业务员时必须填写初始密码"
+      return ""
+    }
+    function saveSalesAgentDrawer(button) {
+      const payload = collectSalesAgentDrawer()
+      if (!payload) return
+      const isEdit = !!salesAgentDraft.id
+      const error = validateSalesAgentPayload(payload, isEdit)
+      if (error) {
+        showSalesAgentFormError(error)
+        return
+      }
+      const body = {
+        name: payload.name,
+        phone: payload.phone,
+        commissionRate: payload.commissionRate,
+        status: payload.status === "disabled" ? "disabled" : "active",
+        remark: payload.remark || ""
+      }
+      if (payload.password) body.password = payload.password
+      const request = isEdit
+        ? api(`/api/admin/sales-agents/${encodeURIComponent(salesAgentDraft.id)}`, "PUT", body)
+        : api("/api/admin/sales-agents", "POST", body)
+      return withButtonLoading(button, "保存中...", () => request.then(() => loadAll()).then(() => {
+        drawerDirty = false
+        closeDrawer(true)
+        setStatus(isEdit ? "业务员已保存" : "业务员已新增")
+      }).catch(error => showSalesAgentFormError(error.message || "保存失败")))
+    }
     function openStoreDrawer(index) {
       const store = stores[index]
       if (!store) return
@@ -3599,6 +3695,7 @@
       if (event.target.dataset.action === "view-model") openModelDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "save-model-drawer") saveModelDrawer(event.target)
       if (event.target.dataset.action === "model-create-draft") createModelDraft(Number(event.target.dataset.index), event.target)
+      if (event.target.dataset.action === "save-sales-agent-drawer") saveSalesAgentDrawer(event.target)
       if (event.target.dataset.action === "view-order") openOrderDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "edit-store") openStoreDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "toggle-store-status") {
@@ -3610,21 +3707,7 @@
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "sales-agent-add" || event.target.dataset.action === "sales-agent-edit") {
-        const agent = salesAgents.find(item => item.id === event.target.dataset.id) || {}
-        const name = prompt("业务员姓名", agent.name || "")
-        if (!name) return
-        const phone = prompt("业务员手机号", agent.phone || "")
-        if (!phone) return
-        const commissionRate = prompt("默认佣金比例（%）", agent.commissionRate || "1.00")
-        if (commissionRate == null) return
-        const status = prompt("状态 active / disabled", agent.status || "active") || "active"
-        const remark = prompt("备注", agent.remark || "") || ""
-        const password = prompt(agent.id ? "重置密码（留空则不修改）" : "初始密码", "")
-        if (!agent.id && !password) return setStatus("新增业务员必须填写初始密码")
-        const payload = { name, phone, commissionRate, status, remark }
-        if (password) payload.password = password
-        const request = agent.id ? api(`/api/admin/sales-agents/${encodeURIComponent(agent.id)}`, "PUT", payload) : api("/api/admin/sales-agents", "POST", payload)
-        request.then(() => loadAll()).then(() => setStatus(agent.id ? "业务员已更新" : "业务员已新增")).catch(error => setStatus(error.message))
+        openSalesAgentDrawer(event.target.dataset.id || "")
       }
       if (event.target.dataset.action === "store-lead-create") {
         if (!confirm("确认通过线索并创建合作门店？")) return
