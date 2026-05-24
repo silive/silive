@@ -3724,20 +3724,7 @@ async function saveProducts(products) {
 async function getModelCandidates(filters = {}) {
   if (!pool) {
     let list = readJsonFile(modelCandidatesFile, []).map(normalizeModelCandidate)
-    if (filters.status) list = list.filter(item => item.status === filters.status)
-    if (filters.commercialStatus) list = list.filter(item => item.commercialStatus === filters.commercialStatus)
-    if (filters.riskLevel) list = list.filter(item => item.riskLevel === filters.riskLevel)
-    if (filters.productionStatus) list = list.filter(item => item.productionStatus === filters.productionStatus)
-    if (filters.draftState === "created") list = list.filter(item => ["draft_created", "published"].includes(item.status))
-    if (filters.draftState === "not_created") list = list.filter(item => !["draft_created", "published"].includes(item.status))
-    if (filters.minScore) list = list.filter(item => Number(item.score || 0) >= Number(filters.minScore || 0))
-    if (filters.maxPrintTimeMinutes) list = list.filter(item => !item.printTimeMinutes || Number(item.printTimeMinutes || 0) <= Number(filters.maxPrintTimeMinutes || 0))
-    if (filters.maxFilamentWeightG) list = list.filter(item => !item.filamentWeightG || Number(item.filamentWeightG || 0) <= Number(filters.maxFilamentWeightG || 0))
-    if (filters.category) list = list.filter(item => item.category === filters.category)
-    if (filters.keyword) {
-      const keyword = String(filters.keyword).toLowerCase()
-      list = list.filter(item => [item.title, item.authorName, item.sourceModelId, item.sourceUrl, item.authorizationParty].some(value => String(value || "").toLowerCase().includes(keyword)))
-    }
+    list = filterModelCandidates(list, filters)
     return sortModelCandidates(list, filters.sort)
   }
   const where = []
@@ -3753,24 +3740,6 @@ async function getModelCandidates(filters = {}) {
   if (filters.riskLevel) {
     where.push("risk_level = :riskLevel")
     params.riskLevel = filters.riskLevel
-  }
-  if (filters.productionStatus) {
-    where.push("production_status = :productionStatus")
-    params.productionStatus = filters.productionStatus
-  }
-  if (filters.draftState === "created") where.push("status IN ('draft_created', 'published')")
-  if (filters.draftState === "not_created") where.push("status NOT IN ('draft_created', 'published')")
-  if (filters.minScore) {
-    where.push("score >= :minScore")
-    params.minScore = Number(filters.minScore || 0)
-  }
-  if (filters.maxPrintTimeMinutes) {
-    where.push("(print_time_minutes IS NULL OR print_time_minutes = 0 OR print_time_minutes <= :maxPrintTimeMinutes)")
-    params.maxPrintTimeMinutes = Number(filters.maxPrintTimeMinutes || 0)
-  }
-  if (filters.maxFilamentWeightG) {
-    where.push("(filament_weight_g IS NULL OR filament_weight_g = 0 OR filament_weight_g <= :maxFilamentWeightG)")
-    params.maxFilamentWeightG = Number(filters.maxFilamentWeightG || 0)
   }
   if (filters.category) {
     where.push("category = :category")
@@ -3816,7 +3785,26 @@ async function getModelCandidates(filters = {}) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }, index))
-  return sortModelCandidates(list, filters.sort)
+  return sortModelCandidates(filterModelCandidates(list, filters), filters.sort)
+}
+
+function filterModelCandidates(list = [], filters = {}) {
+  let next = [...list]
+  if (filters.status) next = next.filter(item => item.status === filters.status)
+  if (filters.commercialStatus) next = next.filter(item => item.commercialStatus === filters.commercialStatus)
+  if (filters.riskLevel) next = next.filter(item => item.riskLevel === filters.riskLevel)
+  if (filters.productionStatus) next = next.filter(item => item.productionStatus === filters.productionStatus)
+  if (filters.draftState === "created") next = next.filter(item => ["draft_created", "published"].includes(item.status))
+  if (filters.draftState === "not_created") next = next.filter(item => !["draft_created", "published"].includes(item.status))
+  if (filters.minScore) next = next.filter(item => Number(item.score || 0) >= Number(filters.minScore || 0))
+  if (filters.maxPrintTimeMinutes) next = next.filter(item => !item.printTimeMinutes || Number(item.printTimeMinutes || 0) <= Number(filters.maxPrintTimeMinutes || 0))
+  if (filters.maxFilamentWeightG) next = next.filter(item => !item.filamentWeightG || Number(item.filamentWeightG || 0) <= Number(filters.maxFilamentWeightG || 0))
+  if (filters.category) next = next.filter(item => item.category === filters.category)
+  if (filters.keyword) {
+    const keyword = String(filters.keyword).toLowerCase()
+    next = next.filter(item => [item.title, item.authorName, item.sourceModelId, item.sourceUrl, item.authorizationParty].some(value => String(value || "").toLowerCase().includes(keyword)))
+  }
+  return next
 }
 
 function sortModelCandidates(list = [], sort = "") {
