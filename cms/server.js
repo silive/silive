@@ -47,7 +47,7 @@ const testFile = path.join(__dirname, "test.html")
 const uploadsDir = path.join(__dirname, "uploads")
 const productUploadsDir = path.join(uploadsDir, "products")
 const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
-const BRAND_QR_LOGO_VERSION = "orange-v4"
+const BRAND_QR_LOGO_VERSION = "orange-v5-release"
 const themesDir = path.join(ROOT, "themes")
 const seedDir = path.join(__dirname, "data")
 const importTempDir = path.join(seedDir, "import-temp")
@@ -6148,18 +6148,24 @@ async function applyBrandLogoToQrBuffer(buffer) {
   }
 }
 
+function wxacodeEnvVersion() {
+  const value = String(process.env.WECHAT_WXACODE_ENV_VERSION || "release").trim()
+  return ["release", "trial", "develop"].includes(value) ? value : "release"
+}
+
 async function generatePromotionWxacode(inviteCode) {
   const safeInvite = String(inviteCode || "").replace(/[^\w-]/g, "").slice(0, 24) || "VSCUSTOM"
-  const outputFile = path.join(uploadsDir, `promotion-code-${safeInvite}-${BRAND_QR_LOGO_VERSION}.png`)
+  const envVersion = wxacodeEnvVersion()
+  const outputFile = path.join(uploadsDir, `promotion-code-${safeInvite}-${envVersion}-${BRAND_QR_LOGO_VERSION}.png`)
   if (fs.existsSync(outputFile)) {
-    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, logoVersion: BRAND_QR_LOGO_VERSION }
+    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, envVersion, logoVersion: BRAND_QR_LOGO_VERSION }
   }
   const accessToken = await getAccessToken()
   const body = JSON.stringify({
     scene: `invite=${safeInvite}`,
     page: "pages/index/index",
     check_path: false,
-    env_version: process.env.WECHAT_WXACODE_ENV_VERSION || "trial"
+    env_version: envVersion
   })
   const result = await requestBuffer(`https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${accessToken}`, {
     method: "POST",
@@ -6181,7 +6187,7 @@ async function generatePromotionWxacode(inviteCode) {
   }
   fs.mkdirSync(uploadsDir, { recursive: true })
   fs.writeFileSync(outputFile, await applyBrandLogoToQrBuffer(result.data))
-  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, logoVersion: BRAND_QR_LOGO_VERSION }
+  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, envVersion, logoVersion: BRAND_QR_LOGO_VERSION }
 }
 
 async function generateProductWxacode(productId, refCode = "") {
@@ -6190,11 +6196,13 @@ async function generateProductWxacode(productId, refCode = "") {
   const safeRef = String(refCode || "").replace(/[^\w-]/g, "").slice(0, 10)
   const scene = safeWxacodeScene(`p=${safeProductId}${safeRef ? `&ref=${safeRef}` : ""}`, `p=${safeProductId}`)
   const cacheKey = `${safeProductId}${safeRef ? `-${safeRef}` : ""}`.replace(/[^\w-]/g, "").slice(0, 48)
-  const outputFile = path.join(uploadsDir, `product-code-${cacheKey}-${BRAND_QR_LOGO_VERSION}.png`)
+  const envVersion = wxacodeEnvVersion()
+  const outputFile = path.join(uploadsDir, `product-code-${cacheKey}-${envVersion}-${BRAND_QR_LOGO_VERSION}.png`)
   if (fs.existsSync(outputFile)) {
     return {
       url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`),
       cached: true,
+      envVersion,
       scene,
       path: `/pages/product/detail?id=${encodeURIComponent(safeProductId)}${safeRef ? `&ref=${encodeURIComponent(safeRef)}` : ""}`,
       logoVersion: BRAND_QR_LOGO_VERSION
@@ -6205,7 +6213,7 @@ async function generateProductWxacode(productId, refCode = "") {
     scene,
     page: "pages/product/detail",
     check_path: false,
-    env_version: process.env.WECHAT_WXACODE_ENV_VERSION || "trial"
+    env_version: envVersion
   })
   const result = await requestBuffer(`https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${accessToken}`, {
     method: "POST",
@@ -6230,6 +6238,7 @@ async function generateProductWxacode(productId, refCode = "") {
   return {
     url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`),
     cached: false,
+    envVersion,
     scene,
     path: `/pages/product/detail?id=${encodeURIComponent(safeProductId)}${safeRef ? `&ref=${encodeURIComponent(safeRef)}` : ""}`,
     logoVersion: BRAND_QR_LOGO_VERSION
@@ -6240,16 +6249,17 @@ async function generateStoreWxacode(store) {
   if (!store?.id) throw httpError(404, "门店不存在")
   if (!isStoreEnabled(store)) throw httpError(400, "门店已停用，暂不能生成二维码")
   const safeStoreId = String(store.id || "").replace(/[^\w-]/g, "").slice(0, 24)
-  const outputFile = path.join(uploadsDir, `store-code-${safeStoreId}-${BRAND_QR_LOGO_VERSION}.png`)
+  const envVersion = wxacodeEnvVersion()
+  const outputFile = path.join(uploadsDir, `store-code-${safeStoreId}-${envVersion}-${BRAND_QR_LOGO_VERSION}.png`)
   if (fs.existsSync(outputFile)) {
-    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, scene: `store_id=${safeStoreId}`, logoVersion: BRAND_QR_LOGO_VERSION }
+    return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: true, envVersion, scene: `store_id=${safeStoreId}`, logoVersion: BRAND_QR_LOGO_VERSION }
   }
   const accessToken = await getAccessToken()
   const body = JSON.stringify({
     scene: safeWxacodeScene(`store_id=${safeStoreId}`, `store_id=${safeStoreId}`),
     page: "pages/index/index",
     check_path: false,
-    env_version: process.env.WECHAT_WXACODE_ENV_VERSION || "trial"
+    env_version: envVersion
   })
   const result = await requestBuffer(`https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${accessToken}`, {
     method: "POST",
@@ -6271,7 +6281,7 @@ async function generateStoreWxacode(store) {
   }
   fs.mkdirSync(uploadsDir, { recursive: true })
   fs.writeFileSync(outputFile, await applyBrandLogoToQrBuffer(result.data))
-  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, scene: `store_id=${safeStoreId}`, logoVersion: BRAND_QR_LOGO_VERSION }
+  return { url: publicAssetUrl(`/uploads/${path.basename(outputFile)}`), cached: false, envVersion, scene: `store_id=${safeStoreId}`, logoVersion: BRAND_QR_LOGO_VERSION }
 }
 
 async function getWechatPhoneNumber(code) {
