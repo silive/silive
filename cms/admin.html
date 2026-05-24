@@ -2940,9 +2940,9 @@
           </select></label>
         </div></div>
         <div class="drawer-section"><h4>${isEdit ? "重置密码" : "初始密码"}</h4><div class="form-grid">
-          <label>${isEdit ? "重置密码" : "初始密码"}<input data-sales-agent-key="password" type="password" value="" autocomplete="new-password" placeholder="${isEdit ? "留空表示不修改密码" : "请输入初始密码"}"></label>
+          ${isEdit ? `<div style="grid-column:1/-1"><button class="secondary" type="button" data-action="show-sales-agent-password-reset">重置密码</button><div class="upload-help">未点击重置密码时，不会提交密码字段。</div></div><label id="salesAgentPasswordField" style="display:none">重置密码<input data-sales-agent-key="password" type="password" value="" autocomplete="off" name="sales_agent_reset_${Date.now()}" placeholder="请输入新密码"></label>` : `<label>初始密码<input data-sales-agent-key="password" type="password" value="" autocomplete="new-password" name="sales_agent_initial_${Date.now()}" placeholder="请输入初始密码"></label>`}
           <label style="grid-column:1/-1">备注<textarea data-sales-agent-key="remark" placeholder="选填">${escapeHtml(salesAgentDraft.remark || "")}</textarea></label>
-        </div>${isEdit ? `<div class="upload-help">留空表示不修改密码。</div>` : ""}</div>
+        </div></div>
       `
       $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">取消</button><button class="primary" data-action="save-sales-agent-drawer">${isEdit ? "保存" : "保存"}</button>`
       drawerDirty = false
@@ -3712,6 +3712,15 @@
       }
       if (event.target.dataset.action === "sales-agent-add" || event.target.dataset.action === "sales-agent-edit") {
         openSalesAgentDrawer(event.target.dataset.id || "")
+      }
+      if (event.target.dataset.action === "show-sales-agent-password-reset") {
+        const field = $("salesAgentPasswordField")
+        if (field) {
+          field.style.display = "block"
+          const input = field.querySelector("input")
+          if (input) input.focus()
+        }
+        event.target.style.display = "none"
       }
       if (event.target.dataset.action === "store-lead-create") {
         if (!confirm("确认通过线索并创建合作门店？")) return
