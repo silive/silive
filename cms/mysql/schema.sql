@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS store_leads (
   latitude DECIMAL(10,6),
   longitude DECIMAL(10,6),
   store_type VARCHAR(60),
+  cooperation_type VARCHAR(60),
   pickup_enabled VARCHAR(10) DEFAULT 'false',
   photos JSON,
   remark TEXT,

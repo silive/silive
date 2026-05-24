@@ -351,6 +351,9 @@
     .dense-table tr:hover td { background: #FFF7EF; }
     .dense-table input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
     .table-image { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; background: linear-gradient(135deg, #f4b7ae, #272322); border: 1px solid #FFD9BF; display: block; }
+    .lead-photo-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 116px; }
+    .lead-photo-list img { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 1px solid #FFD9BF; background: #FFF9F3; display: block; }
+    .lead-address-cell { min-width: 220px; max-width: 320px; line-height: 1.5; }
     .table-title { color: #E94B00; font-weight: 850; line-height: 1.25; }
     .table-sub { margin-top: 4px; color: #6B7280; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .category-tags { display: flex; flex-wrap: wrap; gap: 5px; max-width: 260px; }
@@ -2878,11 +2881,12 @@
     }
     function renderStoreLeads() {
       $("storeLeadStatusFilter").value = storeLeadFilters.status || ""
-      $("storeLeadsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>业务员</th><th>门店</th><th>联系人</th><th>电话</th><th>地址</th><th>类型</th><th>自提</th><th>照片</th><th>备注</th><th>重复提示</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody>${storeLeads.map(lead => `
+      $("storeLeadsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>业务员</th><th>门店</th><th>联系人</th><th>电话</th><th>门店类型</th><th>合作类型</th><th>自提</th><th>地址/坐标</th><th>照片</th><th>备注</th><th>重复提示</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody>${storeLeads.map(lead => `
         <tr>
           <td>${escapeHtml(lead.salesAgentName || "-")}<div class="muted">${escapeHtml(lead.salesAgentPhone || "")}</div></td>
-          <td>${escapeHtml(lead.storeName)}</td><td>${escapeHtml(lead.contactName)}</td><td>${escapeHtml(lead.contactPhone)}</td><td>${escapeHtml(lead.address)}</td><td>${escapeHtml(lead.storeType || "-")}</td><td>${lead.pickupEnabled === "true" ? "是" : "否"}</td>
-          <td>${(lead.photos || []).map(url => `<a href="${escapeHtml(url)}" target="_blank">照片</a>`).join(" ") || "-"}</td>
+          <td>${escapeHtml(lead.storeName)}</td><td>${escapeHtml(lead.contactName)}</td><td>${escapeHtml(lead.contactPhone)}</td><td>${escapeHtml(lead.storeType || "-")}</td><td>${escapeHtml(lead.cooperationType || "-")}</td><td>${lead.pickupEnabled === "true" ? "是" : "否"}</td>
+          <td><div class="lead-address-cell">${escapeHtml(lead.address)}${lead.latitude || lead.longitude ? `<div class="muted">纬度 ${escapeHtml(lead.latitude || "-")} / 经度 ${escapeHtml(lead.longitude || "-")}</div>` : ""}</div></td>
+          <td><div class="lead-photo-list">${(lead.photos || []).map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="门店照片"></a>`).join("") || "-"}</div></td>
           <td>${escapeHtml(lead.remark || "-")}</td>
           <td>${(lead.duplicateStores || []).length ? `<strong style="color:#b45309">疑似已有门店</strong><div class="muted">${lead.duplicateStores.map(item => `${escapeHtml(item.name)}：${escapeHtml((item.duplicateReasons || []).join("、"))}`).join("<br>")}</div>` : "-"}</td>
           <td><span class="pill">${escapeHtml(lead.statusText || lead.status)}</span>${lead.rejectReason ? `<div class="muted">${escapeHtml(lead.rejectReason)}</div>` : ""}</td>

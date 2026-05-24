@@ -46,7 +46,9 @@ const adminFile = path.join(__dirname, "admin.html")
 const loginFile = path.join(__dirname, "login.html")
 const testFile = path.join(__dirname, "test.html")
 const uploadsDir = path.join(__dirname, "uploads")
+const salesLeadUploadsDir = path.join(uploadsDir, "sales-leads")
 const productUploadsDir = path.join(uploadsDir, "products")
+const publicLogoFile = path.join(ROOT, "assets", "logo.png")
 const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
 const BRAND_QR_LOGO_VERSION = "orange-v5-release"
 const themesDir = path.join(ROOT, "themes")
@@ -81,6 +83,7 @@ const salesLoginFailures = new Map()
 let lastOrphanUploadCleanupAt = 0
 
 fs.mkdirSync(uploadsDir, { recursive: true })
+fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
 fs.mkdirSync(productUploadsDir, { recursive: true })
 fs.mkdirSync(certDir, { recursive: true })
 fs.mkdirSync(themesDir, { recursive: true })
@@ -2823,6 +2826,7 @@ function normalizeStoreLead(lead = {}, index = 0) {
     latitude: lead.latitude == null || lead.latitude === "" ? "" : String(lead.latitude),
     longitude: lead.longitude == null || lead.longitude === "" ? "" : String(lead.longitude),
     storeType: lead.storeType || lead.store_type || "",
+    cooperationType: lead.cooperationType || lead.cooperation_type || "",
     pickupEnabled: String(lead.pickupEnabled ?? lead.pickup_enabled ?? "false") === "true" ? "true" : "false",
     photos: normalizeMediaList(lead.photos || []).slice(0, 3).map(publicAssetUrl),
     remark: lead.remark || "",
@@ -3777,9 +3781,9 @@ async function saveStoreLeads(leads = []) {
   }
   for (const lead of list) {
     await query(
-      `INSERT INTO store_leads (id, sales_agent_id, store_name, contact_name, contact_phone, address, latitude, longitude, store_type, pickup_enabled, photos, remark, status, reject_reason, store_id, created_at, handled_at, handled_by)
-       VALUES (:id, :salesAgentId, :storeName, :contactName, :contactPhone, :address, :latitude, :longitude, :storeType, :pickupEnabled, :photosJson, :remark, :status, :rejectReason, :storeId, :createdAt, :handledAt, :handledBy)
-       ON DUPLICATE KEY UPDATE store_name = VALUES(store_name), contact_name = VALUES(contact_name), contact_phone = VALUES(contact_phone), address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude), store_type = VALUES(store_type), pickup_enabled = VALUES(pickup_enabled), photos = VALUES(photos), remark = VALUES(remark), status = VALUES(status), reject_reason = VALUES(reject_reason), store_id = VALUES(store_id), handled_at = VALUES(handled_at), handled_by = VALUES(handled_by)`,
+      `INSERT INTO store_leads (id, sales_agent_id, store_name, contact_name, contact_phone, address, latitude, longitude, store_type, cooperation_type, pickup_enabled, photos, remark, status, reject_reason, store_id, created_at, handled_at, handled_by)
+       VALUES (:id, :salesAgentId, :storeName, :contactName, :contactPhone, :address, :latitude, :longitude, :storeType, :cooperationType, :pickupEnabled, :photosJson, :remark, :status, :rejectReason, :storeId, :createdAt, :handledAt, :handledBy)
+       ON DUPLICATE KEY UPDATE store_name = VALUES(store_name), contact_name = VALUES(contact_name), contact_phone = VALUES(contact_phone), address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude), store_type = VALUES(store_type), cooperation_type = VALUES(cooperation_type), pickup_enabled = VALUES(pickup_enabled), photos = VALUES(photos), remark = VALUES(remark), status = VALUES(status), reject_reason = VALUES(reject_reason), store_id = VALUES(store_id), handled_at = VALUES(handled_at), handled_by = VALUES(handled_by)`,
       {
         ...lead,
         latitude: lead.latitude === "" ? null : lead.latitude,
@@ -3881,7 +3885,12 @@ async function handleStoreLead(leadId, action, data = {}) {
       isPickupEnabled: lead.pickupEnabled,
       storeStatus: "active",
       status: "enabled",
-      remark: [lead.storeType ? `门店类型：${lead.storeType}` : "", lead.remark || ""].filter(Boolean).join("\n"),
+      remark: [
+        lead.storeType ? `门店类型：${lead.storeType}` : "",
+        lead.cooperationType ? `合作类型：${lead.cooperationType}` : "",
+        lead.photos?.length ? `门店照片：${lead.photos.join("，")}` : "",
+        lead.remark || ""
+      ].filter(Boolean).join("\n"),
       salesAgentId: lead.salesAgentId,
       salesAgentCommissionRate: data.salesAgentCommissionRate ?? agent?.commissionRate ?? ""
     })
@@ -7108,6 +7117,7 @@ async function initDb() {
     latitude DECIMAL(10,6),
     longitude DECIMAL(10,6),
     store_type VARCHAR(60),
+    cooperation_type VARCHAR(60),
     pickup_enabled VARCHAR(10) DEFAULT 'false',
     photos JSON,
     remark TEXT,
@@ -7120,6 +7130,7 @@ async function initDb() {
     INDEX idx_store_lead_agent (sales_agent_id),
     INDEX idx_store_lead_status (status)
   )`)
+  await ensureColumn("store_leads", "cooperation_type", "VARCHAR(60)")
   await query(`CREATE TABLE IF NOT EXISTS sales_agent_commissions (
     id VARCHAR(80) PRIMARY KEY,
     sales_agent_id VARCHAR(60),
@@ -7695,15 +7706,22 @@ function decryptWechatResource(resource) {
 
 function renderSalesPage() {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>业务员工作台</title><style>
-  :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1f2933;background:#f6f7f9}body{margin:0}.shell{max-width:1180px;margin:0 auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.brand{font-size:22px;font-weight:800}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid #d8dde6;background:#fff;color:#1f2933;padding:9px 13px;border-radius:8px;text-decoration:none;cursor:pointer}.btn.primary{background:#0f766e;color:#fff;border-color:#0f766e}.btn.danger{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.card,.panel{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px}.metric{font-size:13px;color:#6b7280}.value{font-size:24px;font-weight:800;margin-top:6px}.panel{margin-top:14px}.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.form label{font-size:13px;color:#4b5563}.form input,.form select,.form textarea{width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d8dde6;border-radius:8px;padding:10px;font:inherit}.form textarea{min-height:92px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #edf0f3;text-align:left;font-size:14px}th{color:#6b7280;background:#fafafa}.muted{color:#6b7280}.login{max-width:380px;margin:12vh auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:24px}.status{position:fixed;right:18px;bottom:18px;background:#111827;color:#fff;padding:10px 14px;border-radius:8px;display:none}.photos{display:flex;gap:6px;flex-wrap:wrap}.photos img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb}@media(max-width:640px){.shell{padding:16px}th,td{white-space:nowrap}.table-wrap{overflow:auto}}</style></head><body><div id="app"></div><div id="status" class="status"></div><script>
-  const path=location.pathname;const $=s=>document.querySelector(s);const money=v=>Number(v||0).toFixed(2);const text=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));function toast(m){const el=$("#status");el.textContent=m;el.style.display="block";setTimeout(()=>el.style.display="none",2200)}async function api(url,method="GET",body){const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"});const data=await res.json().catch(()=>({}));if(res.status===401&&path!=="/sales/login"){location.href="/sales/login";return{}}if(!res.ok||data.ok===false)throw new Error(data.message||"请求失败");return data}
-  function layout(title,body){return '<div class="shell"><div class="top"><div><div class="brand">业务员工作台</div><div class="muted">'+text(title)+'</div></div><div class="nav"><a href="/sales/dashboard">看板</a><a href="/sales/store-leads">门店线索</a><a href="/sales/store-leads/new">提交门店</a><button class="btn" onclick="logout()">退出</button></div></div>'+body+'</div>'}
+  :root{--brand:#ff6a00;--brand-dark:#ef4b00;--ink:#1f2933;--muted:#687385;--line:#f0d8c6;--paper:#fff;--soft:#fff4ea;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:linear-gradient(180deg,#fff8f0 0%,#f7f8fb 46%,#f7f8fb 100%)}*{box-sizing:border-box}body{margin:0;background:transparent}.shell{width:min(100%,720px);margin:0 auto;padding:18px 16px 28px}.top{position:sticky;top:0;z-index:5;margin:0 -16px 16px;padding:12px 16px 10px;background:rgba(255,248,240,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,106,0,.12)}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand-wrap{display:flex;align-items:center;gap:10px;min-width:0}.logo{width:48px;height:48px;border-radius:50%;object-fit:cover;box-shadow:0 8px 22px rgba(255,106,0,.2);flex:none}.brand{font-size:20px;font-weight:900;line-height:1.1}.subtitle{font-size:13px;color:var(--muted);margin-top:3px}.nav{display:flex;gap:8px;margin-top:12px;overflow:auto;padding-bottom:2px}.nav a,.btn{min-height:42px;border:1px solid #ffd2ad;background:#fff;color:var(--ink);padding:10px 13px;border-radius:12px;text-decoration:none;cursor:pointer;font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}.nav a.active{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 8px 18px rgba(255,106,0,.22)}.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:#fff;border-color:var(--brand);font-weight:800;box-shadow:0 10px 20px rgba(255,106,0,.22)}.btn.secondary{background:#fff;color:var(--brand);border-color:#ffc69a}.btn.danger{color:#b42318}.btn.full{width:100%;min-height:52px;border-radius:14px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card,.panel{background:#fff;border:1px solid #f0dfd3;border-radius:16px;padding:15px;box-shadow:0 10px 26px rgba(31,41,51,.05)}.metric{font-size:12px;color:var(--muted)}.value{font-size:22px;font-weight:900;margin-top:6px;line-height:1.12}.panel{margin-top:14px}.panel h3{margin:0 0 12px;font-size:18px}.form{display:grid;gap:14px}.field{display:grid;gap:7px;font-size:14px;color:#445065;font-weight:700}.field input,.field select,.field textarea{width:100%;border:1px solid #ead8ca;border-radius:13px;padding:13px 12px;font:inherit;color:var(--ink);background:#fff;min-height:50px}.field textarea{min-height:96px;resize:vertical}.hint{font-size:12px;color:var(--muted);font-weight:500}.choice-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.choice-row label{border:1px solid #ead8ca;background:#fffaf6;border-radius:13px;min-height:48px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px;font-weight:800;color:#445065}.choice-row input{position:absolute;opacity:0;pointer-events:none}.choice-row label:has(input:checked){background:#fff0e4;border-color:var(--brand);color:var(--brand);box-shadow:inset 0 0 0 1px rgba(255,106,0,.16)}.upload-box{border:1px dashed #ffb476;background:#fff8f0;border-radius:16px;padding:14px;display:grid;gap:12px}.photo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.photo-tile{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;background:#f7f2ee;border:1px solid #ead8ca}.photo-tile img{width:100%;height:100%;object-fit:cover;display:block}.photo-tile button{position:absolute;top:5px;right:5px;width:26px;height:26px;border:0;border-radius:50%;background:rgba(17,24,39,.72);color:#fff;font-size:18px;line-height:1;cursor:pointer}.empty{color:var(--muted);text-align:center;padding:24px 12px;border:1px dashed #e2d7cf;border-radius:14px;background:#fffaf6}.lead-list{display:grid;gap:10px}.lead-card{border:1px solid #eeddd0;border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.lead-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.lead-title{font-weight:900;font-size:17px}.badge{border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800;background:#fff0e4;color:#d94b00;white-space:nowrap}.kv{display:grid;gap:6px;color:#4b5563;font-size:13px}.kv div{display:flex;gap:8px}.kv b{color:#7a8696;min-width:64px;font-weight:700}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:720px}th,td{padding:10px;border-bottom:1px solid #edf0f3;text-align:left;font-size:14px}th{color:#6b7280;background:#fafafa}.muted{color:var(--muted)}.login{width:min(92vw,410px);margin:9vh auto;background:#fff;border:1px solid #f0dfd3;border-radius:22px;padding:24px;box-shadow:0 18px 42px rgba(31,41,51,.08)}.login-brand{text-align:center;margin-bottom:18px}.login-brand img{width:82px;height:82px;border-radius:50%;object-fit:cover;box-shadow:0 10px 24px rgba(255,106,0,.22)}.login-brand h2{margin:12px 0 4px}.status{position:fixed;left:50%;bottom:18px;z-index:20;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 15px;border-radius:999px;display:none;max-width:90vw;text-align:center}.details{border:1px solid #ead8ca;border-radius:14px;padding:0;background:#fff}.details summary{padding:13px 14px;cursor:pointer;font-weight:800;color:#445065}.details-body{padding:0 14px 14px;display:grid;gap:12px}.submit-bar{margin:16px 0 0;padding:0 0 4px}@media(max-width:520px){.shell{padding:14px 12px 24px}.top{margin:0 -12px 14px;padding:10px 12px}.brand{font-size:18px}.logo{width:42px;height:42px}.grid{grid-template-columns:1fr 1fr}.choice-row{grid-template-columns:1fr}.submit-bar{position:sticky;bottom:0;margin:16px -12px -24px;padding:12px 12px 18px;background:linear-gradient(180deg,rgba(247,248,251,0),#f7f8fb 24%)}.card,.panel{border-radius:14px;padding:13px}}</style></head><body><div id="app"></div><div id="status" class="status"></div><script>
+  const path=location.pathname;const $=s=>document.querySelector(s);const money=v=>Number(v||0).toFixed(2);const text=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));function toast(m){const el=$("#status");el.textContent=m;el.style.display="block";setTimeout(()=>el.style.display="none",2400)}async function api(url,method="GET",body){const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"});const data=await res.json().catch(()=>({}));if(res.status===401&&path!=="/sales/login"){location.href="/sales/login";return{}}if(!res.ok||data.ok===false)throw new Error(data.message||"请求失败");return data}
+  function activeNav(href){return path===href?' class="active"':""}
+  function layout(title,body){return '<div class="shell"><div class="top"><div class="head"><div class="brand-wrap"><img class="logo" src="/assets/logo.png" alt="非常智造"><div><div class="brand">非常智造业务员工作台</div><div class="subtitle">'+text(title)+'</div></div></div></div><div class="nav"><a'+activeNav("/sales/dashboard")+' href="/sales/dashboard">看板</a><a'+activeNav("/sales/store-leads")+' href="/sales/store-leads">门店线索</a><a'+activeNav("/sales/store-leads/new")+' href="/sales/store-leads/new">提交门店</a><button class="btn" onclick="logout()">退出</button></div></div>'+body+'</div><div id="status" class="status"></div>'}
   async function logout(){await api("/api/sales/logout","POST",{});location.href="/sales/login"}
-  async function renderLogin(){document.body.innerHTML='<div class="login"><h2>业务员登录</h2><div class="form"><label>手机号<input id="phone" autocomplete="username"></label><label>密码<input id="password" type="password" autocomplete="current-password"></label></div><p><button class="btn primary" id="loginBtn">登录</button></p><p class="muted" id="err"></p></div>';$("#loginBtn").onclick=async()=>{try{await api("/api/sales/login","POST",{phone:$("#phone").value,password:$("#password").value});location.href="/sales/dashboard"}catch(e){$("#err").textContent=e.message||"手机号或密码错误"}}}
+  async function renderLogin(){document.body.innerHTML='<div class="login"><div class="login-brand"><img src="/assets/logo.png" alt="非常智造"><h2>业务员登录</h2><div class="muted">非常智造业务员工作台</div></div><div class="form"><label class="field">手机号<input id="phone" autocomplete="username" inputmode="numeric" placeholder="请输入手机号"></label><label class="field">密码<input id="password" type="password" autocomplete="current-password" placeholder="请输入密码"></label></div><p><button class="btn primary full" id="loginBtn">登录</button></p><p class="muted" id="err"></p></div><div id="status" class="status"></div>';$("#loginBtn").onclick=async()=>{try{await api("/api/sales/login","POST",{phone:$("#phone").value,password:$("#password").value});location.href="/sales/dashboard"}catch(e){$("#err").textContent=e.message||"手机号或密码错误"}}}
   function summaryCards(s){return '<div class="grid">'+[['累计已结算',s.settledTotal],['当前待结算',s.payableTotal],['当前退款扣回',s.chargebackTotal],['本次预计到账',s.actualPayable]].map(i=>'<div class="card"><div class="metric">'+i[0]+'</div><div class="value">¥'+money(i[1])+'</div></div>').join('')+'</div>'}
-  async function renderDashboard(){const d=await api("/api/sales/dashboard");const stores=d.stores||[],records=d.records||[],overview=d.overview||{};document.body.innerHTML=layout("业绩、佣金与结算状态",summaryCards(d.summary||{})+'<div class="grid" style="margin-top:12px">'+[['已开发门店数',overview.storeCount],['待审核门店线索数',overview.pendingLeadCount],['累计订单数',overview.orderCount],['累计销售额',"¥"+money(overview.salesAmount)],['累计佣金',"¥"+money(overview.totalCommission)]].map(i=>'<div class="card"><div class="metric">'+i[0]+'</div><div class="value">'+(i[1]||0)+'</div></div>').join('')+'</div><div class="panel"><h3>我开发的门店</h3><div class="table-wrap"><table><thead><tr><th>门店</th><th>电话</th><th>地址</th><th>销售额</th><th>订单数</th><th>待结算</th><th>预计到账</th></tr></thead><tbody>'+stores.map(s=>'<tr><td>'+text(s.name)+'</td><td>'+text(s.phone)+'</td><td>'+text(s.address)+'</td><td>¥'+money(s.salesAmount)+'</td><td>'+s.orderCount+'</td><td>¥'+money(s.payableTotal)+'</td><td>¥'+money(s.actualPayable)+'</td></tr>').join('')+'</tbody></table></div></div><div class="panel"><h3>佣金明细</h3><div class="table-wrap"><table><thead><tr><th>时间</th><th>门店</th><th>订单号</th><th>订单金额</th><th>比例</th><th>金额</th><th>类型</th><th>状态</th><th>备注</th></tr></thead><tbody>'+records.map(r=>'<tr><td>'+text(r.createdAtText||r.createdAt)+'</td><td>'+text(r.storeName||r.storeId)+'</td><td>'+text(r.orderNo||r.orderId)+'</td><td>¥'+money(r.orderAmount)+'</td><td>'+money(r.commissionRate)+'%</td><td>¥'+money(r.amount)+'</td><td>'+text(r.typeText)+'</td><td>'+text(r.statusText)+'</td><td>'+text(r.remark)+'</td></tr>').join('')+'</tbody></table></div></div>')}
-  async function renderLeads(){const d=await api("/api/sales/store-leads");document.body.innerHTML=layout("我提交的门店线索",'<div class="panel"><div class="table-wrap"><table><thead><tr><th>门店名称</th><th>联系人</th><th>电话</th><th>地址</th><th>状态</th><th>拒绝原因</th><th>提交时间</th><th>审核时间</th></tr></thead><tbody>'+(d.data||[]).map(l=>'<tr><td>'+text(l.storeName)+'</td><td>'+text(l.contactName)+'</td><td>'+text(l.contactPhone)+'</td><td>'+text(l.address)+'</td><td>'+text(l.statusText)+'</td><td>'+text(l.rejectReason||"-")+'</td><td>'+text(l.createdAt)+'</td><td>'+text(l.handledAt||"-")+'</td></tr>').join('')+'</tbody></table></div></div>')}
-  async function renderLeadForm(){document.body.innerHTML=layout("提交门店信息",'<div class="panel"><div class="form"><label>门店名称<input id="storeName"></label><label>联系人<input id="contactName"></label><label>联系电话<input id="contactPhone"></label><label>门店类型<input id="storeType"></label><label>是否支持自提<select id="pickupEnabled"><option value="false">否</option><option value="true">是</option></select></label><label>纬度<input id="latitude"></label><label>经度<input id="longitude"></label><label>门店照片URL，最多3张<textarea id="photos" placeholder="每行一个图片URL"></textarea></label><label>地址<textarea id="address"></textarea></label><label>备注<textarea id="remark"></textarea></label></div><p><button class="btn primary" id="submit">提交</button></p></div>');$("#submit").onclick=async()=>{const body={storeName:$("#storeName").value,contactName:$("#contactName").value,contactPhone:$("#contactPhone").value,address:$("#address").value,storeType:$("#storeType").value,pickupEnabled:$("#pickupEnabled").value,latitude:$("#latitude").value,longitude:$("#longitude").value,photos:$("#photos").value.split(/\\n/).map(s=>s.trim()).filter(Boolean).slice(0,3),remark:$("#remark").value};await api("/api/sales/store-leads","POST",body);alert("门店信息已提交，等待后台审核。");location.href="/sales/store-leads"}}
+  async function renderDashboard(){const d=await api("/api/sales/dashboard");const stores=d.stores||[],records=d.records||[],overview=d.overview||{};document.body.innerHTML=layout("业绩、佣金与结算状态",summaryCards(d.summary||{})+'<div class="grid" style="margin-top:10px">'+[['已开发门店数',overview.storeCount],['待审核线索',overview.pendingLeadCount],['累计订单数',overview.orderCount],['累计销售额',"¥"+money(overview.salesAmount)],['累计佣金',"¥"+money(overview.totalCommission)]].map(i=>'<div class="card"><div class="metric">'+i[0]+'</div><div class="value">'+(i[1]||0)+'</div></div>').join('')+'</div><div class="panel"><h3>我开发的门店</h3><div class="table-wrap"><table><thead><tr><th>门店</th><th>电话</th><th>地址</th><th>销售额</th><th>订单数</th><th>待结算</th><th>预计到账</th></tr></thead><tbody>'+stores.map(s=>'<tr><td>'+text(s.name)+'</td><td>'+text(s.phone)+'</td><td>'+text(s.address)+'</td><td>¥'+money(s.salesAmount)+'</td><td>'+s.orderCount+'</td><td>¥'+money(s.payableTotal)+'</td><td>¥'+money(s.actualPayable)+'</td></tr>').join('')+'</tbody></table></div></div><div class="panel"><h3>佣金明细</h3><div class="table-wrap"><table><thead><tr><th>时间</th><th>门店</th><th>订单号</th><th>订单金额</th><th>比例</th><th>金额</th><th>类型</th><th>状态</th><th>备注</th></tr></thead><tbody>'+records.map(r=>'<tr><td>'+text(r.createdAtText||r.createdAt)+'</td><td>'+text(r.storeName||r.storeId)+'</td><td>'+text(r.orderNo||r.orderId)+'</td><td>¥'+money(r.orderAmount)+'</td><td>'+money(r.commissionRate)+'%</td><td>¥'+money(r.amount)+'</td><td>'+text(r.typeText)+'</td><td>'+text(r.statusText)+'</td><td>'+text(r.remark)+'</td></tr>').join('')+'</tbody></table></div></div>')}
+  async function renderLeads(){const d=await api("/api/sales/store-leads");const leads=d.data||[];document.body.innerHTML=layout("我提交的门店线索",'<div class="panel"><div class="lead-list">'+(leads.length?leads.map(l=>'<div class="lead-card"><div class="lead-card-head"><div class="lead-title">'+text(l.storeName)+'</div><div class="badge">'+text(l.statusText)+'</div></div><div class="kv"><div><b>联系人</b><span>'+text(l.contactName)+' / '+text(l.contactPhone)+'</span></div><div><b>门店类型</b><span>'+text(l.storeType||"-")+'</span></div><div><b>合作类型</b><span>'+text(l.cooperationType||"-")+'</span></div><div><b>地址</b><span>'+text(l.address)+'</span></div><div><b>提交时间</b><span>'+text(l.createdAt)+'</span></div>'+(l.rejectReason?'<div><b>拒绝原因</b><span>'+text(l.rejectReason)+'</span></div>':'')+'</div></div>').join(''):'<div class="empty">还没有提交门店线索</div>')+'</div></div>')}
+  var uploadedPhotos=[];
+  function optionList(items){return items.map(v=>'<option value="'+text(v)+'">'+text(v)+'</option>').join('')}
+  function renderPhotoPreview(){const box=$("#photoPreview");if(!box)return;box.innerHTML=uploadedPhotos.length?uploadedPhotos.map((url,index)=>'<div class="photo-tile"><img src="'+text(url)+'" alt="门店照片"><button type="button" onclick="removePhoto('+index+')">×</button></div>').join(''):'<div class="empty" style="grid-column:1/-1;padding:16px 8px">尚未上传照片</div>'}
+  function removePhoto(index){uploadedPhotos.splice(index,1);renderPhotoPreview()}
+  async function uploadPhotos(files){const list=Array.from(files||[]).slice(0,3-uploadedPhotos.length);if(!list.length){toast("最多上传3张照片");return}for(const file of list){if(file.size>5*1024*1024){toast("单张图片不能超过5MB");return}if(!/^image\\/(jpeg|png|webp)$/.test(file.type)){toast("只支持 jpg、png、webp 图片");return}}const form=new FormData();list.forEach(file=>form.append("photos",file));const res=await fetch("/api/sales/upload",{method:"POST",body:form,cache:"no-store"});const data=await res.json().catch(()=>({}));if(res.status===401){location.href="/sales/login";return}if(!res.ok||data.ok===false)throw new Error(data.message||"上传失败");uploadedPhotos=uploadedPhotos.concat(data.urls||[]).slice(0,3);renderPhotoPreview();toast("照片已上传")}
+  function useLocation(){if(!navigator.geolocation){toast("当前浏览器不支持定位，可手动填写");return}toast("正在获取当前位置");navigator.geolocation.getCurrentPosition(pos=>{const c=pos.coords||{};$("#latitude").value=c.latitude?Number(c.latitude).toFixed(6):"";$("#longitude").value=c.longitude?Number(c.longitude).toFixed(6):"";toast("定位已填入")},()=>toast("定位失败，可手动填写"),{enableHighAccuracy:true,timeout:9000,maximumAge:30000})}
+  async function renderLeadForm(){const storeTypes=["展示点","自提点","合作门店","便利店","文具店","玩具店","礼品店","校园店","社区店","其他"];const cooperationTypes=["仅展示","支持自提","展示 + 自提","推广合作","待沟通"];document.body.innerHTML=layout("提交门店信息",'<div class="panel"><div class="form"><label class="field">门店名称<input id="storeName" placeholder="请输入门店名称"></label><label class="field">联系人<input id="contactName" placeholder="请输入联系人"></label><label class="field">联系电话<input id="contactPhone" inputmode="tel" placeholder="请输入11位手机号"></label><label class="field">门店类型<select id="storeType">'+optionList(storeTypes)+'</select></label><label class="field">合作类型<select id="cooperationType">'+optionList(cooperationTypes)+'</select></label><div class="field"><span>是否支持到店自提</span><div class="choice-row"><label><input type="radio" name="pickupChoice" value="false" checked>暂不支持</label><label><input type="radio" name="pickupChoice" value="true">支持自提</label><label><input type="radio" name="pickupChoice" value="pending">待确认</label></div></div><label class="field">门店地址<textarea id="address" placeholder="请输入详细地址"></textarea></label><div class="field"><span>门店照片</span><div class="upload-box"><div class="hint">上传门店照片，最多3张，支持现场拍照</div><input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple hidden><button class="btn secondary" type="button" id="pickPhoto">选择/拍照上传</button><div class="photo-grid" id="photoPreview"></div></div></div><label class="field">备注<textarea id="remark" placeholder="补充合作情况、老板反馈等"></textarea></label><details class="details"><summary>更多信息（经纬度）</summary><div class="details-body"><button class="btn secondary" type="button" id="locateBtn">使用当前位置</button><label class="field">纬度<input id="latitude" inputmode="decimal" placeholder="可选"></label><label class="field">经度<input id="longitude" inputmode="decimal" placeholder="可选"></label></div></details></div></div><div class="submit-bar"><button class="btn primary full" id="submit">提交门店信息</button></div>');uploadedPhotos=[];renderPhotoPreview();$("#pickPhoto").onclick=()=>$("#photoInput").click();$("#photoInput").onchange=async e=>{try{await uploadPhotos(e.target.files);e.target.value=""}catch(err){toast(err.message||"上传失败")}};$("#locateBtn").onclick=useLocation;$("#submit").onclick=async()=>{const pickupChoice=(document.querySelector("input[name=pickupChoice]:checked")||{}).value||"false";const remarkParts=[];if(pickupChoice==="pending")remarkParts.push("自提状态：待确认");if($("#remark").value.trim())remarkParts.push($("#remark").value.trim());const body={storeName:$("#storeName").value.trim(),contactName:$("#contactName").value.trim(),contactPhone:$("#contactPhone").value.trim(),address:$("#address").value.trim(),storeType:$("#storeType").value,cooperationType:$("#cooperationType").value,pickupEnabled:pickupChoice==="true"?"true":"false",latitude:$("#latitude").value.trim(),longitude:$("#longitude").value.trim(),photos:uploadedPhotos,remark:remarkParts.join("\\n")};if(!body.storeName){toast("请填写门店名称");return}if(!body.contactName){toast("请填写联系人");return}if(!/^1\\d{10}$/.test(body.contactPhone)){toast("请填写正确的11位手机号");return}if(!body.address){toast("请填写门店地址");return}try{await api("/api/sales/store-leads","POST",body);toast("门店信息已提交，等待后台审核。");setTimeout(()=>location.href="/sales/store-leads",700)}catch(err){toast(err.message||"提交失败")}}}
   if(path==="/sales/login")renderLogin();else if(path==="/sales/store-leads/new")renderLeadForm();else if(path==="/sales/store-leads")renderLeads();else renderDashboard();
   </script></body></html>`
 }
@@ -7738,6 +7756,15 @@ async function handle(req, res) {
     }
     const type = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : ext === ".svg" ? "image/svg+xml" : "image/jpeg"
     sendText(res, 200, fs.readFileSync(file), type, { "Cache-Control": "public, max-age=31536000" })
+    return
+  }
+
+  if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/assets/logo.png") {
+    if (!fs.existsSync(publicLogoFile)) {
+      sendJson(res, 404, { ok: false, message: "logo不存在" })
+      return
+    }
+    sendText(res, 200, fs.readFileSync(publicLogoFile), "image/png", { "Cache-Control": "public, max-age=31536000" })
     return
   }
 
@@ -8375,6 +8402,46 @@ async function handle(req, res) {
   if (url.pathname.startsWith("/api/sales/")) {
     const salesSession = await requireSalesSession(req, res)
     if (!salesSession) return
+    if (url.pathname === "/api/sales/upload" && req.method === "POST") {
+      if (!isMultipartFormRequest(req)) {
+        sendJson(res, 400, { ok: false, message: "请使用 multipart/form-data 上传图片" })
+        return
+      }
+      const body = await readBody(req, MAX_TEMP_IMAGE_SIZE * 3 + 1024 * 1024, "图片超过5MB，请压缩后上传")
+      const files = parseMultipart(body, req.headers["content-type"])
+      if (!files.length) {
+        sendJson(res, 400, { ok: false, message: "请选择图片" })
+        return
+      }
+      if (files.length > 3) {
+        sendJson(res, 400, { ok: false, message: "门店照片最多上传3张" })
+        return
+      }
+      fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
+      const uploaded = []
+      for (const file of files) {
+        const ext = validateImageFile(file, {
+          allowedExts: ["jpg", "jpeg", "png", "webp"],
+          allowedMimes: ["image/jpeg", "image/png", "image/webp"],
+          maxSize: MAX_TEMP_IMAGE_SIZE,
+          tooLargeMessage: "单张图片不能超过5MB"
+        })
+        const cleanExt = ext === "jpeg" ? "jpg" : ext
+        const filename = `sales-lead-${salesSession.agent.id}-${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${cleanExt}`
+        const relativeName = `sales-leads/${filename}`
+        const targetFile = path.join(salesLeadUploadsDir, filename)
+        fs.writeFileSync(targetFile, file.body)
+        const optimized = await optimizeUploadedImage(targetFile, relativeName, "image")
+        uploaded.push({ ...optimized, url: optimized.url || uploadPublicUrl(relativeName), type: "image" })
+      }
+      sendJson(res, 200, {
+        ok: true,
+        urls: uploaded.map(item => item.url),
+        thumbUrls: uploaded.map(item => item.thumbUrl || item.url),
+        data: uploaded
+      })
+      return
+    }
     if (url.pathname === "/api/sales/store-leads" && req.method === "GET") {
       const leads = (await getStoreLeads({ salesAgentId: salesSession.agent.id })).map(lead => ({ ...lead, statusText: leadStatusText(lead.status) }))
       sendJson(res, 200, { ok: true, data: leads })
