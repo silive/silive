@@ -65,14 +65,19 @@ const rewardRecordsFile = path.join(seedDir, "reward-records.json")
 const partnerStoresFile = path.join(seedDir, "partner-stores.json")
 const storeMembersFile = path.join(seedDir, "store-members.json")
 const storeSettlementRecordsFile = path.join(seedDir, "store-settlement-records.json")
+const salesAgentsFile = path.join(seedDir, "sales-agents.json")
+const storeLeadsFile = path.join(seedDir, "store-leads.json")
+const salesAgentCommissionsFile = path.join(seedDir, "sales-agent-commissions.json")
 const modelCandidatesFile = path.join(seedDir, "model-candidates.json")
 const sessions = new Map()
+const salesSessions = new Map()
 const userSessions = new Map()
 const publicUploadHits = new Map()
 const authenticatedUploadHits = new Map()
 const orderRecommendationEventHits = new Map()
 const productImportPreviews = new Map()
 const adminLoginFailures = new Map()
+const salesLoginFailures = new Map()
 let lastOrphanUploadCleanupAt = 0
 
 fs.mkdirSync(uploadsDir, { recursive: true })
@@ -599,6 +604,83 @@ function adminSessionCookie(sid) {
   const parts = [`vsc_sid=${sid}`, "Path=/", "HttpOnly", "SameSite=Lax"]
   if (IS_PRODUCTION) parts.push("Secure")
   return parts.join("; ")
+}
+
+function salesSessionCookie(sid, maxAge = 60 * 60 * 12) {
+  const parts = [`vsc_sales_sid=${sid}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`]
+  if (IS_PRODUCTION) parts.push("Secure")
+  return parts.join("; ")
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex")
+  const digest = crypto.scryptSync(String(password || ""), salt, 64).toString("hex")
+  return `scrypt$${salt}$${digest}`
+}
+
+function verifyPassword(password, storedHash) {
+  const text = String(storedHash || "")
+  const parts = text.split("$")
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false
+  try {
+    const digest = crypto.scryptSync(String(password || ""), parts[1], 64)
+    const expected = Buffer.from(parts[2], "hex")
+    return expected.length === digest.length && crypto.timingSafeEqual(expected, digest)
+  } catch (error) {
+    return false
+  }
+}
+
+function getSalesSession(req) {
+  const sid = parseCookies(req).vsc_sales_sid
+  const session = sid && salesSessions.get(sid)
+  if (!session) return null
+  if (Date.now() - session.createdAt > 1000 * 60 * 60 * 12) {
+    salesSessions.delete(sid)
+    return null
+  }
+  return session
+}
+
+async function requireSalesSession(req, res) {
+  const session = getSalesSession(req)
+  if (!session?.salesAgentId) {
+    sendJson(res, 401, { ok: false, message: "请先登录业务员账号" })
+    return null
+  }
+  const agent = await getSalesAgent(session.salesAgentId)
+  if (!agent || agent.status !== "active") {
+    sendJson(res, 403, { ok: false, message: "业务员账号不可用" })
+    return null
+  }
+  return { ...session, agent }
+}
+
+function salesLoginFailureState(req) {
+  const ip = clientIp(req) || "unknown"
+  const now = Date.now()
+  const windowMs = 10 * 60 * 1000
+  const state = salesLoginFailures.get(ip) || { failures: [], lockedUntil: 0 }
+  state.failures = state.failures.filter(time => now - time < windowMs)
+  if (state.lockedUntil && state.lockedUntil <= now) state.lockedUntil = 0
+  salesLoginFailures.set(ip, state)
+  return { ip, state }
+}
+
+function isSalesLoginLocked(req) {
+  return salesLoginFailureState(req).state.lockedUntil > Date.now()
+}
+
+function recordSalesLoginFailure(req) {
+  const { ip, state } = salesLoginFailureState(req)
+  const now = Date.now()
+  state.failures.push(now)
+  if (state.failures.length > 8) state.lockedUntil = now + 10 * 60 * 1000
+  salesLoginFailures.set(ip, state)
+}
+
+function clearSalesLoginFailures(req) {
+  salesLoginFailures.delete(clientIp(req) || "unknown")
 }
 
 function adminLoginFailureState(req) {
@@ -2656,6 +2738,10 @@ function normalizePartnerStore(store = {}, index = 0) {
     pickupFeeValue: money(store.pickupFeeValue ?? store.pickup_fee_value ?? defaults.pickupValue),
     supplierSettlementRule: store.supplierSettlementRule || store.supplier_settlement_rule || "",
     customCommissionRule: store.customCommissionRule || store.custom_commission_rule || "",
+    salesAgentId: store.salesAgentId || store.sales_agent_id || "",
+    salesAgentCommissionRate: store.salesAgentCommissionRate == null || store.sales_agent_commission_rate == null
+      ? ""
+      : money(store.salesAgentCommissionRate ?? store.sales_agent_commission_rate),
     createdAt: store.createdAt || store.created_at || formatDateTime(new Date()),
     updatedAt: store.updatedAt || store.updated_at || formatDateTime(new Date())
   }
@@ -2703,6 +2789,85 @@ function normalizeSettlementRecord(record = {}, index = 0) {
     settledAtText: record.settledAtText || formatChinaDatetime(settledAt),
     updatedAt: record.updatedAt || record.updated_at || ""
   }
+}
+
+function normalizeSalesAgent(agent = {}, index = 0) {
+  const now = formatDateTime(new Date())
+  return {
+    id: String(agent.id || `SA${Date.now()}${index}`),
+    name: agent.name || "",
+    phone: normalizePhone(agent.phone || ""),
+    passwordHash: agent.passwordHash || agent.password_hash || "",
+    commissionRate: money(agent.commissionRate ?? agent.commission_rate ?? 0),
+    status: agent.status === "disabled" ? "disabled" : "active",
+    remark: agent.remark || "",
+    createdAt: agent.createdAt || agent.created_at || now,
+    updatedAt: agent.updatedAt || agent.updated_at || now
+  }
+}
+
+function salesAgentPublicView(agent = {}) {
+  const { passwordHash, ...safe } = normalizeSalesAgent(agent)
+  return safe
+}
+
+function normalizeStoreLead(lead = {}, index = 0) {
+  const status = ["pending", "followed", "approved", "rejected"].includes(lead.status) ? lead.status : "pending"
+  return {
+    id: String(lead.id || `SL${Date.now()}${index}`),
+    salesAgentId: lead.salesAgentId || lead.sales_agent_id || "",
+    storeName: lead.storeName || lead.store_name || "",
+    contactName: lead.contactName || lead.contact_name || "",
+    contactPhone: normalizePhone(lead.contactPhone || lead.contact_phone || ""),
+    address: lead.address || "",
+    latitude: lead.latitude == null || lead.latitude === "" ? "" : String(lead.latitude),
+    longitude: lead.longitude == null || lead.longitude === "" ? "" : String(lead.longitude),
+    storeType: lead.storeType || lead.store_type || "",
+    pickupEnabled: String(lead.pickupEnabled ?? lead.pickup_enabled ?? "false") === "true" ? "true" : "false",
+    photos: normalizeMediaList(lead.photos || []).slice(0, 3).map(publicAssetUrl),
+    remark: lead.remark || "",
+    status,
+    rejectReason: lead.rejectReason || lead.reject_reason || "",
+    storeId: lead.storeId || lead.store_id || "",
+    createdAt: lead.createdAt || lead.created_at || formatDateTime(new Date()),
+    handledAt: lead.handledAt || lead.handled_at || "",
+    handledBy: lead.handledBy || lead.handled_by || ""
+  }
+}
+
+function leadStatusText(status) {
+  return { pending: "待审核", followed: "跟进中", approved: "已通过", rejected: "已拒绝" }[status] || "待审核"
+}
+
+function normalizeSalesAgentCommission(record = {}, index = 0) {
+  const type = ["sales_agent_commission", "chargeback", "adjustment"].includes(record.type) ? record.type : "sales_agent_commission"
+  const status = normalizeSettlementStatus(record.status)
+  const amount = record.amount == null || record.amount === "" ? record.commissionAmount : record.amount
+  return {
+    id: String(record.id || `SAC${Date.now()}${index}`),
+    salesAgentId: record.salesAgentId || record.sales_agent_id || "",
+    storeId: record.storeId || record.store_id || "",
+    orderId: record.orderId || record.order_id || "",
+    orderNo: record.orderNo || record.order_no || record.orderId || record.order_id || "",
+    orderAmount: money(record.orderAmount ?? record.order_amount ?? 0),
+    commissionRate: money(record.commissionRate ?? record.commission_rate ?? 0),
+    commissionAmount: money(record.commissionAmount ?? record.commission_amount ?? amount ?? 0),
+    amount: money(amount ?? 0),
+    type,
+    status,
+    createdAt: record.createdAt || record.created_at || formatDateTime(new Date()),
+    settledAt: record.settledAt || record.settled_at || "",
+    settledBy: record.settledBy || record.settled_by || "",
+    settleNote: record.settleNote || record.settle_note || "",
+    cancelReason: record.cancelReason || record.cancel_reason || "",
+    batchId: record.batchId || record.batch_id || "",
+    relatedRecordId: record.relatedRecordId || record.related_record_id || "",
+    remark: record.remark || ""
+  }
+}
+
+function salesCommissionTypeText(type) {
+  return { sales_agent_commission: "业务员佣金", chargeback: "退款冲正", adjustment: "手动调整" }[type] || type
 }
 
 function calculateStoreAmount(amount, type, value) {
@@ -3475,12 +3640,13 @@ async function savePartnerStores(stores) {
       ...store,
       latitude: store.latitude === "" ? null : store.latitude,
       longitude: store.longitude === "" ? null : store.longitude,
+      salesAgentCommissionRate: store.salesAgentCommissionRate === "" ? null : store.salesAgentCommissionRate,
       createdAt: toMysqlDatetime(store.createdAt, nowMysqlDatetime()),
       updatedAt: toMysqlDatetime(store.updatedAt, nowMysqlDatetime())
     }
     await query(
-      `INSERT INTO partner_stores (id, name, level, address, phone, contact_name, manager_phone, manager_openid, store_role, store_status, business_hours, latitude, longitude, status, is_display_enabled, is_pickup_enabled, is_supplier_enabled, settlement_cycle, qrcode_scene, sort_order, remark, referral_commission_type, referral_commission_value, pickup_fee_type, pickup_fee_value, supplier_settlement_rule, custom_commission_rule, created_at, updated_at)
-       VALUES (:id, :name, :level, :address, :phone, :contactName, :managerPhone, :managerOpenid, :storeRole, :storeStatus, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :createdAt, :updatedAt)`,
+      `INSERT INTO partner_stores (id, name, level, address, phone, contact_name, manager_phone, manager_openid, store_role, store_status, business_hours, latitude, longitude, status, is_display_enabled, is_pickup_enabled, is_supplier_enabled, settlement_cycle, qrcode_scene, sort_order, remark, referral_commission_type, referral_commission_value, pickup_fee_type, pickup_fee_value, supplier_settlement_rule, custom_commission_rule, sales_agent_id, sales_agent_commission_rate, created_at, updated_at)
+       VALUES (:id, :name, :level, :address, :phone, :contactName, :managerPhone, :managerOpenid, :storeRole, :storeStatus, :businessHours, :latitude, :longitude, :status, :isDisplayEnabled, :isPickupEnabled, :isSupplierEnabled, :settlementCycle, :qrcodeScene, :sortOrder, :remark, :referralCommissionType, :referralCommissionValue, :pickupFeeType, :pickupFeeValue, :supplierSettlementRule, :customCommissionRule, :salesAgentId, :salesAgentCommissionRate, :createdAt, :updatedAt)`,
       params
     )
   }
@@ -3507,6 +3673,224 @@ async function upsertPartnerStore(store) {
   if (Array.isArray(store.members)) await saveStoreMembersForStore(saved.id, store.members)
   else await ensureLegacyStoreMembersForStore(saved)
   return saved
+}
+
+async function getSalesAgents(filters = {}) {
+  if (!pool) {
+    let list = readJsonFile(salesAgentsFile, []).map(normalizeSalesAgent)
+    if (filters.status) list = list.filter(agent => agent.status === filters.status)
+    if (filters.keyword) {
+      const keyword = String(filters.keyword).toLowerCase()
+      list = list.filter(agent => [agent.name, agent.phone, agent.remark].some(value => String(value || "").toLowerCase().includes(keyword)))
+    }
+    return list.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+  }
+  const where = []
+  const params = {}
+  if (filters.status) {
+    where.push("status = :status")
+    params.status = filters.status
+  }
+  if (filters.keyword) {
+    where.push("(name LIKE :keyword OR phone LIKE :keyword OR remark LIKE :keyword)")
+    params.keyword = `%${filters.keyword}%`
+  }
+  const rows = await query(`SELECT * FROM sales_agents ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC, id DESC`, params)
+  return rows.map((row, index) => normalizeSalesAgent(row, index))
+}
+
+async function getSalesAgent(id) {
+  if (!id) return null
+  return (await getSalesAgents()).find(agent => agent.id === id) || null
+}
+
+async function saveSalesAgents(agents = []) {
+  const list = (Array.isArray(agents) ? agents : []).map(normalizeSalesAgent)
+  if (!pool) {
+    writeJsonFile(salesAgentsFile, list)
+    return list
+  }
+  for (const agent of list) {
+    await query(
+      `INSERT INTO sales_agents (id, name, phone, password_hash, commission_rate, status, remark, created_at, updated_at)
+       VALUES (:id, :name, :phone, :passwordHash, :commissionRate, :status, :remark, :createdAt, :updatedAt)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone), password_hash = VALUES(password_hash), commission_rate = VALUES(commission_rate), status = VALUES(status), remark = VALUES(remark), updated_at = VALUES(updated_at)`,
+      { ...agent, createdAt: toMysqlDatetime(agent.createdAt, nowMysqlDatetime()), updatedAt: toMysqlDatetime(agent.updatedAt, nowMysqlDatetime()) }
+    )
+  }
+  return list
+}
+
+async function upsertSalesAgent(data = {}) {
+  const list = await getSalesAgents()
+  const id = data.id || ""
+  const index = id ? list.findIndex(agent => agent.id === id) : -1
+  const phone = normalizePhone(data.phone || "")
+  if (!phone) throw httpError(400, "请填写业务员手机号")
+  const duplicate = list.find(agent => agent.id !== id && agent.phone === phone)
+  if (duplicate) throw httpError(400, "该手机号已存在")
+  const previous = index >= 0 ? list[index] : {}
+  const password = String(data.password || data.initialPassword || "").trim()
+  if (index < 0 && !password) throw httpError(400, "请填写初始密码")
+  const now = formatDateTime(new Date())
+  const agent = normalizeSalesAgent({
+    ...previous,
+    ...data,
+    id: id || `SA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    phone,
+    passwordHash: password ? hashPassword(password) : previous.passwordHash,
+    updatedAt: now,
+    createdAt: previous.createdAt || now
+  }, list.length)
+  if (index >= 0) list[index] = agent
+  else list.unshift(agent)
+  await saveSalesAgents(list)
+  return salesAgentPublicView(agent)
+}
+
+async function getStoreLeads(filters = {}) {
+  if (!pool) {
+    let list = readJsonFile(storeLeadsFile, []).map(normalizeStoreLead)
+    if (filters.salesAgentId) list = list.filter(lead => lead.salesAgentId === filters.salesAgentId)
+    if (filters.status) list = list.filter(lead => lead.status === filters.status)
+    return list.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+  }
+  const where = []
+  const params = {}
+  if (filters.salesAgentId) {
+    where.push("sales_agent_id = :salesAgentId")
+    params.salesAgentId = filters.salesAgentId
+  }
+  if (filters.status) {
+    where.push("status = :status")
+    params.status = filters.status
+  }
+  const rows = await query(`SELECT * FROM store_leads ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
+  return rows.map((row, index) => normalizeStoreLead({ ...row, photos: parseJsonValue(row.photos, []) }, index))
+}
+
+async function saveStoreLeads(leads = []) {
+  const list = (Array.isArray(leads) ? leads : []).map(normalizeStoreLead)
+  if (!pool) {
+    writeJsonFile(storeLeadsFile, list)
+    return list
+  }
+  for (const lead of list) {
+    await query(
+      `INSERT INTO store_leads (id, sales_agent_id, store_name, contact_name, contact_phone, address, latitude, longitude, store_type, pickup_enabled, photos, remark, status, reject_reason, store_id, created_at, handled_at, handled_by)
+       VALUES (:id, :salesAgentId, :storeName, :contactName, :contactPhone, :address, :latitude, :longitude, :storeType, :pickupEnabled, :photosJson, :remark, :status, :rejectReason, :storeId, :createdAt, :handledAt, :handledBy)
+       ON DUPLICATE KEY UPDATE store_name = VALUES(store_name), contact_name = VALUES(contact_name), contact_phone = VALUES(contact_phone), address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude), store_type = VALUES(store_type), pickup_enabled = VALUES(pickup_enabled), photos = VALUES(photos), remark = VALUES(remark), status = VALUES(status), reject_reason = VALUES(reject_reason), store_id = VALUES(store_id), handled_at = VALUES(handled_at), handled_by = VALUES(handled_by)`,
+      {
+        ...lead,
+        latitude: lead.latitude === "" ? null : lead.latitude,
+        longitude: lead.longitude === "" ? null : lead.longitude,
+        photosJson: JSON.stringify(lead.photos || []),
+        createdAt: toMysqlDatetime(lead.createdAt, nowMysqlDatetime()),
+        handledAt: toMysqlDatetime(lead.handledAt),
+        handledBy: lead.handledBy || ""
+      }
+    )
+  }
+  return list
+}
+
+function textSimilarity(a, b) {
+  const left = String(a || "").replace(/\s+/g, "").toLowerCase()
+  const right = String(b || "").replace(/\s+/g, "").toLowerCase()
+  if (!left || !right) return 0
+  if (left.includes(right) || right.includes(left)) return Math.min(left.length, right.length) / Math.max(left.length, right.length)
+  const chars = new Set(left)
+  let hit = 0
+  for (const char of new Set(right)) if (chars.has(char)) hit += 1
+  return hit / Math.max(new Set([...left, ...right]).size, 1)
+}
+
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const a = Number(lat1)
+  const b = Number(lng1)
+  const c = Number(lat2)
+  const d = Number(lng2)
+  if (![a, b, c, d].every(Number.isFinite)) return Infinity
+  const rad = value => value * Math.PI / 180
+  const earth = 6371000
+  const deltaLat = rad(c - a)
+  const deltaLng = rad(d - b)
+  const x = Math.sin(deltaLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(deltaLng / 2) ** 2
+  return 2 * earth * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
+}
+
+async function duplicateStoreCandidatesForLead(lead) {
+  const stores = await getPartnerStores()
+  return stores.map(store => {
+    const reasons = []
+    if (lead.contactPhone && store.phone && normalizePhone(store.phone) === normalizePhone(lead.contactPhone)) reasons.push("联系电话相同")
+    if (textSimilarity(lead.storeName, store.name) >= 0.65) reasons.push("门店名称相似")
+    if (textSimilarity(lead.address, store.address) >= 0.65) reasons.push("地址相似")
+    const distance = distanceMeters(lead.latitude, lead.longitude, store.latitude, store.longitude)
+    if (Number.isFinite(distance) && distance <= 300) reasons.push(`经纬度附近 ${Math.round(distance)}m`)
+    return { store, reasons }
+  }).filter(item => item.reasons.length).map(item => ({ ...item.store, duplicateReasons: item.reasons }))
+}
+
+async function createStoreLead(agentId, data = {}) {
+  const required = ["storeName", "contactName", "contactPhone", "address"]
+  for (const key of required) {
+    if (!String(data[key] || "").trim()) throw httpError(400, "请填写完整门店信息")
+  }
+  const leads = await getStoreLeads()
+  const now = formatDateTime(new Date())
+  const lead = normalizeStoreLead({
+    ...data,
+    id: `SL${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    salesAgentId: agentId,
+    status: "pending",
+    photos: normalizeMediaList(data.photos || []).slice(0, 3),
+    createdAt: now
+  }, leads.length)
+  leads.unshift(lead)
+  await saveStoreLeads(leads)
+  return lead
+}
+
+async function handleStoreLead(leadId, action, data = {}) {
+  const leads = await getStoreLeads()
+  const index = leads.findIndex(lead => lead.id === leadId)
+  if (index < 0) throw httpError(404, "门店线索不存在")
+  const lead = leads[index]
+  const now = formatDateTime(new Date())
+  if (action === "follow") {
+    leads[index] = { ...lead, status: "followed", handledAt: now, handledBy: "admin" }
+  } else if (action === "reject") {
+    leads[index] = { ...lead, status: "rejected", rejectReason: data.rejectReason || data.reason || "后台拒绝", handledAt: now, handledBy: "admin" }
+  } else if (action === "bind") {
+    const store = await getPartnerStore(data.storeId || "")
+    if (!store) throw httpError(404, "合作门店不存在")
+    await upsertPartnerStore({ ...store, salesAgentId: lead.salesAgentId, salesAgentCommissionRate: data.salesAgentCommissionRate ?? store.salesAgentCommissionRate ?? "" })
+    leads[index] = { ...lead, status: "approved", storeId: store.id, handledAt: now, handledBy: "admin" }
+  } else if (action === "create") {
+    const agent = await getSalesAgent(lead.salesAgentId)
+    const store = await upsertPartnerStore({
+      name: lead.storeName,
+      contactName: lead.contactName,
+      phone: lead.contactPhone,
+      address: lead.address,
+      latitude: lead.latitude,
+      longitude: lead.longitude,
+      level: lead.pickupEnabled === "true" ? "pickup" : "display",
+      isDisplayEnabled: "true",
+      isPickupEnabled: lead.pickupEnabled,
+      storeStatus: "active",
+      status: "enabled",
+      remark: [lead.storeType ? `门店类型：${lead.storeType}` : "", lead.remark || ""].filter(Boolean).join("\n"),
+      salesAgentId: lead.salesAgentId,
+      salesAgentCommissionRate: data.salesAgentCommissionRate ?? agent?.commissionRate ?? ""
+    })
+    leads[index] = { ...lead, status: "approved", storeId: store.id, handledAt: now, handledBy: "admin" }
+  } else {
+    throw httpError(400, "不支持的线索操作")
+  }
+  await saveStoreLeads(leads)
+  return leads[index]
 }
 
 async function getStoreMembers(filters = {}) {
@@ -3688,6 +4072,210 @@ async function saveStoreSettlementRecords(records) {
     )
   }
   return list
+}
+
+async function getSalesAgentCommissions(filters = {}) {
+  if (!pool) {
+    let records = readJsonFile(salesAgentCommissionsFile, []).map(normalizeSalesAgentCommission)
+    if (filters.salesAgentId) records = records.filter(record => record.salesAgentId === filters.salesAgentId)
+    if (filters.storeId) records = records.filter(record => record.storeId === filters.storeId)
+    if (filters.status) records = records.filter(record => filters.status === "chargeback" ? record.type === "chargeback" || Number(record.amount || 0) < 0 : record.status === filters.status)
+    if (filters.type) records = records.filter(record => record.type === filters.type)
+    if (filters.startAt) records = records.filter(record => String(record.createdAt || "") >= filters.startAt)
+    if (filters.endAt) records = records.filter(record => String(record.createdAt || "") <= filters.endAt)
+    return records.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+  }
+  const where = []
+  const params = {}
+  if (filters.salesAgentId) {
+    where.push("sales_agent_id = :salesAgentId")
+    params.salesAgentId = filters.salesAgentId
+  }
+  if (filters.storeId) {
+    where.push("store_id = :storeId")
+    params.storeId = filters.storeId
+  }
+  if (filters.status) {
+    if (filters.status === "chargeback") where.push("(type = 'chargeback' OR amount < 0)")
+    else {
+      where.push("status = :status")
+      params.status = filters.status
+    }
+  }
+  if (filters.type) {
+    where.push("type = :type")
+    params.type = filters.type
+  }
+  if (filters.startAt) {
+    where.push("created_at >= :startAt")
+    params.startAt = filters.startAt
+  }
+  if (filters.endAt) {
+    where.push("created_at <= :endAt")
+    params.endAt = filters.endAt
+  }
+  const rows = await query(`SELECT * FROM sales_agent_commissions ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
+  return rows.map((row, index) => normalizeSalesAgentCommission(row, index))
+}
+
+async function saveSalesAgentCommissions(records = []) {
+  const list = (Array.isArray(records) ? records : []).map(normalizeSalesAgentCommission)
+  if (!pool) {
+    writeJsonFile(salesAgentCommissionsFile, list)
+    return list
+  }
+  for (const record of list) {
+    await query(
+      `INSERT INTO sales_agent_commissions (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate, commission_amount, amount, type, status, created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, related_record_id, remark)
+       VALUES (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate, :commissionAmount, :amount, :type, :status, :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :relatedRecordId, :remark)
+       ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), settled_by = VALUES(settled_by), settle_note = VALUES(settle_note), cancel_reason = VALUES(cancel_reason), batch_id = VALUES(batch_id), related_record_id = VALUES(related_record_id), remark = VALUES(remark), amount = VALUES(amount), commission_amount = VALUES(commission_amount)`,
+      {
+        ...record,
+        createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
+        settledAt: toMysqlDatetime(record.settledAt)
+      }
+    )
+  }
+  return list
+}
+
+function isSalesAgentChargebackRecord(record = {}) {
+  return record.type === "chargeback" || Number(record.amount || 0) < 0 || String(record.id || "").includes("CHARGEBACK")
+}
+
+function salesAgentCommissionRate(store = {}, agent = {}) {
+  const storeRate = store.salesAgentCommissionRate
+  if (storeRate !== "" && storeRate != null && Number(storeRate) > 0) return Number(storeRate)
+  return Math.max(0, Number(agent.commissionRate || 0))
+}
+
+async function createSalesAgentCommissionForOrder(order) {
+  if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return null
+  const storeId = order.pickupStoreId || order.referrerStoreId || ""
+  if (!storeId) return null
+  const store = await getPartnerStore(storeId)
+  if (!store?.salesAgentId) return null
+  const agent = await getSalesAgent(store.salesAgentId)
+  if (!agent || agent.status !== "active") return null
+  const rate = salesAgentCommissionRate(store, agent)
+  if (!(rate > 0)) return null
+  const records = await getSalesAgentCommissions()
+  const exists = records.find(record =>
+    record.orderId === order.id &&
+    record.salesAgentId === agent.id &&
+    record.storeId === store.id &&
+    record.type === "sales_agent_commission"
+  )
+  if (exists) return exists
+  const now = formatDateTime(new Date())
+  const amount = money(Number(order.amount || 0) * rate / 100)
+  if (!(Number(amount) > 0)) return null
+  const record = normalizeSalesAgentCommission({
+    id: `SAC${order.id}${agent.id}`.replace(/[^\w-]/g, "").slice(0, 60),
+    salesAgentId: agent.id,
+    storeId: store.id,
+    orderId: order.id,
+    orderNo: order.id,
+    orderAmount: order.amount,
+    commissionRate: rate,
+    commissionAmount: amount,
+    amount,
+    type: "sales_agent_commission",
+    status: order.storeSettlementStatus || "pending_confirm",
+    remark: `业务员佣金：${store.name || store.id}`,
+    createdAt: now
+  }, records.length)
+  records.unshift(record)
+  await saveSalesAgentCommissions(records)
+  return record
+}
+
+async function rollbackSalesAgentCommissionsForOrder(orderId) {
+  const records = await getSalesAgentCommissions()
+  let changed = false
+  const now = formatDateTime(new Date())
+  const hasChargebackFor = record => records.some(item =>
+    isSalesAgentChargebackRecord(item) &&
+    item.relatedRecordId === record.id
+  )
+  for (const record of records) {
+    if (record.orderId !== orderId || isSalesAgentChargebackRecord(record)) continue
+    if (record.status === "settled") {
+      if (!hasChargebackFor(record)) {
+        records.unshift(normalizeSalesAgentCommission({
+          id: `SAC${orderId}CHARGEBACK${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 10)}`,
+          salesAgentId: record.salesAgentId,
+          storeId: record.storeId,
+          orderId,
+          orderNo: record.orderNo || orderId,
+          orderAmount: record.orderAmount,
+          commissionRate: record.commissionRate,
+          commissionAmount: money(-Math.abs(Number(record.amount || 0))),
+          amount: money(-Math.abs(Number(record.amount || 0))),
+          type: "chargeback",
+          status: "unsettled",
+          relatedRecordId: record.id,
+          remark: `订单退款冲正，关联原订单号：${record.orderNo || orderId}`,
+          batchId: `refund-chargeback:${record.id}`,
+          createdAt: now
+        }, records.length))
+        changed = true
+      }
+      continue
+    }
+    if (record.status !== "cancelled") {
+      record.status = "cancelled"
+      record.cancelReason = record.cancelReason || "订单退款成功，业务员佣金失效"
+      record.remark = `${record.remark || ""}；订单退款成功，佣金失效`.trim()
+      changed = true
+    }
+  }
+  if (changed) await saveSalesAgentCommissions(records)
+  return records
+}
+
+async function confirmSalesAgentCommissions(orderId) {
+  const order = (await getOrders()).find(item => item.id === orderId)
+  if (!order || !isOrderRewardConfirmed(order) || isOrderRefunded(order)) return { changed: false }
+  const records = await getSalesAgentCommissions()
+  let changed = false
+  const now = formatDateTime(new Date())
+  for (const record of records) {
+    if (record.orderId !== orderId || isSalesAgentChargebackRecord(record)) continue
+    if (record.status === "pending_confirm") {
+      record.status = "unsettled"
+      record.remark = record.remark || "订单已完成，业务员佣金可结算"
+      record.createdAt = record.createdAt || now
+      changed = true
+    }
+  }
+  if (changed) await saveSalesAgentCommissions(records)
+  return { changed }
+}
+
+async function getSalesAgentSummary(filters = {}) {
+  const [agents, stores, orders, records] = await Promise.all([
+    getSalesAgents(),
+    getPartnerStores(),
+    getOrders(),
+    getSalesAgentCommissions(filters)
+  ])
+  const orderLookup = buildOrderLookup(orders)
+  const decoratedRecords = records.map(record => decorateSettlementRecord(record, orderLookup))
+  const summary = buildSettlementSummary(decoratedRecords.filter(record => record.status !== "cancelled"), orderLookup)
+  return {
+    agents,
+    stores,
+    orders,
+    records: decoratedRecords.map(record => ({
+      ...record,
+      typeText: salesCommissionTypeText(record.type),
+      statusText: settlementStatusText(record.effectiveStatus || record.status),
+      createdAtText: formatChinaDatetime(record.createdAt),
+      settledAtText: formatChinaDatetime(record.settledAt)
+    })),
+    summary
+  }
 }
 
 async function saveProducts(products) {
@@ -5167,6 +5755,7 @@ async function markOrderPaid(orderId, transactionId = "") {
       writeJsonFile(ordersFile, orders)
       await createRewardsForOrder(orders[index])
       await createStoreSettlementRecordsForOrder(orders[index])
+      await createSalesAgentCommissionForOrder(orders[index])
       console.log("[pay] markOrderPaid updated json order", { orderId, hasTransactionId: !!transactionId })
       return true
     }
@@ -5189,6 +5778,7 @@ async function markOrderPaid(orderId, transactionId = "") {
     }
     await createRewardsForOrder(order)
     await createStoreSettlementRecordsForOrder(order)
+    await createSalesAgentCommissionForOrder(order)
   }
   return true
 }
@@ -5415,6 +6005,7 @@ async function markRefundSuccess(order, refundData = {}) {
   await saveOrders([orders[index]])
   await rollbackRewardsForOrder(order.id)
   await invalidateStoreSettlementRecordsForOrder(order.id)
+  await rollbackSalesAgentCommissionsForOrder(order.id)
   return orders[index]
 }
 
@@ -5670,10 +6261,11 @@ async function confirmOrderRewards(orderId) {
     }
   }
   if (settlementChanged) await saveStoreSettlementRecords(settlementRecords)
+  const salesCommissionResult = await confirmSalesAgentCommissions(orderId)
   if (changed || settlementChanged) {
-    console.log("[settlement-confirm] order rewards confirmed", { orderId, rewardChanged: changed, settlementChanged })
+    console.log("[settlement-confirm] order rewards confirmed", { orderId, rewardChanged: changed, settlementChanged, salesCommissionChanged: !!salesCommissionResult.changed })
   }
-  return { changed: changed || settlementChanged }
+  return { changed: changed || settlementChanged || salesCommissionResult.changed }
 }
 
 async function getCustomers() {
@@ -6386,6 +6978,8 @@ async function initDb() {
   await ensureColumn("partner_stores", "manager_openid", "VARCHAR(80)")
   await ensureColumn("partner_stores", "store_role", "VARCHAR(30) DEFAULT 'manager'")
   await ensureColumn("partner_stores", "store_status", "VARCHAR(30) DEFAULT 'active'")
+  await ensureColumn("partner_stores", "sales_agent_id", "VARCHAR(60)")
+  await ensureColumn("partner_stores", "sales_agent_commission_rate", "DECIMAL(10,2)")
   await query(`CREATE TABLE IF NOT EXISTS store_members (
     id VARCHAR(60) PRIMARY KEY,
     store_id VARCHAR(40),
@@ -6492,6 +7086,65 @@ async function initDb() {
   await ensureColumn("reward_records", "settle_note", "TEXT")
   await ensureColumn("reward_records", "cancel_reason", "TEXT")
   await ensureColumn("reward_records", "batch_id", "VARCHAR(80)")
+  await query(`CREATE TABLE IF NOT EXISTS sales_agents (
+    id VARCHAR(60) PRIMARY KEY,
+    name VARCHAR(80),
+    phone VARCHAR(30),
+    password_hash VARCHAR(180),
+    commission_rate DECIMAL(10,2) DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'active',
+    remark TEXT,
+    created_at DATETIME,
+    updated_at DATETIME,
+    UNIQUE KEY uniq_sales_agent_phone (phone)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS store_leads (
+    id VARCHAR(60) PRIMARY KEY,
+    sales_agent_id VARCHAR(60),
+    store_name VARCHAR(120),
+    contact_name VARCHAR(80),
+    contact_phone VARCHAR(30),
+    address VARCHAR(255),
+    latitude DECIMAL(10,6),
+    longitude DECIMAL(10,6),
+    store_type VARCHAR(60),
+    pickup_enabled VARCHAR(10) DEFAULT 'false',
+    photos JSON,
+    remark TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    reject_reason TEXT,
+    store_id VARCHAR(60),
+    created_at DATETIME,
+    handled_at DATETIME,
+    handled_by VARCHAR(80),
+    INDEX idx_store_lead_agent (sales_agent_id),
+    INDEX idx_store_lead_status (status)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS sales_agent_commissions (
+    id VARCHAR(80) PRIMARY KEY,
+    sales_agent_id VARCHAR(60),
+    store_id VARCHAR(60),
+    order_id VARCHAR(40),
+    order_no VARCHAR(80),
+    order_amount DECIMAL(10,2) DEFAULT 0,
+    commission_rate DECIMAL(10,2) DEFAULT 0,
+    commission_amount DECIMAL(10,2) DEFAULT 0,
+    amount DECIMAL(10,2) DEFAULT 0,
+    type VARCHAR(40),
+    status VARCHAR(20) DEFAULT 'unsettled',
+    created_at DATETIME,
+    settled_at DATETIME,
+    settled_by VARCHAR(80),
+    settle_note TEXT,
+    cancel_reason TEXT,
+    batch_id VARCHAR(80),
+    related_record_id VARCHAR(80),
+    remark TEXT,
+    UNIQUE KEY uniq_sales_agent_order_type (sales_agent_id, store_id, order_id, type),
+    INDEX idx_sales_agent_commission_agent (sales_agent_id, status),
+    INDEX idx_sales_agent_commission_store (store_id),
+    INDEX idx_sales_agent_commission_order (order_id)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS model_candidates (
     id VARCHAR(60) PRIMARY KEY,
     source VARCHAR(60),
@@ -7040,6 +7693,21 @@ function decryptWechatResource(resource) {
   return JSON.parse(decoded.toString())
 }
 
+function renderSalesPage() {
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>业务员工作台</title><style>
+  :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1f2933;background:#f6f7f9}body{margin:0}.shell{max-width:1180px;margin:0 auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.brand{font-size:22px;font-weight:800}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid #d8dde6;background:#fff;color:#1f2933;padding:9px 13px;border-radius:8px;text-decoration:none;cursor:pointer}.btn.primary{background:#0f766e;color:#fff;border-color:#0f766e}.btn.danger{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.card,.panel{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px}.metric{font-size:13px;color:#6b7280}.value{font-size:24px;font-weight:800;margin-top:6px}.panel{margin-top:14px}.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.form label{font-size:13px;color:#4b5563}.form input,.form select,.form textarea{width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d8dde6;border-radius:8px;padding:10px;font:inherit}.form textarea{min-height:92px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #edf0f3;text-align:left;font-size:14px}th{color:#6b7280;background:#fafafa}.muted{color:#6b7280}.login{max-width:380px;margin:12vh auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:24px}.status{position:fixed;right:18px;bottom:18px;background:#111827;color:#fff;padding:10px 14px;border-radius:8px;display:none}.photos{display:flex;gap:6px;flex-wrap:wrap}.photos img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb}@media(max-width:640px){.shell{padding:16px}th,td{white-space:nowrap}.table-wrap{overflow:auto}}</style></head><body><div id="app"></div><div id="status" class="status"></div><script>
+  const path=location.pathname;const $=s=>document.querySelector(s);const money=v=>Number(v||0).toFixed(2);const text=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));function toast(m){const el=$("#status");el.textContent=m;el.style.display="block";setTimeout(()=>el.style.display="none",2200)}async function api(url,method="GET",body){const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"});const data=await res.json().catch(()=>({}));if(res.status===401&&path!=="/sales/login"){location.href="/sales/login";return{}}if(!res.ok||data.ok===false)throw new Error(data.message||"请求失败");return data}
+  function layout(title,body){return '<div class="shell"><div class="top"><div><div class="brand">业务员工作台</div><div class="muted">'+text(title)+'</div></div><div class="nav"><a href="/sales/dashboard">看板</a><a href="/sales/store-leads">门店线索</a><a href="/sales/store-leads/new">提交门店</a><button class="btn" onclick="logout()">退出</button></div></div>'+body+'</div>'}
+  async function logout(){await api("/api/sales/logout","POST",{});location.href="/sales/login"}
+  async function renderLogin(){document.body.innerHTML='<div class="login"><h2>业务员登录</h2><div class="form"><label>手机号<input id="phone" autocomplete="username"></label><label>密码<input id="password" type="password" autocomplete="current-password"></label></div><p><button class="btn primary" id="loginBtn">登录</button></p><p class="muted" id="err"></p></div>';$("#loginBtn").onclick=async()=>{try{await api("/api/sales/login","POST",{phone:$("#phone").value,password:$("#password").value});location.href="/sales/dashboard"}catch(e){$("#err").textContent=e.message||"手机号或密码错误"}}}
+  function summaryCards(s){return '<div class="grid">'+[['累计已结算',s.settledTotal],['当前待结算',s.payableTotal],['当前退款扣回',s.chargebackTotal],['本次预计到账',s.actualPayable]].map(i=>'<div class="card"><div class="metric">'+i[0]+'</div><div class="value">¥'+money(i[1])+'</div></div>').join('')+'</div>'}
+  async function renderDashboard(){const d=await api("/api/sales/dashboard");const stores=d.stores||[],records=d.records||[],overview=d.overview||{};document.body.innerHTML=layout("业绩、佣金与结算状态",summaryCards(d.summary||{})+'<div class="grid" style="margin-top:12px">'+[['已开发门店数',overview.storeCount],['待审核门店线索数',overview.pendingLeadCount],['累计订单数',overview.orderCount],['累计销售额',"¥"+money(overview.salesAmount)],['累计佣金',"¥"+money(overview.totalCommission)]].map(i=>'<div class="card"><div class="metric">'+i[0]+'</div><div class="value">'+(i[1]||0)+'</div></div>').join('')+'</div><div class="panel"><h3>我开发的门店</h3><div class="table-wrap"><table><thead><tr><th>门店</th><th>电话</th><th>地址</th><th>销售额</th><th>订单数</th><th>待结算</th><th>预计到账</th></tr></thead><tbody>'+stores.map(s=>'<tr><td>'+text(s.name)+'</td><td>'+text(s.phone)+'</td><td>'+text(s.address)+'</td><td>¥'+money(s.salesAmount)+'</td><td>'+s.orderCount+'</td><td>¥'+money(s.payableTotal)+'</td><td>¥'+money(s.actualPayable)+'</td></tr>').join('')+'</tbody></table></div></div><div class="panel"><h3>佣金明细</h3><div class="table-wrap"><table><thead><tr><th>时间</th><th>门店</th><th>订单号</th><th>订单金额</th><th>比例</th><th>金额</th><th>类型</th><th>状态</th><th>备注</th></tr></thead><tbody>'+records.map(r=>'<tr><td>'+text(r.createdAtText||r.createdAt)+'</td><td>'+text(r.storeName||r.storeId)+'</td><td>'+text(r.orderNo||r.orderId)+'</td><td>¥'+money(r.orderAmount)+'</td><td>'+money(r.commissionRate)+'%</td><td>¥'+money(r.amount)+'</td><td>'+text(r.typeText)+'</td><td>'+text(r.statusText)+'</td><td>'+text(r.remark)+'</td></tr>').join('')+'</tbody></table></div></div>')}
+  async function renderLeads(){const d=await api("/api/sales/store-leads");document.body.innerHTML=layout("我提交的门店线索",'<div class="panel"><div class="table-wrap"><table><thead><tr><th>门店名称</th><th>联系人</th><th>电话</th><th>地址</th><th>状态</th><th>拒绝原因</th><th>提交时间</th><th>审核时间</th></tr></thead><tbody>'+(d.data||[]).map(l=>'<tr><td>'+text(l.storeName)+'</td><td>'+text(l.contactName)+'</td><td>'+text(l.contactPhone)+'</td><td>'+text(l.address)+'</td><td>'+text(l.statusText)+'</td><td>'+text(l.rejectReason||"-")+'</td><td>'+text(l.createdAt)+'</td><td>'+text(l.handledAt||"-")+'</td></tr>').join('')+'</tbody></table></div></div>')}
+  async function renderLeadForm(){document.body.innerHTML=layout("提交门店信息",'<div class="panel"><div class="form"><label>门店名称<input id="storeName"></label><label>联系人<input id="contactName"></label><label>联系电话<input id="contactPhone"></label><label>门店类型<input id="storeType"></label><label>是否支持自提<select id="pickupEnabled"><option value="false">否</option><option value="true">是</option></select></label><label>纬度<input id="latitude"></label><label>经度<input id="longitude"></label><label>门店照片URL，最多3张<textarea id="photos" placeholder="每行一个图片URL"></textarea></label><label>地址<textarea id="address"></textarea></label><label>备注<textarea id="remark"></textarea></label></div><p><button class="btn primary" id="submit">提交</button></p></div>');$("#submit").onclick=async()=>{const body={storeName:$("#storeName").value,contactName:$("#contactName").value,contactPhone:$("#contactPhone").value,address:$("#address").value,storeType:$("#storeType").value,pickupEnabled:$("#pickupEnabled").value,latitude:$("#latitude").value,longitude:$("#longitude").value,photos:$("#photos").value.split(/\\n/).map(s=>s.trim()).filter(Boolean).slice(0,3),remark:$("#remark").value};await api("/api/sales/store-leads","POST",body);alert("门店信息已提交，等待后台审核。");location.href="/sales/store-leads"}}
+  if(path==="/sales/login")renderLogin();else if(path==="/sales/store-leads/new")renderLeadForm();else if(path==="/sales/store-leads")renderLeads();else renderDashboard();
+  </script></body></html>`
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`)
 
@@ -7075,6 +7743,11 @@ async function handle(req, res) {
 
   if (req.method === "GET" && url.pathname === "/login") {
     sendText(res, 200, fs.readFileSync(loginFile, "utf8"), "text/html; charset=utf-8")
+    return
+  }
+
+  if (req.method === "GET" && (url.pathname === "/sales/login" || url.pathname === "/sales/dashboard" || url.pathname === "/sales/store-leads" || url.pathname === "/sales/store-leads/new")) {
+    sendText(res, 200, renderSalesPage(), "text/html; charset=utf-8")
     return
   }
 
@@ -7672,6 +8345,97 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/sales/login" && req.method === "POST") {
+    if (isSalesLoginLocked(req)) {
+      sendJson(res, 429, { ok: false, message: "手机号或密码错误" })
+      return
+    }
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const phone = normalizePhone(body.phone || "")
+    const agent = (await getSalesAgents()).find(item => item.phone === phone && item.status === "active")
+    if (!agent || !verifyPassword(body.password || "", agent.passwordHash)) {
+      recordSalesLoginFailure(req)
+      sendJson(res, 401, { ok: false, message: "手机号或密码错误" })
+      return
+    }
+    clearSalesLoginFailures(req)
+    const sid = crypto.randomBytes(24).toString("hex")
+    salesSessions.set(sid, { salesAgentId: agent.id, createdAt: Date.now() })
+    sendJson(res, 200, { ok: true, data: salesAgentPublicView(agent) }, { "Set-Cookie": salesSessionCookie(sid) })
+    return
+  }
+
+  if (url.pathname === "/api/sales/logout" && req.method === "POST") {
+    const sid = parseCookies(req).vsc_sales_sid
+    if (sid) salesSessions.delete(sid)
+    sendJson(res, 200, { ok: true }, { "Set-Cookie": salesSessionCookie("", 0) })
+    return
+  }
+
+  if (url.pathname.startsWith("/api/sales/")) {
+    const salesSession = await requireSalesSession(req, res)
+    if (!salesSession) return
+    if (url.pathname === "/api/sales/store-leads" && req.method === "GET") {
+      const leads = (await getStoreLeads({ salesAgentId: salesSession.agent.id })).map(lead => ({ ...lead, statusText: leadStatusText(lead.status) }))
+      sendJson(res, 200, { ok: true, data: leads })
+      return
+    }
+    if (url.pathname === "/api/sales/store-leads" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString() || "{}")
+      const lead = await createStoreLead(salesSession.agent.id, body)
+      sendJson(res, 200, { ok: true, message: "门店信息已提交，等待后台审核。", data: lead })
+      return
+    }
+    if (url.pathname === "/api/sales/dashboard" && req.method === "GET") {
+      const agentId = salesSession.agent.id
+      const [stores, leads, orders, commissions] = await Promise.all([
+        getPartnerStores(),
+        getStoreLeads({ salesAgentId: agentId }),
+        getOrders(),
+        getSalesAgentCommissions({ salesAgentId: agentId })
+      ])
+      const agentStores = stores.filter(store => store.salesAgentId === agentId)
+      const storeIds = new Set(agentStores.map(store => store.id))
+      const relevantOrders = orders.filter(order => storeIds.has(order.pickupStoreId || order.referrerStoreId || "") && isOrderPaidForPickupCredential(order) && !isOrderRefunded(order))
+      const orderLookup = buildOrderLookup(orders)
+      const decorated = commissions.map(record => decorateSettlementRecord(record, orderLookup))
+      const storeRows = agentStores.map(store => {
+        const storeRecords = decorated.filter(record => record.storeId === store.id && record.status !== "cancelled")
+        const storeOrders = relevantOrders.filter(order => (order.pickupStoreId || order.referrerStoreId || "") === store.id)
+        return {
+          ...store,
+          orderCount: storeOrders.length,
+          salesAmount: money(storeOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)),
+          ...buildSettlementSummary(storeRecords, orderLookup)
+        }
+      })
+      sendJson(res, 200, {
+        ok: true,
+        agent: salesAgentPublicView(salesSession.agent),
+        summary: buildSettlementSummary(decorated.filter(record => record.status !== "cancelled"), orderLookup),
+        overview: {
+          storeCount: agentStores.length,
+          pendingLeadCount: leads.filter(lead => lead.status === "pending").length,
+          orderCount: relevantOrders.length,
+          salesAmount: money(relevantOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0)),
+          totalCommission: money(commissions.filter(record => record.status !== "cancelled").reduce((sum, record) => sum + Number(record.amount || 0), 0))
+        },
+        stores: storeRows,
+        records: decorated.map(record => ({
+          ...record,
+          storeName: agentStores.find(store => store.id === record.storeId)?.name || record.storeId,
+          typeText: salesCommissionTypeText(record.type),
+          statusText: settlementStatusText(record.effectiveStatus || record.status),
+          createdAtText: formatChinaDatetime(record.createdAt),
+          settledAtText: formatChinaDatetime(record.settledAt)
+        }))
+      })
+      return
+    }
+    sendJson(res, 404, { ok: false, message: "Not found" })
+    return
+  }
+
   if (!url.pathname.startsWith("/api/admin") && url.pathname !== "/api/home" && url.pathname !== "/api/theme/current" && url.pathname !== "/api/upload" && url.pathname !== "/api/upload/public" && url.pathname !== "/api/ai/preview") {
     sendJson(res, 404, { ok: false, message: "Not found" })
     return
@@ -7946,6 +8710,162 @@ async function handle(req, res) {
   if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/refund-status$/) && req.method === "GET") {
     const orderId = decodeURIComponent(url.pathname.split("/")[4])
     sendJson(res, 200, { ok: true, data: await syncRefundStatus(orderId) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/sales-agents" && req.method === "GET") {
+    const [agents, stores, records, orders] = await Promise.all([getSalesAgents(), getPartnerStores(), getSalesAgentCommissions(), getOrders()])
+    const orderLookup = buildOrderLookup(orders)
+    sendJson(res, 200, agents.map(agent => {
+      const agentRecords = records.filter(record => record.salesAgentId === agent.id && record.status !== "cancelled").map(record => decorateSettlementRecord(record, orderLookup))
+      return {
+        ...salesAgentPublicView(agent),
+        storeCount: stores.filter(store => store.salesAgentId === agent.id).length,
+        ...buildSettlementSummary(agentRecords, orderLookup)
+      }
+    }))
+    return
+  }
+
+  if (url.pathname === "/api/admin/sales-agents" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await upsertSalesAgent(body) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/sales-agents\/[^/]+$/) && req.method === "PUT") {
+    const id = decodeURIComponent(url.pathname.split("/").pop())
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await upsertSalesAgent({ ...body, id }) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/store-leads" && req.method === "GET") {
+    const [leads, agents] = await Promise.all([getStoreLeads({ status: url.searchParams.get("status") || "" }), getSalesAgents()])
+    const data = []
+    for (const lead of leads) {
+      const agent = agents.find(item => item.id === lead.salesAgentId) || {}
+      data.push({
+        ...lead,
+        statusText: leadStatusText(lead.status),
+        salesAgentName: agent.name || "",
+        salesAgentPhone: agent.phone || "",
+        duplicateStores: await duplicateStoreCandidatesForLead(lead)
+      })
+    }
+    sendJson(res, 200, data)
+    return
+  }
+
+  const leadActionMatch = url.pathname.match(/^\/api\/admin\/store-leads\/([^/]+)\/(create|bind|follow|reject)$/)
+  if (leadActionMatch && req.method === "POST") {
+    const [, id, action] = leadActionMatch
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await handleStoreLead(decodeURIComponent(id), action, body) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/sales-agent-commissions" && req.method === "GET") {
+    const result = await getSalesAgentSummary({
+      salesAgentId: url.searchParams.get("salesAgentId") || "",
+      storeId: url.searchParams.get("storeId") || "",
+      status: url.searchParams.get("status") || "",
+      type: url.searchParams.get("type") || "",
+      startAt: url.searchParams.get("startAt") || "",
+      endAt: url.searchParams.get("endAt") || ""
+    })
+    const agents = new Map(result.agents.map(agent => [agent.id, agent]))
+    const stores = new Map(result.stores.map(store => [store.id, store]))
+    sendJson(res, 200, {
+      summary: result.summary,
+      records: result.records.map(record => ({
+        ...record,
+        salesAgentName: agents.get(record.salesAgentId)?.name || "",
+        salesAgentPhone: agents.get(record.salesAgentId)?.phone || "",
+        storeName: stores.get(record.storeId)?.name || record.storeId
+      }))
+    })
+    return
+  }
+
+  const salesCommissionActionMatch = url.pathname.match(/^\/api\/admin\/sales-agent-commissions\/([^/]+)\/(settle|cancel)$/)
+  if (salesCommissionActionMatch && req.method === "POST") {
+    const [, id, action] = salesCommissionActionMatch
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const records = await getSalesAgentCommissions()
+    const record = records.find(item => item.id === decodeURIComponent(id))
+    if (!record) throw httpError(404, "业务员佣金记录不存在")
+    if (action === "settle") {
+      if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
+      if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
+      const orderLookup = buildOrderLookup(await getOrders())
+      if (!isFinancialRecordReadyToSettle(record, orderLookup)) throw httpError(400, "该记录仍为待确认，订单完成后才能结算。")
+      record.status = "settled"
+      record.settledAt = formatDateTime(new Date())
+      record.settledBy = "admin"
+      record.settleNote = body.note || body.settleNote || ""
+    } else {
+      if (record.status === "cancelled") throw httpError(400, "该记录已取消。")
+      record.status = "cancelled"
+      record.cancelReason = body.reason || body.cancelReason || "后台取消业务员佣金"
+    }
+    await saveSalesAgentCommissions(records)
+    sendJson(res, 200, { ok: true, data: record })
+    return
+  }
+
+  if (url.pathname === "/api/admin/sales-agent-commissions/adjustment" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const amount = money(body.amount)
+    if (!body.salesAgentId) throw httpError(400, "请选择业务员")
+    if (Number(amount) === 0) throw httpError(400, "调整金额不能为 0")
+    const records = await getSalesAgentCommissions()
+    const now = formatDateTime(new Date())
+    records.unshift(normalizeSalesAgentCommission({
+      id: `SAA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+      salesAgentId: body.salesAgentId,
+      storeId: body.storeId || "",
+      amount,
+      commissionAmount: amount,
+      type: "adjustment",
+      status: body.status === "settled" ? "settled" : "unsettled",
+      settledAt: body.status === "settled" ? now : "",
+      settledBy: body.status === "settled" ? "admin" : "",
+      settleNote: body.note || "",
+      remark: body.note || "后台手动调整",
+      createdAt: now
+    }, records.length))
+    await saveSalesAgentCommissions(records)
+    sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === "/api/admin/sales-agent-commissions/batch-settle" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const target = await getSalesAgentCommissions({
+      salesAgentId: body.salesAgentId || "",
+      storeId: body.storeId || "",
+      type: body.type || "",
+      startAt: body.startAt || "",
+      endAt: body.endAt || ""
+    })
+    const orderLookup = buildOrderLookup(await getOrders())
+    const ids = new Set(target.filter(record => isFinancialRecordReadyToSettle(record, orderLookup)).map(record => record.id))
+    const records = await getSalesAgentCommissions()
+    const batchId = `SAB${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+    const now = formatDateTime(new Date())
+    let count = 0
+    records.forEach(record => {
+      if (!ids.has(record.id) || !isFinancialRecordReadyToSettle(record, orderLookup)) return
+      record.status = "settled"
+      record.settledAt = now
+      record.settledBy = "admin"
+      record.settleNote = body.note || "后台批量结算"
+      record.batchId = batchId
+      count += 1
+    })
+    await saveSalesAgentCommissions(records)
+    sendJson(res, 200, { ok: true, batchId, recordCount: count })
     return
   }
 

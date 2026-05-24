@@ -797,6 +797,9 @@
         <div class="center-tabs">
           <button class="center-tab active" data-subview="storeManager">门店 / 自提点管理</button>
           <button class="center-tab" data-subview="storeSettlement">门店结算统计</button>
+          <button class="center-tab" data-subview="salesAgentManager">业务员管理</button>
+          <button class="center-tab" data-subview="storeLeadManager">门店线索</button>
+          <button class="center-tab" data-subview="salesAgentCommission">业务员佣金</button>
         </div>
         <div class="subview active" id="subview-storeManager">
           <div class="panel">
@@ -830,6 +833,39 @@
             </div>
             <div id="storeSettlementSummary"></div>
             <div id="storeSettlementRecords" style="margin-top:18px"></div>
+          </div>
+        </div>
+        <div class="subview" id="subview-salesAgentManager">
+          <div class="panel">
+            <div class="item-head"><h3>业务员管理</h3><button class="secondary" data-action="sales-agent-add">新增业务员</button></div>
+            <div id="salesAgentsTable"></div>
+          </div>
+        </div>
+        <div class="subview" id="subview-storeLeadManager">
+          <div class="panel">
+            <div class="item-head"><h3>门店线索</h3><button class="secondary" id="filterStoreLeadsBtn">刷新线索</button></div>
+            <div class="filters"><select id="storeLeadStatusFilter"><option value="">全部状态</option><option value="pending">待审核</option><option value="followed">跟进中</option><option value="approved">已通过</option><option value="rejected">已拒绝</option></select></div>
+            <div id="storeLeadsTable"></div>
+          </div>
+        </div>
+        <div class="subview" id="subview-salesAgentCommission">
+          <div class="panel">
+            <div class="item-head"><h3>业务员佣金</h3><button class="secondary" data-action="sales-commission-adjustment">手动调整</button></div>
+            <div class="filters finance-filter-grid">
+              <div class="finance-filter-row">
+                <select id="salesCommissionAgentFilter"></select>
+                <select id="salesCommissionStoreFilter"></select>
+                <select id="salesCommissionStatusFilter"><option value="">全部状态</option><option value="pending_confirm">待确认</option><option value="unsettled">未结算</option><option value="chargeback">退款扣回</option><option value="settled">已结算</option><option value="cancelled">已取消</option></select>
+                <select id="salesCommissionTypeFilter"><option value="">全部类型</option><option value="sales_agent_commission">业务员佣金</option><option value="chargeback">退款冲正</option><option value="adjustment">手动调整</option></select>
+              </div>
+              <div class="finance-filter-row compact">
+                <input id="salesCommissionStartFilter" placeholder="开始时间 2026-05-01">
+                <input id="salesCommissionEndFilter" placeholder="结束时间 2026-05-31">
+                <button class="secondary" id="filterSalesCommissionsBtn">筛选</button>
+              </div>
+            </div>
+            <div id="salesCommissionSummary"></div>
+            <div id="salesCommissionRecords" style="margin-top:18px"></div>
           </div>
         </div>
       </section>
@@ -988,6 +1024,9 @@
     let customers = []
     let stores = []
     let storeSettlements = { summary: [], records: [] }
+    let salesAgents = []
+    let storeLeads = []
+    let salesAgentCommissions = { summary: {}, records: [] }
     let relations = []
     let rewards = []
     let rewardDataSummary = {}
@@ -996,6 +1035,8 @@
     let editingThemeSkin = "skin01"
     let orderFilters = { keyword: "", status: "" }
     let settlementFilters = { storeId: "", status: "", type: "", startAt: "", endAt: "" }
+    let storeLeadFilters = { status: "" }
+    let salesCommissionFilters = { salesAgentId: "", storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
     let modelFilters = { keyword: "", status: "", commercialStatus: "", riskLevel: "", productionStatus: "", draftState: "", minScore: "", maxPrintTimeMinutes: "", maxFilamentWeightG: "", sort: "score" }
@@ -2768,16 +2809,19 @@
       return Number(amount || 0) < 0 ? "finance-amount-negative" : "finance-amount-positive"
     }
     function renderStores() {
-      $("storesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>等级</th><th>能力</th><th>佣金/服务费</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead><tbody>${stores.map((store, index) => `
+      $("storesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>等级</th><th>能力</th><th>佣金/服务费</th><th>绑定业务员</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead><tbody>${stores.map((store, index) => {
+        const agent = salesAgents.find(item => item.id === store.salesAgentId) || {}
+        return `
         <tr>
           <td><div class="table-title">${escapeHtml(store.name)}</div><div class="table-sub">${escapeHtml(store.address || "")}</div></td>
           <td><span class="pill">${storeLevelText(store.level)}</span></td>
           <td>${store.isDisplayEnabled === "true" ? "展示 " : ""}${store.isPickupEnabled === "true" ? "自提 " : ""}${store.isSupplierEnabled === "true" ? "供货" : ""}</td>
           <td><div>推广：${commissionText(store.referralCommissionType, store.referralCommissionValue)}</div><div class="muted">自提：${commissionText(store.pickupFeeType, store.pickupFeeValue)}</div></td>
+          <td>${agent.id ? `${escapeHtml(agent.name)}<div class="muted">${escapeHtml(agent.phone || "")}</div>` : "-"}${store.salesAgentCommissionRate ? `<div class="muted">业务员比例：${financeValue(store.salesAgentCommissionRate)}%</div>` : ""}</td>
           <td>${escapeHtml(store.contactName || "-")}<div class="muted">${escapeHtml(store.phone || "")}</div><div class="muted">负责人：${escapeHtml(store.managerPhone || "-")}</div>${store.managerPhoneDuplicated ? `<div class="muted" style="color:#d35f55;font-weight:800">手机号重复绑定</div>` : ""}</td>
           <td><span class="pill">${store.status === "enabled" ? "启用" : "停用"}</span></td>
           <td><div class="table-actions"><button class="secondary" data-action="edit-store" data-index="${index}">编辑</button><button class="secondary" data-action="toggle-store-status" data-index="${index}">${store.status === "enabled" ? "停用" : "启用"}</button></div></td>
-        </tr>`).join("")}</tbody></table></div>`
+        </tr>`}).join("")}</tbody></table></div>`
     }
     function renderStoreSettlements() {
       const summary = storeSettlements.summary || []
@@ -2806,6 +2850,53 @@
           <td><div class="table-actions"><button class="secondary" data-action="store-earning-settle" data-id="${escapeHtml(record.id)}" ${!["unsettled", "chargeback"].includes(record.effectiveStatus || record.status) ? "disabled" : ""}>结算</button><button class="danger" data-action="store-earning-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
         </tr>`
       }).join("")}</tbody></table></div>`
+    }
+    function renderSalesAgents() {
+      $("salesAgentsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>姓名</th><th>手机号</th><th>佣金比例</th><th>状态</th><th>已开发门店数</th><th>当前待结算</th><th>退款扣回</th><th>本次实际应支付</th><th>累计已结算</th><th>操作</th></tr></thead><tbody>${salesAgents.map(agent => `
+        <tr>
+          <td>${escapeHtml(agent.name)}</td><td>${escapeHtml(agent.phone)}</td><td>${financeValue(agent.commissionRate)}%</td><td><span class="pill">${agent.status === "active" ? "启用" : "停用"}</span></td>
+          <td>${agent.storeCount || 0}</td><td>¥${financeValue(agent.payableTotal)}</td><td>¥${financeValue(agent.chargebackTotal)}</td><td><strong class="finance-payable">¥${financeValue(agent.actualPayable)}</strong></td><td>¥${financeValue(agent.settledTotal)}</td>
+          <td><button class="secondary" data-action="sales-agent-edit" data-id="${escapeHtml(agent.id)}">编辑</button></td>
+        </tr>`).join("")}</tbody></table></div>`
+    }
+    function renderStoreLeads() {
+      $("storeLeadStatusFilter").value = storeLeadFilters.status || ""
+      $("storeLeadsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>业务员</th><th>门店</th><th>联系人</th><th>电话</th><th>地址</th><th>类型</th><th>自提</th><th>照片</th><th>备注</th><th>重复提示</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody>${storeLeads.map(lead => `
+        <tr>
+          <td>${escapeHtml(lead.salesAgentName || "-")}<div class="muted">${escapeHtml(lead.salesAgentPhone || "")}</div></td>
+          <td>${escapeHtml(lead.storeName)}</td><td>${escapeHtml(lead.contactName)}</td><td>${escapeHtml(lead.contactPhone)}</td><td>${escapeHtml(lead.address)}</td><td>${escapeHtml(lead.storeType || "-")}</td><td>${lead.pickupEnabled === "true" ? "是" : "否"}</td>
+          <td>${(lead.photos || []).map(url => `<a href="${escapeHtml(url)}" target="_blank">照片</a>`).join(" ") || "-"}</td>
+          <td>${escapeHtml(lead.remark || "-")}</td>
+          <td>${(lead.duplicateStores || []).length ? `<strong style="color:#b45309">疑似已有门店</strong><div class="muted">${lead.duplicateStores.map(item => `${escapeHtml(item.name)}：${escapeHtml((item.duplicateReasons || []).join("、"))}`).join("<br>")}</div>` : "-"}</td>
+          <td><span class="pill">${escapeHtml(lead.statusText || lead.status)}</span>${lead.rejectReason ? `<div class="muted">${escapeHtml(lead.rejectReason)}</div>` : ""}</td>
+          <td>${escapeHtml(lead.createdAt || "")}<div class="muted">${lead.handledAt ? `审核：${escapeHtml(lead.handledAt)}` : ""}</div></td>
+          <td><div class="table-actions">
+            <button class="secondary" data-action="store-lead-create" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>创建门店</button>
+            <button class="secondary" data-action="store-lead-bind" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>绑定已有</button>
+            <button class="secondary" data-action="store-lead-follow" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>跟进中</button>
+            <button class="danger" data-action="store-lead-reject" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>拒绝</button>
+          </div></td>
+        </tr>`).join("")}</tbody></table></div>`
+    }
+    function renderSalesAgentCommissions() {
+      const records = salesAgentCommissions.records || []
+      const summary = salesAgentCommissions.summary || {}
+      $("salesCommissionAgentFilter").innerHTML = `<option value="">全部业务员</option>${salesAgents.map(agent => `<option value="${escapeHtml(agent.id)}" ${salesCommissionFilters.salesAgentId === agent.id ? "selected" : ""}>${escapeHtml(agent.name)} ${escapeHtml(agent.phone)}</option>`).join("")}`
+      $("salesCommissionStoreFilter").innerHTML = `<option value="">全部门店</option>${stores.map(store => `<option value="${escapeHtml(store.id)}" ${salesCommissionFilters.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)}</option>`).join("")}`
+      $("salesCommissionStatusFilter").value = salesCommissionFilters.status || ""
+      $("salesCommissionTypeFilter").value = salesCommissionFilters.type || ""
+      $("salesCommissionStartFilter").value = salesCommissionFilters.startAt || ""
+      $("salesCommissionEndFilter").value = salesCommissionFilters.endAt || ""
+      $("salesCommissionSummary").innerHTML = renderFinanceSummaryCards(summary)
+      $("salesCommissionRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="sales-commission-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>业务员</th><th>门店</th><th>订单号</th><th>订单金额</th><th>比例</th><th>金额</th><th>类型</th><th>状态</th><th>时间</th><th>备注</th><th>操作</th></tr></thead><tbody>${records.map(record => `
+        <tr>
+          <td>${escapeHtml(record.salesAgentName || record.salesAgentId)}<div class="muted">${escapeHtml(record.salesAgentPhone || "")}</div></td>
+          <td>${escapeHtml(record.storeName || record.storeId)}</td><td>${escapeHtml(record.orderNo || record.orderId || "-")}</td><td>¥${financeValue(record.orderAmount)}</td><td>${financeValue(record.commissionRate)}%</td>
+          <td><strong class="${financeAmountClass(record.amount)}">${Number(record.amount || 0) < 0 ? "-" : "+"}¥${Math.abs(Number(record.amount || 0)).toFixed(2)}</strong></td>
+          <td>${escapeHtml(record.typeText || record.type)}</td><td><span class="pill">${escapeHtml(record.statusText || record.status)}</span></td>
+          <td>${escapeHtml(record.createdAtText || record.createdAt || "")}<div class="muted">${record.settledAtText || record.settledAt ? `结算：${escapeHtml(record.settledAtText || record.settledAt)}` : ""}</div></td><td>${escapeHtml(record.remark || "")}</td>
+          <td><div class="table-actions"><button class="secondary" data-action="sales-commission-settle" data-id="${escapeHtml(record.id)}" ${!["unsettled", "chargeback"].includes(record.effectiveStatus || record.status) ? "disabled" : ""}>结算</button><button class="danger" data-action="sales-commission-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
+        </tr>`).join("")}</tbody></table></div>`
     }
     function openStoreDrawer(index) {
       const store = stores[index]
@@ -2869,6 +2960,8 @@
           <label>推广佣金数值<input data-store-key="referralCommissionValue" value="${escapeHtml(store.referralCommissionValue)}" placeholder="% 或 元"></label>
           <label>自提服务费<select data-store-key="pickupFeeType"><option value="none" ${store.pickupFeeType === "none" ? "selected" : ""}>不计算</option><option value="percent" ${store.pickupFeeType === "percent" ? "selected" : ""}>按订单金额百分比</option><option value="fixed" ${store.pickupFeeType === "fixed" ? "selected" : ""}>按每单固定金额</option></select></label>
           <label>自提服务费数值<input data-store-key="pickupFeeValue" value="${escapeHtml(store.pickupFeeValue)}" placeholder="% 或 元"></label>
+          <label>绑定业务员<select data-store-key="salesAgentId"><option value="">不绑定</option>${salesAgents.map(agent => `<option value="${escapeHtml(agent.id)}" ${store.salesAgentId === agent.id ? "selected" : ""}>${escapeHtml(agent.name)} ${escapeHtml(agent.phone)}</option>`).join("")}</select></label>
+          <label>业务员佣金比例<input data-store-key="salesAgentCommissionRate" value="${escapeHtml(store.salesAgentCommissionRate || "")}" placeholder="留空使用业务员默认比例"></label>
           <label>供货结算规则（预留）<textarea data-store-key="supplierSettlementRule">${escapeHtml(store.supplierSettlementRule)}</textarea></label>
           <label>定制加购分成（预留）<textarea data-store-key="customCommissionRule">${escapeHtml(store.customCommissionRule)}</textarea></label>
           <label>备注<textarea data-store-key="remark">${escapeHtml(store.remark)}</textarea></label>
@@ -3059,8 +3152,10 @@
     async function loadAll() {
       setStatus("正在读取...")
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
+      const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
+      const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
       const modelQuery = new URLSearchParams(Object.fromEntries(Object.entries(modelFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, modelData, orderData, customerData, settingData, themeData, storeData, settlementData] = await Promise.all([
+      const [overview, homeData, productData, modelData, orderData, customerData, settingData, themeData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
@@ -3070,7 +3165,10 @@
         api("/api/admin/settings"),
         api("/api/admin/themes"),
         api("/api/admin/stores"),
-        api(`/api/admin/store-settlements${settlementQuery ? `?${settlementQuery}` : ""}`)
+        api(`/api/admin/store-settlements${settlementQuery ? `?${settlementQuery}` : ""}`),
+        api("/api/admin/sales-agents"),
+        api(`/api/admin/store-leads${storeLeadQuery ? `?${storeLeadQuery}` : ""}`),
+        api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`)
       ])
       const rewardQuery = new URLSearchParams(Object.fromEntries(Object.entries(rewardFilters).filter(([, value]) => value))).toString()
       const [relationData, rewardData] = await Promise.all([
@@ -3085,6 +3183,9 @@
       customers = customerData
       stores = storeData
       storeSettlements = settlementData
+      salesAgents = salesAgentData
+      storeLeads = storeLeadData
+      salesAgentCommissions = salesCommissionData
       relations = relationData
       rewards = rewardData.records || rewardData
       rewardDataSummary = rewardData.summary || {}
@@ -3102,6 +3203,9 @@
       renderCustomers()
       renderStores()
       renderStoreSettlements()
+      renderSalesAgents()
+      renderStoreLeads()
+      renderSalesAgentCommissions()
       renderRelations()
       renderRewards()
       renderActivities()
@@ -3375,7 +3479,9 @@
         pickupFeeType: "fixed",
         pickupFeeValue: "2.00",
         supplierSettlementRule: "",
-        customCommissionRule: ""
+        customCommissionRule: "",
+        salesAgentId: "",
+        salesAgentCommissionRate: ""
       }
       api("/api/admin/stores", "POST", store)
         .then(() => loadAll())
@@ -3399,6 +3505,21 @@
         type: $("settlementTypeFilter").value,
         startAt: $("settlementStartFilter").value.trim(),
         endAt: $("settlementEndFilter").value.trim()
+      }
+      loadAll().catch(error => setStatus(error.message))
+    })
+    $("filterStoreLeadsBtn").addEventListener("click", () => {
+      storeLeadFilters = { status: $("storeLeadStatusFilter").value }
+      loadAll().catch(error => setStatus(error.message))
+    })
+    $("filterSalesCommissionsBtn").addEventListener("click", () => {
+      salesCommissionFilters = {
+        salesAgentId: $("salesCommissionAgentFilter").value,
+        storeId: $("salesCommissionStoreFilter").value,
+        status: $("salesCommissionStatusFilter").value,
+        type: $("salesCommissionTypeFilter").value,
+        startAt: $("salesCommissionStartFilter").value.trim(),
+        endAt: $("salesCommissionEndFilter").value.trim()
       }
       loadAll().catch(error => setStatus(error.message))
     })
@@ -3488,6 +3609,44 @@
           .then(() => setStatus(store.status === "enabled" ? "门店已停用" : "门店已启用"))
           .catch(error => setStatus(error.message))
       }
+      if (event.target.dataset.action === "sales-agent-add" || event.target.dataset.action === "sales-agent-edit") {
+        const agent = salesAgents.find(item => item.id === event.target.dataset.id) || {}
+        const name = prompt("业务员姓名", agent.name || "")
+        if (!name) return
+        const phone = prompt("业务员手机号", agent.phone || "")
+        if (!phone) return
+        const commissionRate = prompt("默认佣金比例（%）", agent.commissionRate || "1.00")
+        if (commissionRate == null) return
+        const status = prompt("状态 active / disabled", agent.status || "active") || "active"
+        const remark = prompt("备注", agent.remark || "") || ""
+        const password = prompt(agent.id ? "重置密码（留空则不修改）" : "初始密码", "")
+        if (!agent.id && !password) return setStatus("新增业务员必须填写初始密码")
+        const payload = { name, phone, commissionRate, status, remark }
+        if (password) payload.password = password
+        const request = agent.id ? api(`/api/admin/sales-agents/${encodeURIComponent(agent.id)}`, "PUT", payload) : api("/api/admin/sales-agents", "POST", payload)
+        request.then(() => loadAll()).then(() => setStatus(agent.id ? "业务员已更新" : "业务员已新增")).catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-lead-create") {
+        if (!confirm("确认通过线索并创建合作门店？")) return
+        api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/create`, "POST", {})
+          .then(() => loadAll()).then(() => setStatus("已创建并绑定合作门店")).catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-lead-bind") {
+        const storeId = prompt("请输入要绑定的已有合作门店ID")
+        if (!storeId) return
+        api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/bind`, "POST", { storeId })
+          .then(() => loadAll()).then(() => setStatus("已绑定已有合作门店")).catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-lead-follow") {
+        api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/follow`, "POST", {})
+          .then(() => loadAll()).then(() => setStatus("线索已标记跟进中")).catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "store-lead-reject") {
+        const rejectReason = prompt("拒绝原因", "门店信息不符合合作要求")
+        if (rejectReason == null) return
+        api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/reject`, "POST", { rejectReason })
+          .then(() => loadAll()).then(() => setStatus("线索已拒绝")).catch(error => setStatus(error.message))
+      }
       if (event.target.dataset.action === "copy-store-id") {
         const id = event.target.dataset.id || ""
         if (navigator.clipboard?.writeText) {
@@ -3559,6 +3718,44 @@
         api("/api/admin/store-earnings/batch-settle", "POST", { ...settlementFilters, note })
           .then(result => loadAll().then(() => result))
           .then(result => setStatus(`批量结算完成：${result.recordCount || 0} 条`))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "sales-commission-settle") {
+        const record = (salesAgentCommissions.records || []).find(item => item.id === event.target.dataset.id)
+        if (record && !confirm(settlementConfirmText([record]))) return
+        const note = prompt("结算备注（选填）", "线下已结算") || ""
+        api(`/api/admin/sales-agent-commissions/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
+          .then(() => loadAll())
+          .then(() => setStatus("业务员佣金已标记结算"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "sales-commission-cancel") {
+        const reason = prompt("取消原因", "后台人工取消佣金")
+        if (reason == null) return
+        api(`/api/admin/sales-agent-commissions/${encodeURIComponent(event.target.dataset.id)}/cancel`, "POST", { reason })
+          .then(() => loadAll())
+          .then(() => setStatus("业务员佣金已取消"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "sales-commission-adjustment") {
+        const salesAgentId = salesCommissionFilters.salesAgentId || prompt("请输入业务员ID")
+        if (!salesAgentId) return
+        const storeId = prompt("门店ID（选填）", salesCommissionFilters.storeId || "") || ""
+        const amount = prompt("调整金额，可为负数，例如 -5.00")
+        if (!amount) return
+        const note = prompt("调整备注", "后台手动调整") || "后台手动调整"
+        api("/api/admin/sales-agent-commissions/adjustment", "POST", { salesAgentId, storeId, amount, note })
+          .then(() => loadAll())
+          .then(() => setStatus("已新增业务员佣金调整记录"))
+          .catch(error => setStatus(error.message))
+      }
+      if (event.target.dataset.action === "sales-commission-batch-settle") {
+        const batchRecords = (salesAgentCommissions.records || []).filter(record => ["unsettled", "chargeback"].includes(record.effectiveStatus || record.status))
+        if (!confirm(settlementConfirmText(batchRecords))) return
+        const note = prompt("批量结算备注", "线下批量结算") || "线下批量结算"
+        api("/api/admin/sales-agent-commissions/batch-settle", "POST", { ...salesCommissionFilters, note })
+          .then(result => loadAll().then(() => result))
+          .then(result => setStatus(`业务员佣金批量结算完成：${result.recordCount || 0} 条`))
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "view-store-qrcode" || event.target.dataset.action === "download-store-qrcode" || event.target.dataset.action === "copy-store-link") {

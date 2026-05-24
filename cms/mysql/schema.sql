@@ -120,8 +120,72 @@ CREATE TABLE IF NOT EXISTS partner_stores (
   pickup_fee_value DECIMAL(10,2) DEFAULT 2,
   supplier_settlement_rule TEXT,
   custom_commission_rule TEXT,
+  sales_agent_id VARCHAR(60),
+  sales_agent_commission_rate DECIMAL(10,2),
   created_at DATETIME,
   updated_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS sales_agents (
+  id VARCHAR(60) PRIMARY KEY,
+  name VARCHAR(80),
+  phone VARCHAR(30),
+  password_hash VARCHAR(180),
+  commission_rate DECIMAL(10,2) DEFAULT 0,
+  status VARCHAR(20) DEFAULT 'active',
+  remark TEXT,
+  created_at DATETIME,
+  updated_at DATETIME,
+  UNIQUE KEY uniq_sales_agent_phone (phone)
+);
+
+CREATE TABLE IF NOT EXISTS store_leads (
+  id VARCHAR(60) PRIMARY KEY,
+  sales_agent_id VARCHAR(60),
+  store_name VARCHAR(120),
+  contact_name VARCHAR(80),
+  contact_phone VARCHAR(30),
+  address VARCHAR(255),
+  latitude DECIMAL(10,6),
+  longitude DECIMAL(10,6),
+  store_type VARCHAR(60),
+  pickup_enabled VARCHAR(10) DEFAULT 'false',
+  photos JSON,
+  remark TEXT,
+  status VARCHAR(20) DEFAULT 'pending',
+  reject_reason TEXT,
+  store_id VARCHAR(60),
+  created_at DATETIME,
+  handled_at DATETIME,
+  handled_by VARCHAR(80),
+  INDEX idx_store_lead_agent (sales_agent_id),
+  INDEX idx_store_lead_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS sales_agent_commissions (
+  id VARCHAR(80) PRIMARY KEY,
+  sales_agent_id VARCHAR(60),
+  store_id VARCHAR(60),
+  order_id VARCHAR(40),
+  order_no VARCHAR(80),
+  order_amount DECIMAL(10,2) DEFAULT 0,
+  commission_rate DECIMAL(10,2) DEFAULT 0,
+  commission_amount DECIMAL(10,2) DEFAULT 0,
+  amount DECIMAL(10,2) DEFAULT 0,
+  type VARCHAR(40),
+  status VARCHAR(20) DEFAULT 'unsettled',
+  created_at DATETIME,
+  settled_at DATETIME,
+  settled_by VARCHAR(80),
+  settle_note TEXT,
+  cancel_reason TEXT,
+  batch_id VARCHAR(80),
+  related_record_id VARCHAR(80),
+  remark TEXT,
+  UNIQUE KEY uniq_sales_agent_order_type (sales_agent_id, store_id, order_id, type),
+  INDEX idx_sales_agent_commission_agent (sales_agent_id, status),
+  INDEX idx_sales_agent_commission_store (store_id),
+  INDEX idx_sales_agent_commission_order (order_id)
 );
 
 CREATE TABLE IF NOT EXISTS store_settlement_records (
