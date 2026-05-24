@@ -3222,7 +3222,8 @@
           const updated = Number(result.updated || 0)
           const skipped = Number(result.skipped || 0)
           const riskCount = Number(result.riskCount ?? result.risk ?? 0)
-          const message = `同步完成：新增 ${created} 条，更新 ${updated} 条，跳过 ${skipped} 条，风险 ${riskCount} 条。模式：${result.mode === "web" ? "网页抓取" : "Provider默认/mock"}`
+          const sourceText = result.mode === "url" ? "网页抓取" : result.invalidUrlCount > 0 ? "未检测到有效授权渠道 URL，已使用测试数据" : "当前使用测试数据"
+          const message = `同步完成：新增 ${created} 条，更新 ${updated} 条，跳过 ${skipped} 条，风险 ${riskCount} 条。${sourceText}`
           if (resultNode) resultNode.textContent = message
           setStatus(message)
           await loadAll()

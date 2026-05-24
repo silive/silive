@@ -90,6 +90,26 @@ async function fetchText(url) {
   return res.text()
 }
 
+function isPlaceholderUrl(value) {
+  const text = String(value || "").trim()
+  if (!text) return true
+  if (text.includes("...") || text.includes("授权渠道页面") || text.includes("xxxx")) return true
+  try {
+    const parsed = new URL(text)
+    if (!["http:", "https:"].includes(parsed.protocol)) return true
+    if (!parsed.hostname || !parsed.hostname.includes(".")) return true
+    return false
+  } catch {
+    return true
+  }
+}
+
+function normalizeSourceUrls(urls = []) {
+  return Array.from(new Set((Array.isArray(urls) ? urls : String(urls || "").split(/[,，\n]/))
+    .map(item => String(item || "").trim())
+    .filter(item => item && !isPlaceholderUrl(item))))
+}
+
 function textBetween(source, pattern) {
   const matched = String(source || "").match(pattern)
   return matched ? matched[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : ""
@@ -131,7 +151,9 @@ function parseModelsFromHtml(html, sourceUrl) {
 
 async function fetchModelsFromUrls(urls = []) {
   const results = []
-  for (const url of urls.map(item => String(item || "").trim()).filter(Boolean)) {
+  const validUrls = normalizeSourceUrls(urls)
+  if (!validUrls.length) return mockModels
+  for (const url of validUrls) {
     try {
       const html = await fetchText(url)
       results.push(...parseModelsFromHtml(html, url))
@@ -156,7 +178,7 @@ async function fetchModelsFromUrls(urls = []) {
       })
     }
   }
-  return results
+  return results.length ? results : mockModels
 }
 
 async function fetchLatestModels() {
@@ -164,10 +186,7 @@ async function fetchLatestModels() {
 }
 
 async function fetchPopularModels() {
-  const urls = String(process.env.MAKERWORLD_POPULAR_URLS || process.env.AUTHORIZED_MODEL_SOURCE_URLS || "")
-    .split(/[,，\n]/)
-    .map(item => item.trim())
-    .filter(Boolean)
+  const urls = normalizeSourceUrls(process.env.MAKERWORLD_POPULAR_URLS || process.env.AUTHORIZED_MODEL_SOURCE_URLS || "")
   if (urls.length) {
     const webModels = await fetchModelsFromUrls(urls)
     if (webModels.length) return webModels
@@ -183,5 +202,6 @@ module.exports = {
   fetchLatestModels,
   fetchPopularModels,
   fetchModelDetail,
-  fetchModelsFromUrls
+  fetchModelsFromUrls,
+  normalizeSourceUrls
 }

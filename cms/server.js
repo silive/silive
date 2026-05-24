@@ -3827,9 +3827,12 @@ async function upsertModelCandidate(candidate) {
 async function syncModelCandidatesFromProvider(options = {}) {
   const current = await getModelCandidates()
   const currentKeys = new Set(current.map(item => `${item.source}:${item.sourceModelId}`))
-  const providerModels = Array.isArray(options.urls) && options.urls.length
-    ? await makerworldProvider.fetchModelsFromUrls(options.urls)
+  const rawUrls = Array.isArray(options.urls) ? options.urls.map(item => String(item || "").trim()).filter(Boolean) : []
+  const validUrls = makerworldProvider.normalizeSourceUrls(rawUrls)
+  const providerModels = validUrls.length
+    ? await makerworldProvider.fetchModelsFromUrls(validUrls)
     : await makerworldProvider.fetchPopularModels()
+  const usedMock = !validUrls.length || providerModels.every(model => String(model.source || "").includes("mock"))
   let created = 0
   let updated = 0
   let skipped = 0
@@ -3852,7 +3855,18 @@ async function syncModelCandidatesFromProvider(options = {}) {
     if (currentKeys.has(key)) updated += 1
     else created += 1
   }
-  return { ok: true, created, updated, skipped, riskCount, total: providerModels.length, provider: "makerworldProvider", mode: Array.isArray(options.urls) && options.urls.length ? "web" : "default" }
+  return {
+    ok: true,
+    created,
+    updated,
+    skipped,
+    riskCount,
+    total: providerModels.length,
+    provider: "makerworldProvider",
+    mode: usedMock ? "mock" : "url",
+    validUrlCount: validUrls.length,
+    invalidUrlCount: Math.max(rawUrls.length - validUrls.length, 0)
+  }
 }
 
 function canCreateDraftFromModel(candidate = {}) {
