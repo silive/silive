@@ -3245,7 +3245,7 @@ function includeSettlementRecordForStats(record = {}, activeOrderIds = new Set()
   return !record.orderId || activeOrderIds.has(record.orderId)
 }
 
-async function query(sql, params) {
+async function query(sql, params = {}) {
   const [rows] = await pool.query(sql, params)
   return rows
 }
