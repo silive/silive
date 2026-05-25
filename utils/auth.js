@@ -3,11 +3,25 @@ const { isStoreFeaturesEnabled } = require("./review")
 
 function getLoginState() {
   const userSession = wx.getStorageSync("userSession") || ""
+  const userToken = wx.getStorageSync("userToken") || ""
   const openid = wx.getStorageSync("openid") || ""
   const phone = wx.getStorageSync("memberPhone") || ""
+  const hasToken = !!(userSession || userToken)
+  const hasPhone = !!phone
+  const isLoggedIn = !!(hasToken && openid && hasPhone)
+  console.log("[auth-state]", {
+    isLoggedIn,
+    hasPhone,
+    hasToken,
+    hasOpenid: !!openid
+  })
   return {
-    loggedIn: !!(userSession && openid && phone),
+    loggedIn: isLoggedIn,
+    isLoggedIn,
+    hasPhone,
+    hasToken,
     userSession,
+    userToken,
     openid,
     phone,
     name: wx.getStorageSync("memberName") || ""
@@ -79,6 +93,27 @@ function clearIncompleteLoginState() {
   wx.removeStorageSync("userToken")
   const app = getApp()
   if (app.globalData) app.globalData.userInfo = null
+}
+
+function clearExpiredLoginState() {
+  console.log("[auth-expired]", {
+    hadPhone: !!wx.getStorageSync("memberPhone"),
+    hadToken: !!(wx.getStorageSync("userSession") || wx.getStorageSync("userToken")),
+    hasAvatarCache: !!wx.getStorageSync("memberAvatar")
+  })
+  wx.removeStorageSync("memberPhone")
+  wx.removeStorageSync("openid")
+  wx.removeStorageSync("userSession")
+  wx.removeStorageSync("userToken")
+  const app = getApp()
+  if (app.globalData) {
+    app.globalData.userInfo = {
+      ...(app.globalData.userInfo || {}),
+      phone: "",
+      openid: "",
+      userSession: ""
+    }
+  }
 }
 
 function ensureOpenid() {
@@ -369,6 +404,7 @@ module.exports = {
   ensureOpenid,
   loginWithPhoneDetail,
   clearIncompleteLoginState,
+  clearExpiredLoginState,
   buildVisibleLoginDebug,
   bindStoredPromotionRelation,
   logout

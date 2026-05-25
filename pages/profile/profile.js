@@ -119,7 +119,14 @@ Page({
           }
         })
       })
-      .catch(error => console.warn("[profile] load user profile failed:", error.message || error))
+      .catch(error => {
+        console.warn("[profile] load user profile failed:", error.message || error)
+        if (error.statusCode === 401 || /登录|授权/.test(error.message || "")) {
+          const { clearExpiredLoginState } = require("../../utils/auth")
+          clearExpiredLoginState()
+          this.refreshLoginState()
+        }
+      })
   },
 
   saveUserProfile(profile = {}) {
@@ -291,7 +298,13 @@ Page({
       .then(orders => {
         this.setData({ orderCount: Array.isArray(orders) ? orders.length : 0 })
       })
-      .catch(() => {
+      .catch(error => {
+        console.warn("[profile] load order summary failed:", error.message || error)
+        if (error.statusCode === 401 || /登录|授权/.test(error.message || "")) {
+          const { clearExpiredLoginState } = require("../../utils/auth")
+          clearExpiredLoginState()
+          this.refreshLoginState()
+        }
         this.setData({ orderCount: 0 })
       })
   },

@@ -111,7 +111,11 @@ function request(path, options = {}) {
           tryHost(index + 1).then(resolve).catch(reject)
           return
         }
-        reject(new Error(res.data && res.data.message ? res.data.message : `接口请求失败：${res.statusCode} ${url}`))
+        const error = new Error(res.data && res.data.message ? res.data.message : `接口请求失败：${res.statusCode} ${url}`)
+        error.statusCode = res.statusCode
+        error.url = url
+        error.data = res.data || {}
+        reject(error)
       },
       fail: error => {
         console.error("[api] request failed:", url, error)

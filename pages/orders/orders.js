@@ -1,5 +1,5 @@
 const { request, uploadFileWithFallback } = require("../../utils/api")
-const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
+const { ensureOpenid, getLoginState, loginWithPhoneDetail, clearExpiredLoginState } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { isPaymentEnabled, isReviewMode } = require("../../utils/review")
 
@@ -334,6 +334,7 @@ Page({
     loginVisible: false,
     loginLoading: false,
     loading: true,
+    orderLoadMessage: "",
     showAfterSaleModal: false,
     currentAfterSaleOrder: null,
     afterSaleForm: {
@@ -360,6 +361,15 @@ Page({
   loadPage() {
     const loginState = getLoginState()
     const identity = getUserIdentity()
+    console.log("[orders-auth-check]", {
+      isLoggedIn: !!loginState.loggedIn,
+      hasPhone: !!loginState.hasPhone,
+      hasToken: !!loginState.hasToken,
+      hasOpenid: !!identity.openid,
+      hasUserSession: !!identity.userSession,
+      hasUserToken: !!identity.userToken
+    })
+    this.setData({ loading: true, orderLoadMessage: "" })
     const query = loginState.loggedIn && (identity.userSession || identity.openid || identity.userId || identity.userToken)
       ? `?userSession=${encodeURIComponent(identity.userSession)}&openid=${encodeURIComponent(identity.openid)}&userId=${encodeURIComponent(identity.userId)}&userToken=${encodeURIComponent(identity.userToken)}`
       : ""
@@ -367,6 +377,11 @@ Page({
       loginState.loggedIn ? request(`/api/orders${query}`) : Promise.resolve([]),
       request("/api/products")
     ]).then(([orders, products]) => {
+      console.log("[orders-load]", {
+        loggedIn: !!loginState.loggedIn,
+        orderCount: Array.isArray(orders) ? orders.length : 0,
+        productCount: Array.isArray(products) ? products.length : 0
+      })
       const normalizedProducts = products.map(normalizeProduct)
       const normalizedOrders = orders.map(order => normalizeOrder(order, normalizedProducts))
       const statusTabs = buildStatusTabs(normalizedOrders)
@@ -377,11 +392,28 @@ Page({
         statusTabsTop: statusTabs.filter(item => item.row === "top"),
         statusTabsBottom: statusTabs.filter(item => item.row === "bottom"),
         recommendations: buildRecommendations(normalizedProducts, normalizedOrders),
-        loading: false
+        loading: false,
+        orderLoadMessage: loginState.loggedIn && !normalizedOrders.length ? "暂无订单" : ""
       })
       this.refreshRecentOrders()
-    }).catch(() => {
-      this.setData({ loading: false })
+    }).catch(error => {
+      console.error("[orders-load]", error)
+      if (error.statusCode === 401 || /登录|授权/.test(error.message || "")) {
+        clearExpiredLoginState()
+        this.setData({
+          loggedIn: false,
+          orders: [],
+          recentOrders: [],
+          loading: false,
+          orderLoadMessage: "登录状态已过期，请重新登录"
+        })
+        wx.showToast({ title: "登录状态已过期，请重新登录", icon: "none" })
+        return
+      }
+      this.setData({
+        loading: false,
+        orderLoadMessage: "订单加载失败，请稍后重试"
+      })
     })
   },
 
