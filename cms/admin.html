@@ -537,7 +537,6 @@
       <nav class="nav" id="nav">
         <button data-view="overview">数据总览</button>
         <button class="active" data-view="products">商品中心</button>
-        <button data-view="models">模型选品库</button>
         <button data-view="orders">订单中心</button>
         <button data-view="customers">用户中心</button>
         <button data-view="stores">合作门店</button>
@@ -734,66 +733,6 @@
         </div>
       </section>
 
-      <section class="view" id="view-models">
-        <div class="panel">
-          <div class="item-head">
-            <div>
-              <h3>模型选品库 / 爆款模型库</h3>
-              <div class="upload-help">用于整理 MakerWorld 或其他授权渠道的爆款模型。当前真实模型优先使用“粘贴链接导入”，自动发现仍是测试数据模式。</div>
-            </div>
-            <div class="table-actions">
-              <button class="primary" id="syncModelsBtn">同步热门模型</button>
-              <button class="danger" id="clearMockModelsBtn">清空测试数据</button>
-            </div>
-          </div>
-          <div class="filters">
-            <input id="modelKeywordFilter" placeholder="搜索模型、作者、来源链接">
-            <select id="modelStatusFilter"><option value="">全部状态</option><option value="pending">待审核</option><option value="approved">已通过</option><option value="rejected">已淘汰</option><option value="draft_created">已生成草稿</option><option value="published">已上架</option></select>
-            <select id="modelAuthFilter"><option value="">全部授权状态</option><option value="offline_authorized">线下已授权</option><option value="commercial_allowed">平台允许商用</option><option value="commercial_license_required">需要商用授权</option><option value="unknown">待确认</option><option value="forbidden">禁止商用</option></select>
-            <select id="modelRiskFilter"><option value="">全部风险</option><option value="low">低风险</option><option value="high">需确认授权范围</option></select>
-            <select id="modelProductionFilter"><option value="">全部生产状态</option><option value="ready">符合生产参数</option><option value="needs_review">需补生产参数</option></select>
-            <select id="modelDraftFilter"><option value="">全部草稿状态</option><option value="not_created">未生成草稿</option><option value="created">已生成草稿</option></select>
-            <select id="modelScoreFilter"><option value="">全部分数</option><option value="80">分数 ≥ 80</option><option value="70">分数 ≥ 70</option></select>
-            <select id="modelParamFilter"><option value="">全部参数</option><option value="fit">打印≤240分钟 / 耗材≤150g</option></select>
-            <select id="modelSortFilter"><option value="score">分数最高</option><option value="downloads">下载量最高</option><option value="collects">收藏量最高</option><option value="prints">打印量最高</option><option value="latest">最新同步</option></select>
-            <button class="secondary" id="filterModelsBtn">筛选</button>
-          </div>
-          <div class="drawer-section" style="margin-top:16px">
-            <h4>粘贴 MakerWorld 链接导入</h4>
-            <div class="upload-help">支持每行一个真实 MakerWorld 模型链接。系统会尽量解析标题、主图、作者、来源链接等基础信息；解析不完整时会创建“待补充模型”。</div>
-            <label>MakerWorld 模型链接
-              <textarea id="modelImportUrls" placeholder="https://makerworld.com/zh/models/xxxx&#10;https://makerworld.com/en/models/yyyy"></textarea>
-            </label>
-            <div class="table-actions" style="margin-top:10px">
-              <button class="primary" id="importModelUrlsBtn">解析并导入</button>
-            </div>
-          </div>
-          <label style="margin:12px 0 0">授权渠道网页 URL（可选，每行一个；留空或示例 URL 时使用 Provider 默认/mock 数据）
-            <textarea id="modelSyncUrls" placeholder="https://makerworld.com/...\nhttps://授权渠道页面..."></textarea>
-          </label>
-          <div class="drawer-section" style="margin-top:16px">
-            <h4>自动发现模型</h4>
-            <div class="upload-help"><strong>当前模式：测试发现模式 mock_discovery。</strong> 当前未接入稳定 MakerWorld 搜索接口，自动发现使用测试数据。真实模型请使用“粘贴链接导入”。不会自动下载模型、切片或上架。</div>
-            <div class="filters">
-              <input id="discoverKeywords" value="桌面 收纳 钥匙扣 摆件 支架 灯饰 家居" placeholder="关键词，空格分隔">
-              <select id="discoverCategory"><option value="">自动分类</option><option value="3D打印">3D打印</option><option value="潮玩手办">潮玩手办</option></select>
-              <input id="discoverMaxPages" type="number" min="1" max="3" value="3" placeholder="最大页数">
-              <input id="discoverLimit" type="number" min="1" max="30" value="30" placeholder="最多导入">
-              <input id="discoverMaxPrintTime" type="number" value="240" placeholder="打印分钟上限">
-              <input id="discoverMaxWeight" type="number" value="150" placeholder="耗材g上限">
-              <input id="discoverMinDownloads" type="number" value="100" placeholder="最低下载量">
-              <input id="discoverMinCollects" type="number" value="0" placeholder="最低收藏量">
-              <input id="discoverMinScore" type="number" value="0" placeholder="最低评分">
-              <select id="discoverRequireCover"><option value="true">只导入有主图</option><option value="false">允许无主图</option></select>
-              <button class="primary" id="discoverModelsBtn">开始发现</button>
-              <button class="secondary" id="batchDraftModelsBtn">批量生成草稿</button>
-            </div>
-          </div>
-          <div id="modelSyncResult" class="upload-help">等待同步或筛选模型。</div>
-          <div id="modelCandidatesTable"></div>
-        </div>
-      </section>
-
       <section class="view" id="view-orders">
         <div class="panel">
           <h3>订单管理</h3>
@@ -953,17 +892,6 @@
           </div>
           <div class="upload-help" style="margin-top:14px">微信客服查看说明：小程序客服消息请在微信公众平台查看：微信公众平台 → 客服消息 / 小程序客服。也可绑定客服人员微信，用户点击“联系客服”后消息会进入微信官方客服系统；这里的企业微信号/微信号仅用于展示或复制，不等同于 open-type="contact" 官方客服入口。</div>
           <div style="margin-top:18px">
-            <h3>模型报价参数</h3>
-            <div class="form-grid">
-              <label>材料成本/克<input id="modelMaterialCostPerG" placeholder="0.05"></label>
-              <label>机器工时/小时<input id="modelMachineHourCost" placeholder="2"></label>
-              <label>包装成本<input id="modelPackageCost" placeholder="2"></label>
-              <label>损耗成本<input id="modelWasteCost" placeholder="2"></label>
-              <label>售价倍率<input id="modelMarkupRate" placeholder="3.5"></label>
-            </div>
-            <div class="upload-help">生成模型商品草稿时用于估算成本和建议售价；草稿不会自动上架。</div>
-          </div>
-          <div style="margin-top:18px">
             <h3>新人福利</h3>
             <div class="form-grid">
               <label>是否开启新人福利<select id="newcomerBenefitsEnabled">
@@ -1035,7 +963,6 @@
     const titles = {
       overview: ["数据总览", "查看经营数据和待处理事项。"],
       products: ["商品中心", "维护商品、库存、媒体素材和一二级类目。"],
-      models: ["模型选品库", "同步授权渠道爆款模型，评分后生成商品草稿。"],
       orders: ["订单中心", "查看订单详情、物流、售后和发货状态。"],
       customers: ["用户中心", "查看客户联系方式、消费记录和会员资产。"],
       stores: ["合作门店", "维护展示点、自提点和门店收益结算。"],
@@ -1048,7 +975,6 @@
     let currentView = "products"
     let home = {}
     let products = []
-    let modelCandidates = []
     let allOrders = []
     let orders = []
     let customers = []
@@ -1069,7 +995,6 @@
     let salesCommissionFilters = { salesAgentId: "", storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
-    let modelFilters = { keyword: "", status: "", commercialStatus: "", riskLevel: "", productionStatus: "", draftState: "", minScore: "", maxPrintTimeMinutes: "", maxFilamentWeightG: "", sort: "score" }
     let productImportToken = ""
     let categorySearch = ""
     let activityProductSearch = {}
@@ -2230,151 +2155,6 @@
       })
       settings.helpArticles = normalizeHelpArticles(next)
     }
-    function commercialStatusText(value) {
-      return ({
-        offline_authorized: "线下已授权",
-        commercial_allowed: "平台允许商用",
-        commercial_license_required: "需要商用授权",
-        unknown: "待确认",
-        forbidden: "禁止商用"
-      })[value] || value || "待确认"
-    }
-    function modelStatusText(value) {
-      return ({
-        pending: "待审核",
-        approved: "已通过",
-        rejected: "已淘汰",
-        draft_created: "已生成草稿",
-        published: "已上架"
-      })[value] || value || "待审核"
-    }
-    function renderModelCandidates() {
-      if (!$("modelCandidatesTable")) return
-      $("modelKeywordFilter").value = modelFilters.keyword || ""
-      $("modelStatusFilter").value = modelFilters.status || ""
-      $("modelAuthFilter").value = modelFilters.commercialStatus || ""
-      $("modelRiskFilter").value = modelFilters.riskLevel || ""
-      $("modelProductionFilter").value = modelFilters.productionStatus || ""
-      $("modelDraftFilter").value = modelFilters.draftState || ""
-      $("modelScoreFilter").value = modelFilters.minScore || ""
-      $("modelParamFilter").value = modelFilters.maxPrintTimeMinutes || modelFilters.maxFilamentWeightG ? "fit" : ""
-      $("modelSortFilter").value = modelFilters.sort || "score"
-      $("modelCandidatesTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
-        <thead><tr><th>模型</th><th>热度</th><th>生产参数</th><th>授权</th><th>评分/风险</th><th>状态</th><th>操作</th></tr></thead>
-        <tbody>${(modelCandidates || []).map((item, index) => `
-          <tr>
-            <td><div style="display:flex;gap:10px;align-items:center;min-width:240px"><img class="table-image" src="${escapeHtml(item.coverImage || "")}" alt=""><div><div class="table-title">${escapeHtml(item.title)}</div><div class="table-sub">${escapeHtml(item.authorName || "-")} · ${escapeHtml(item.source || "")}</div><div class="table-sub">${escapeHtml(item.sourceModelId || "")}</div></div></div></td>
-            <td>下载 ${Number(item.downloadCount || 0)}<div class="muted">收藏 ${Number(item.collectCount || 0)} · 打印 ${Number(item.printCount || 0)}</div></td>
-            <td>${Number(item.printTimeMinutes || 0) || "待补"} 分钟<div class="muted">${Number(item.filamentWeightG || 0) || "待补"}g 耗材 · ${item.productionStatus === "ready" ? "符合生产参数" : "需补生产参数"}</div></td>
-            <td><span class="pill">${commercialStatusText(item.commercialStatus)}</span><div class="muted">${escapeHtml(item.authorizationParty || "")}</div></td>
-            <td><strong style="color:#FF5A00">${Number(item.score || 0)}</strong><div class="muted">${item.riskLevel === "high" ? "需确认授权范围" : "低风险"}</div></td>
-            <td><span class="pill">${modelStatusText(item.status)}</span></td>
-            <td><div class="table-actions"><button class="secondary" data-action="view-model" data-index="${index}">详情</button><button class="primary" data-action="model-create-draft" data-index="${index}" ${["draft_created", "published"].includes(item.status) ? "disabled" : ""}>生成草稿</button><button class="danger" data-action="delete-model" data-index="${index}">删除</button></div></td>
-          </tr>`).join("") || `<tr><td colspan="7"><div class="empty">暂无模型，点击“同步热门模型”。</div></td></tr>`}</tbody>
-      </table></div>`
-    }
-    function openModelDrawer(index) {
-      const item = modelCandidates[index]
-      if (!item) return
-      drawerMode = "model"
-      drawerIndex = index
-      $("drawerTitle").textContent = "模型详情"
-      $("drawerDesc").textContent = `${item.title || ""} · ${item.source || ""}`
-      $("drawerBody").innerHTML = `
-        <div class="drawer-section"><h4>模型信息</h4><div class="form-grid">
-          <label>模型标题<input data-model-key="title" value="${escapeHtml(item.title)}"></label>
-          <label>来源<input value="${escapeHtml(item.source)}" disabled></label>
-          <label>来源模型ID<input value="${escapeHtml(item.sourceModelId)}" disabled></label>
-          <label>来源链接<input data-model-key="sourceUrl" value="${escapeHtml(item.sourceUrl)}"></label>
-          <label>作者<input data-model-key="authorName" value="${escapeHtml(item.authorName)}"></label>
-          <label>作者主页<input data-model-key="authorUrl" value="${escapeHtml(item.authorUrl)}"></label>
-          <label>分类<input data-model-key="category" value="${escapeHtml(item.category)}"></label>
-          <label>标签<input data-model-key="tagsText" value="${escapeHtml((item.tags || item.tagsJson || []).join("，"))}"></label>
-          <label>封面图<input data-model-key="coverImage" value="${escapeHtml(item.coverImage)}"></label>
-          <label>状态<select data-model-key="status">
-            ${["pending", "approved", "rejected", "draft_created", "published"].map(value => `<option value="${value}" ${item.status === value ? "selected" : ""}>${modelStatusText(value)}</option>`).join("")}
-          </select></label>
-          <label>生产状态<select data-model-key="productionStatus">
-            <option value="ready" ${item.productionStatus === "ready" ? "selected" : ""}>符合生产参数</option>
-            <option value="needs_review" ${item.productionStatus !== "ready" ? "selected" : ""}>需补生产参数</option>
-          </select></label>
-        </div></div>
-        <div class="drawer-section"><h4>生产与评分</h4><div class="form-grid">
-          <label>打印时间（分钟）<input data-model-key="printTimeMinutes" value="${escapeHtml(item.printTimeMinutes)}"></label>
-          <label>耗材重量（g）<input data-model-key="filamentWeightG" value="${escapeHtml(item.filamentWeightG)}"></label>
-          <label>下载量<input data-model-key="downloadCount" value="${escapeHtml(item.downloadCount)}"></label>
-          <label>收藏量<input data-model-key="collectCount" value="${escapeHtml(item.collectCount)}"></label>
-          <label>打印量<input data-model-key="printCount" value="${escapeHtml(item.printCount)}"></label>
-          <label>自动评分<input value="${escapeHtml(item.score)}" disabled></label>
-          <label>风险等级<input value="${item.riskLevel === "high" ? "需确认授权范围" : "低风险"}" disabled></label>
-          <label>风险原因<textarea disabled>${escapeHtml((item.riskReasons || []).join("\n") || "-")}</textarea></label>
-        </div><div class="upload-help">风险关键词只提示确认授权范围，不强制拦截生成草稿；已线下授权模型仍可生成商品草稿。</div></div>
-        <div class="drawer-section"><h4>授权信息</h4><div class="form-grid">
-          <label>授权状态<select data-model-key="commercialStatus">
-            ${["offline_authorized", "commercial_allowed", "commercial_license_required", "unknown", "forbidden"].map(value => `<option value="${value}" ${item.commercialStatus === value ? "selected" : ""}>${commercialStatusText(value)}</option>`).join("")}
-          </select></label>
-          <label>授权方式<select data-model-key="authorizationType">
-            ${["offline", "platform", "unknown"].map(value => `<option value="${value}" ${item.authorizationType === value ? "selected" : ""}>${value === "offline" ? "线下授权" : value === "platform" ? "平台授权" : "未知"}</option>`).join("")}
-          </select></label>
-          <label>授权方/合作方<input data-model-key="authorizationParty" value="${escapeHtml(item.authorizationParty)}"></label>
-          <label>授权时间<input data-model-key="authorizedAt" value="${escapeHtml(item.authorizedAt || "")}" placeholder="2026-05-24 12:00:00"></label>
-          <label>授权证明
-            <div class="upload-row"><input data-model-key="authorizationProofUrl" value="${escapeHtml(item.authorizationProofUrl || "")}"><input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-model-proof-upload></div>
-          </label>
-          <label>授权备注<textarea data-model-key="authorizationNote">${escapeHtml(item.authorizationNote || "")}</textarea></label>
-        </div></div>
-      `
-      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button><button class="secondary" data-action="save-model-drawer">保存授权信息</button><button class="primary" data-action="model-create-draft" data-index="${index}">生成商品草稿</button>`
-      drawerDirty = false
-      $("detailDrawer").classList.add("show")
-    }
-    function collectModelDrawer() {
-      if (drawerMode !== "model" || !modelCandidates[drawerIndex]) return null
-      const target = { ...modelCandidates[drawerIndex] }
-      $("drawerBody").querySelectorAll("[data-model-key]").forEach(input => {
-        if (input.dataset.modelKey === "tagsText") target.tagsJson = input.value.split(/[，,\n]/).map(item => item.trim()).filter(Boolean)
-        else target[input.dataset.modelKey] = input.value
-      })
-      return target
-    }
-    function saveModelDrawer(button) {
-      const model = collectModelDrawer()
-      if (!model) return
-      return withButtonLoading(button, "保存中...", () => api(`/api/admin/model-candidates/${encodeURIComponent(model.id)}`, "PUT", model)
-        .then(() => loadAll())
-        .then(() => {
-          setStatus("模型授权信息已保存")
-          drawerDirty = false
-          closeDrawer(true)
-        }))
-    }
-    function createModelDraft(index, button) {
-      const item = modelCandidates[index]
-      if (!item) return
-      if (!["offline_authorized", "commercial_allowed"].includes(item.commercialStatus)) {
-        setStatus("请先确认授权信息后再生成商品草稿")
-        return
-      }
-      return withButtonLoading(button, "生成中...", () => api(`/api/admin/model-candidates/${encodeURIComponent(item.id)}/draft`, "POST", {})
-        .then(result => loadAll().then(() => result))
-        .then(result => setStatus(`${result.reused ? "已存在商品草稿" : "商品草稿已生成"}：${result.product?.name || item.title}`)))
-    }
-    function deleteModelCandidate(index, button) {
-      const item = modelCandidates[index]
-      if (!item) return
-      const message = ["draft_created", "published"].includes(item.status)
-        ? "该模型已生成商品草稿，删除模型记录不会删除商品草稿，确认删除吗？"
-        : "确认删除该模型候选记录吗？"
-      if (!confirm(message)) return
-      return withButtonLoading(button, "删除中...", () => api(`/api/admin/model-candidates/${encodeURIComponent(item.id)}`, "DELETE", {})
-        .then(result => loadAll().then(() => result))
-        .then(result => setStatus(`模型候选记录已删除：${result.deleted || 0} 条`))
-        .catch(error => {
-          console.error("[admin-model-delete]", error)
-          setStatus(`删除失败：${error.message || "请稍后重试"}`)
-          throw error
-        }))
-    }
     function renderProducts() {
       renderProductFilters()
       const filtered = getFilteredProducts()
@@ -2562,7 +2342,7 @@
             ${field("所属分类", item.categories, "categories")}
           </div><div class="upload-help">勾选“首页推荐”后显示在首页推荐商品区域，最多显示 6 个，按排序值排序。</div></div>
           ${item.modelCandidateId ? `<div class="drawer-section"><h4>模型来源与授权</h4><div class="form-grid">
-            <label>模型选品ID<input data-key="modelCandidateId" value="${escapeHtml(item.modelCandidateId)}" disabled></label>
+            <label>来源记录ID<input data-key="modelCandidateId" value="${escapeHtml(item.modelCandidateId)}" disabled></label>
             <label>作者<input data-key="modelAuthorName" value="${escapeHtml(item.modelAuthorName || "")}"></label>
             <label>来源链接<input data-key="modelSourceUrl" value="${escapeHtml(item.modelSourceUrl || "")}"></label>
             <label>授权状态<input data-key="modelAuthorizationStatus" value="${escapeHtml(item.modelAuthorizationStatus || "")}"></label>
@@ -3180,12 +2960,6 @@
       $("showPhone").value = String(settings.showPhone == null ? "true" : settings.showPhone)
       $("showWechat").value = String(settings.showWechat == null ? "true" : settings.showWechat)
       $("deliveryPromise").value = settings.deliveryPromise || ""
-      const modelPricing = settings.modelPricing || {}
-      $("modelMaterialCostPerG").value = modelPricing.materialCostPerG ?? "0.05"
-      $("modelMachineHourCost").value = modelPricing.machineHourCost ?? "2"
-      $("modelPackageCost").value = modelPricing.packageCost ?? "2"
-      $("modelWasteCost").value = modelPricing.wasteCost ?? "2"
-      $("modelMarkupRate").value = modelPricing.markupRate ?? "3.5"
       $("newcomerBenefitsEnabled").value = String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled)
       const benefits = normalizeSettingsBenefits(settings.newcomerBenefits)
       $("newcomerBenefits").innerHTML = benefits.map((item, index) => `
@@ -3283,12 +3057,10 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const modelQuery = new URLSearchParams(Object.fromEntries(Object.entries(modelFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, modelData, orderData, customerData, settingData, themeData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, themeData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
-        api(`/api/admin/model-candidates${modelQuery ? `?${modelQuery}` : ""}`),
         api("/api/admin/orders"),
         api("/api/admin/customers"),
         api("/api/admin/settings"),
@@ -3306,7 +3078,6 @@
       ])
       home = homeData
       products = productData
-      modelCandidates = modelData.data || modelData
       allOrders = orderData
       orders = getFilteredOrders(orderData)
       customers = customerData
@@ -3326,7 +3097,6 @@
       renderHome()
       renderHelpArticles()
       renderProducts()
-      renderModelCandidates()
       renderCategoryManager()
       renderOrders()
       renderCustomers()
@@ -3426,13 +3196,6 @@
           showPhone: $("showPhone").value,
           showWechat: $("showWechat").value,
           deliveryPromise: $("deliveryPromise").value,
-          modelPricing: {
-            materialCostPerG: $("modelMaterialCostPerG").value || "0.05",
-            machineHourCost: $("modelMachineHourCost").value || "2",
-            packageCost: $("modelPackageCost").value || "2",
-            wasteCost: $("modelWasteCost").value || "2",
-            markupRate: $("modelMarkupRate").value || "3.5"
-          },
           newcomerBenefitsEnabled: $("newcomerBenefitsEnabled").value,
           newcomerBenefits: collectSettingsBenefits(),
           helpPageTitle: settings.helpPageTitle,
@@ -3471,143 +3234,6 @@
       products.unshift({ id: `P${Date.now()}`, name: "新商品", intro: "", price: "0", costPrice: "0", badge: "new", cover: "keyring", imageUrl: "", galleryImages: [], videoUrl: "", detailImages: [], detailText: "", categories: ["潮玩手办", "潮玩手办/新品上架"], status: "on", stock: "0", isHot: "false", promotionHot: "false", aiPreviewEnabled: "false", aiPreviewType: "gift", rewardEnabled: "true", firstReward: "0", secondReward: "0" })
       renderProducts()
       openProductDrawer(0)
-    })
-    $("syncModelsBtn").addEventListener("click", event => {
-      console.debug("开始同步热门模型")
-      const urls = ($("modelSyncUrls")?.value || "").split(/\n|,|，/).map(item => item.trim()).filter(Boolean)
-      const resultNode = $("modelSyncResult")
-      if (resultNode) resultNode.textContent = "正在同步热门模型，请稍候..."
-      setStatus("正在同步热门模型...")
-      withButtonLoading(event.currentTarget, "同步中...", async () => {
-        try {
-          const result = await api("/api/admin/model-candidates/sync", "POST", { urls })
-          const created = Number(result.created ?? result.added ?? 0)
-          const updated = Number(result.updated || 0)
-          const skipped = Number(result.skipped || 0)
-          const riskCount = Number(result.riskCount ?? result.risk ?? 0)
-          const sourceText = result.mode === "url" ? "网页抓取" : result.invalidUrlCount > 0 ? "未检测到有效授权渠道 URL，已使用测试数据" : "当前使用测试数据"
-          const message = `同步完成：新增 ${created} 条，更新 ${updated} 条，跳过 ${skipped} 条，风险 ${riskCount} 条。${sourceText}`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          await loadAll()
-        } catch (error) {
-          console.error("[admin-model-sync]", error)
-          const message = `同步失败：${error.message || "请稍后重试"}`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          throw error
-        }
-      })
-    })
-    $("clearMockModelsBtn").addEventListener("click", event => {
-      if (!confirm("确认清空 mock 测试模型吗？不会删除商品草稿。")) return
-      const resultNode = $("modelSyncResult")
-      withButtonLoading(event.currentTarget, "清空中...", async () => {
-        try {
-          const result = await api("/api/admin/model-candidates/clear-mock", "POST", {})
-          const message = `已清空 mock 测试模型：删除 ${result.deleted || 0} 条，保留 ${result.kept || 0} 条真实/人工模型。`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          await loadAll()
-        } catch (error) {
-          console.error("[admin-model-clear-mock]", error)
-          const message = `清空失败：${error.message || "请稍后重试"}`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          throw error
-        }
-      })
-    })
-    $("importModelUrlsBtn").addEventListener("click", event => {
-      console.debug("开始导入 MakerWorld 真实链接")
-      const urls = ($("modelImportUrls")?.value || "").split(/\n|,|，/).map(item => item.trim()).filter(Boolean)
-      const resultNode = $("modelSyncResult")
-      if (!urls.length) {
-        const message = "请先粘贴 MakerWorld 模型链接"
-        if (resultNode) resultNode.textContent = message
-        setStatus(message)
-        return
-      }
-      if (resultNode) resultNode.textContent = "正在解析真实链接并导入模型..."
-      withButtonLoading(event.currentTarget, "解析中...", async () => {
-        try {
-          const result = await api("/api/admin/model-candidates/import-urls", "POST", { urls })
-          const failures = Array.isArray(result.failures) ? result.failures : []
-          const failedText = failures.length ? `；失败示例：${failures.slice(0, 3).map(item => `${item.url}：${item.message}`).join("；")}` : ""
-          const reviewText = Number(result.needsReview || 0) > 0 ? "；部分模型需补充标题或主图" : ""
-          const message = `导入完成：新增 ${result.created || 0} 条，更新 ${result.updated || 0} 条，失败 ${result.failed || 0} 条，需补充 ${result.needsReview || 0} 条。当前使用：真实链接解析${reviewText}${failedText}`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          await loadAll()
-        } catch (error) {
-          console.error("[admin-model-import-urls]", error)
-          const message = `导入失败：${error.message || "请稍后重试"}`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          throw error
-        }
-      })
-    })
-    $("discoverModelsBtn").addEventListener("click", event => {
-      console.debug("开始自动发现模型")
-      const resultNode = $("modelSyncResult")
-      const payload = {
-        keywords: ($("discoverKeywords")?.value || "").split(/[\s,，\n]+/).map(item => item.trim()).filter(Boolean),
-        category: $("discoverCategory")?.value || "",
-        maxPages: Number($("discoverMaxPages")?.value || 3),
-        limit: Number($("discoverLimit")?.value || 30),
-        maxPrintTimeMinutes: Number($("discoverMaxPrintTime")?.value || 240),
-        maxFilamentWeightG: Number($("discoverMaxWeight")?.value || 150),
-        minDownloadCount: Number($("discoverMinDownloads")?.value || 100),
-        minCollectCount: Number($("discoverMinCollects")?.value || 0),
-        minScore: Number($("discoverMinScore")?.value || 0),
-        requireCoverImage: ($("discoverRequireCover")?.value || "true") === "true"
-      }
-      if (resultNode) resultNode.textContent = "正在搜索关键词、解析模型列表并筛选入库..."
-      setStatus("正在自动发现模型...")
-      withButtonLoading(event.currentTarget, "发现中...", async () => {
-        try {
-          const result = await api("/api/admin/model-candidates/discover", "POST", payload)
-          const message = `自动发现完成：发现 ${result.found || 0} 个，新增 ${result.created || 0} 个，更新 ${result.updated || 0} 个，跳过 ${result.skipped || 0} 个，需补参数 ${result.needsReview || 0} 个，风险 ${result.riskCount || 0} 个。当前模式：测试发现模式 mock_discovery；真实模型请使用“粘贴链接导入”。`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          await loadAll()
-        } catch (error) {
-          console.error("[admin-model-discover]", error)
-          const message = `自动发现失败：${error.message || "请稍后重试"}`
-          if (resultNode) resultNode.textContent = message
-          setStatus(message)
-          throw error
-        }
-      })
-    })
-    $("batchDraftModelsBtn").addEventListener("click", event => {
-      const ids = (modelCandidates || [])
-        .filter(item => ["offline_authorized", "commercial_allowed"].includes(item.commercialStatus) && item.title && item.coverImage && !["draft_created", "published"].includes(item.status))
-        .map(item => item.id)
-      if (!ids.length) {
-        setStatus("当前筛选结果没有可生成草稿的模型")
-        return
-      }
-      if (!confirm(`确认为当前筛选结果中 ${ids.length} 个模型批量生成商品草稿吗？`)) return
-      withButtonLoading(event.currentTarget, "生成中...", () => api("/api/admin/model-candidates/batch-draft", "POST", { ids })
-        .then(result => loadAll().then(() => result))
-        .then(result => setStatus(`批量生成草稿完成：新增 ${result.created || 0} 个，跳过 ${result.skipped || 0} 个`)))
-    })
-    $("filterModelsBtn").addEventListener("click", () => {
-      modelFilters = {
-        keyword: $("modelKeywordFilter").value.trim(),
-        status: $("modelStatusFilter").value,
-        commercialStatus: $("modelAuthFilter").value,
-        riskLevel: $("modelRiskFilter").value,
-        productionStatus: $("modelProductionFilter").value,
-        draftState: $("modelDraftFilter").value,
-        minScore: $("modelScoreFilter").value,
-        maxPrintTimeMinutes: $("modelParamFilter").value === "fit" ? "240" : "",
-        maxFilamentWeightG: $("modelParamFilter").value === "fit" ? "150" : "",
-        sort: $("modelSortFilter").value
-      }
-      loadAll().catch(error => setStatus(error.message))
     })
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
@@ -3774,10 +3400,6 @@
         loadAll().catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "edit-product") openProductDrawer(Number(event.target.dataset.index))
-      if (event.target.dataset.action === "view-model") openModelDrawer(Number(event.target.dataset.index))
-      if (event.target.dataset.action === "save-model-drawer") saveModelDrawer(event.target)
-      if (event.target.dataset.action === "model-create-draft") createModelDraft(Number(event.target.dataset.index), event.target)
-      if (event.target.dataset.action === "delete-model") deleteModelCandidate(Number(event.target.dataset.index), event.target)
       if (event.target.dataset.action === "save-sales-agent-drawer") saveSalesAgentDrawer(event.target)
       if (event.target.dataset.action === "view-order") openOrderDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "edit-store") openStoreDrawer(Number(event.target.dataset.index))
@@ -4322,18 +3944,6 @@
         if (event.target.checked) selectedProducts.add(index)
         else selectedProducts.delete(index)
         renderProducts()
-        return
-      }
-      if (event.target.dataset.modelProofUpload != null) {
-        const file = event.target.files?.[0]
-        const input = event.target.closest("label")?.querySelector(`[data-model-key="authorizationProofUrl"]`)
-        if (!file || !input) return
-        setStatus("授权证明上传中...")
-        uploadImage(file).then(url => {
-          input.value = url
-          drawerDirty = true
-          setStatus("授权证明已上传，记得保存授权信息")
-        }).catch(error => setStatus(error.message))
         return
       }
       if (event.target.dataset.helpUpload) {
