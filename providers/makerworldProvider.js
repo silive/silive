@@ -157,6 +157,16 @@ function isPlaceholderUrl(value) {
   }
 }
 
+function isValidHttpUrl(value) {
+  if (isPlaceholderUrl(value)) return false
+  try {
+    const parsed = new URL(String(value || "").trim())
+    return ["http:", "https:"].includes(parsed.protocol)
+  } catch {
+    return false
+  }
+}
+
 function normalizeSourceUrls(urls = []) {
   return Array.from(new Set((Array.isArray(urls) ? urls : String(urls || "").split(/[,，\n]/))
     .map(item => String(item || "").trim())
@@ -174,6 +184,93 @@ function absoluteUrl(url, baseUrl = "") {
 
 function hashId(value) {
   return Buffer.from(String(value || `${Date.now()}`)).toString("hex").slice(0, 24).toUpperCase()
+}
+
+function makerworldModelIdFromUrl(value) {
+  try {
+    const parsed = new URL(String(value || ""))
+    const matched = parsed.pathname.match(/\/(?:zh|en|ja|de|fr|es)?\/?models?\/([^/?#]+)/i) ||
+      parsed.pathname.match(/\/models?\/([^/?#]+)/i)
+    if (matched && matched[1]) return decodeURIComponent(matched[1]).replace(/[^\w-]/g, "").slice(0, 80)
+  } catch {}
+  return ""
+}
+
+function htmlEntityDecode(value = "") {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+}
+
+function firstMetaContent(html = "", names = []) {
+  const text = String(html || "")
+  for (const name of names) {
+    const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']+)["']`, "i"),
+      new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escaped}["']`, "i")
+    ]
+    for (const pattern of patterns) {
+      const value = text.match(pattern)?.[1]
+      if (value) return htmlEntityDecode(value).trim()
+    }
+  }
+  return ""
+}
+
+function parseJsonScriptBlocks(html = "") {
+  const scripts = []
+  const text = String(html || "")
+  const scriptPattern = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  let matched
+  while ((matched = scriptPattern.exec(text))) {
+    try {
+      scripts.push(JSON.parse(matched[1].trim()))
+    } catch {}
+  }
+  const nextData = text.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)?.[1]
+  if (nextData) {
+    try {
+      scripts.push(JSON.parse(nextData.trim()))
+    } catch {}
+  }
+  return scripts
+}
+
+function walkJsonForValue(source, keys = []) {
+  const wanted = new Set(keys)
+  const seen = new Set()
+  const stack = [source]
+  while (stack.length) {
+    const item = stack.shift()
+    if (!item || typeof item !== "object" || seen.has(item)) continue
+    seen.add(item)
+    if (Array.isArray(item)) {
+      item.forEach(child => stack.push(child))
+      continue
+    }
+    for (const [key, value] of Object.entries(item)) {
+      if (wanted.has(key) && value != null && value !== "") return value
+      if (value && typeof value === "object") stack.push(value)
+    }
+  }
+  return ""
+}
+
+function collectImagesFromHtml(html = "", baseUrl = "") {
+  const images = new Set()
+  const ogImage = firstMetaContent(html, ["og:image", "twitter:image", "image"])
+  if (ogImage) images.add(absoluteUrl(ogImage, baseUrl))
+  const imgPattern = /<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi
+  let matched
+  while ((matched = imgPattern.exec(String(html || ""))) && images.size < 8) {
+    const src = absoluteUrl(htmlEntityDecode(matched[1]), baseUrl)
+    if (src && !/avatar|icon|logo/i.test(src)) images.add(src)
+  }
+  return Array.from(images).filter(Boolean)
 }
 
 function numberFromText(value) {
@@ -254,26 +351,90 @@ function normalizeModel(raw = {}) {
 
 function parseModelsFromHtml(html, sourceUrl) {
   const text = String(html || "")
-  const title = textBetween(text, /<title[^>]*>([\s\S]*?)<\/title>/i) || "授权渠道模型"
-  const image = textBetween(text, /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
-    textBetween(text, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
-  const description = textBetween(text, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+  const jsonBlocks = parseJsonScriptBlocks(text)
+  const jsonTitle = walkJsonForValue(jsonBlocks, ["name", "title"])
+  const jsonAuthor = walkJsonForValue(jsonBlocks, ["author", "creator"])
+  const jsonImage = walkJsonForValue(jsonBlocks, ["image", "thumbnailUrl", "cover", "coverImage"])
+  const rawTitle = firstMetaContent(text, ["og:title", "twitter:title"]) || jsonTitle || textBetween(text, /<title[^>]*>([\s\S]*?)<\/title>/i) || "授权渠道模型"
+  const title = String(Array.isArray(rawTitle) ? rawTitle[0] : rawTitle)
+  const imageValue = Array.isArray(jsonImage) ? jsonImage[0] : jsonImage
+  const image = firstMetaContent(text, ["og:image", "twitter:image", "image"]) || imageValue || ""
+  const description = firstMetaContent(text, ["description", "og:description", "twitter:description"])
+  const images = Array.from(new Set([absoluteUrl(image, sourceUrl), ...collectImagesFromHtml(text, sourceUrl)].filter(Boolean)))
+  const modelId = makerworldModelIdFromUrl(sourceUrl) || `WEB-${hashId(sourceUrl)}`
+  const authorName = typeof jsonAuthor === "string" ? jsonAuthor : jsonAuthor?.name || textBetween(text, /(?:author|designer|creator)[^>]*>([\s\S]*?)<\//i)
   return [normalizeModel({
-    source: "makerworld_web",
-    sourceModelId: `WEB-${hashId(sourceUrl)}`,
+    source: "makerworld_url",
+    sourceModelId: modelId,
     sourceUrl,
     title: title.replace(/\s*[-|].*$/, "") || "授权渠道模型",
-    authorName: "",
+    authorName,
     authorUrl: "",
     category: description.includes("收纳") ? "3D打印" : "潮玩手办",
     tags: ["网页抓取", "授权渠道", ...(description ? description.split(/[，, ]/).slice(0, 4) : [])],
-    coverImage: image,
-    images: image ? [image] : [],
+    coverImage: images[0] || "",
+    images,
     printTimeMinutes: 0,
     filamentWeightG: 0,
-    authorizationNote: `从授权渠道页面抓取：${sourceUrl}`,
+    commercialStatus: "offline_authorized",
+    authorizationType: "offline",
+    authorizationNote: "线下已授权",
+    productionStatus: "needs_review",
     rawHtmlTitle: title
   })]
+}
+
+function fallbackModelFromUrl(url, reason = "") {
+  const modelId = makerworldModelIdFromUrl(url) || `URL-${hashId(url)}`
+  const readableId = String(modelId || "").replace(/[-_]+/g, " ").trim()
+  return normalizeModel({
+    source: "makerworld_url",
+    sourceModelId: modelId,
+    sourceUrl: url,
+    title: readableId ? `MakerWorld 模型 ${readableId}` : "MakerWorld 待补充模型",
+    authorName: "",
+    category: "3D打印",
+    tags: ["真实链接导入", "待补充"],
+    coverImage: "",
+    images: [],
+    printTimeMinutes: 0,
+    filamentWeightG: 0,
+    commercialStatus: "offline_authorized",
+    authorizationType: "offline",
+    authorizationNote: "线下已授权",
+    productionStatus: "needs_review",
+    riskLevel: "high",
+    riskReasons: ["真实链接解析不完整，需补充标题或主图"],
+    rawJson: { sourceUrl: url, parseWarning: reason }
+  })
+}
+
+async function resolveModelUrl(url) {
+  const rawUrl = String(url || "").trim()
+  if (!isValidHttpUrl(rawUrl)) {
+    const error = new Error("不是有效的 MakerWorld 链接")
+    error.code = "INVALID_URL"
+    throw error
+  }
+  const normalizedUrl = new URL(rawUrl).toString()
+  try {
+    const html = await fetchText(normalizedUrl)
+    const model = parseModelsFromHtml(html, normalizedUrl)[0]
+    if (!model || !model.title) return fallbackModelFromUrl(normalizedUrl, "页面未解析到标题")
+    return normalizeModel({
+      ...model,
+      source: "makerworld_url",
+      sourceModelId: model.sourceModelId || makerworldModelIdFromUrl(normalizedUrl) || `URL-${hashId(normalizedUrl)}`,
+      sourceUrl: normalizedUrl,
+      commercialStatus: "offline_authorized",
+      authorizationType: "offline",
+      authorizationNote: "线下已授权",
+      productionStatus: model.printTimeMinutes && model.filamentWeightG ? "ready" : "needs_review"
+    })
+  } catch (error) {
+    if (makerworldModelIdFromUrl(normalizedUrl)) return fallbackModelFromUrl(normalizedUrl, error.message || "网页抓取失败")
+    throw error
+  }
 }
 
 function parseSearchCardsFromHtml(html, searchUrl, keyword = "") {
@@ -319,11 +480,10 @@ async function fetchModelsFromUrls(urls = []) {
   if (!validUrls.length) return mockModels
   for (const url of validUrls) {
     try {
-      const html = await fetchText(url)
-      results.push(...parseModelsFromHtml(html, url))
+      results.push(await resolveModelUrl(url))
     } catch (error) {
       results.push(normalizeModel({
-        source: "makerworld_web",
+        source: "makerworld_url",
         sourceModelId: `WEB-FAILED-${hashId(url)}`,
         sourceUrl: url,
         title: "授权渠道网页抓取失败",
@@ -362,8 +522,7 @@ async function searchModels(keyword, options = {}) {
 async function fetchModelDetail(modelUrl) {
   if (!modelUrl || isPlaceholderUrl(modelUrl)) return null
   try {
-    const html = await fetchText(modelUrl)
-    return parseModelsFromHtml(html, modelUrl)[0] || null
+    return await resolveModelUrl(modelUrl)
   } catch {
     return null
   }
@@ -412,5 +571,6 @@ module.exports = {
   searchModels,
   normalizeModel,
   scoreModel,
+  resolveModelUrl,
   normalizeSourceUrls
 }

@@ -4346,7 +4346,7 @@ async function getModelCandidates(filters = {}) {
     where.push("(title LIKE :keyword OR author_name LIKE :keyword OR source_model_id LIKE :keyword OR source_url LIKE :keyword OR authorization_party LIKE :keyword)")
     params.keyword = `%${filters.keyword}%`
   }
-  const rows = await query(`SELECT * FROM model_candidates ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`)
+  const rows = await query(`SELECT * FROM model_candidates ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`, params)
   const list = rows.map((row, index) => normalizeModelCandidate({
     id: row.id,
     source: row.source,
@@ -4444,6 +4444,87 @@ async function upsertModelCandidate(candidate) {
   }
   await saveModelCandidates([normalized])
   return (await getModelCandidates({ keyword: normalized.sourceModelId })).find(item => item.source === normalized.source && item.sourceModelId === normalized.sourceModelId) || normalized
+}
+
+async function deleteModelCandidate(id) {
+  const targetId = String(id || "")
+  if (!targetId) return { ok: false, deleted: 0 }
+  if (!pool) {
+    const list = await getModelCandidates()
+    const next = list.filter(item => String(item.id) !== targetId)
+    await saveModelCandidates(next)
+    return { ok: true, deleted: list.length - next.length }
+  }
+  const result = await query("DELETE FROM model_candidates WHERE id = :id", { id: targetId })
+  return { ok: true, deleted: Number(result.affectedRows || 0) }
+}
+
+async function clearMockModelCandidates() {
+  const isMock = item => String(item.source || "").toLowerCase().includes("mock")
+  if (!pool) {
+    const list = await getModelCandidates()
+    const next = list.filter(item => !isMock(item))
+    await saveModelCandidates(next)
+    return { ok: true, deleted: list.length - next.length, kept: next.length }
+  }
+  const rows = await query("SELECT COUNT(*) AS total FROM model_candidates WHERE LOWER(source) LIKE '%mock%'")
+  const deleted = Number(rows[0]?.total || 0)
+  await query("DELETE FROM model_candidates WHERE LOWER(source) LIKE '%mock%'")
+  const keptRows = await query("SELECT COUNT(*) AS total FROM model_candidates")
+  return { ok: true, deleted, kept: Number(keptRows[0]?.total || 0) }
+}
+
+function importUrlFailure(url, message) {
+  return { url: String(url || ""), message: message || "解析失败" }
+}
+
+async function importModelCandidatesFromUrls(urls = []) {
+  const current = await getModelCandidates()
+  const rawUrls = Array.from(new Set((Array.isArray(urls) ? urls : String(urls || "").split(/[,，\n]/))
+    .map(item => String(item || "").trim())
+    .filter(Boolean)))
+  let created = 0
+  let updated = 0
+  let failed = 0
+  let needsReview = 0
+  const failures = []
+  for (const sourceUrl of rawUrls) {
+    try {
+      const model = await makerworldProvider.resolveModelUrl(sourceUrl)
+      const normalized = normalizeModelCandidate({
+        ...model,
+        source: model.source || "makerworld_url",
+        commercialStatus: model.commercialStatus || "offline_authorized",
+        authorizationType: model.authorizationType || "offline",
+        authorizationNote: model.authorizationNote || "线下已授权",
+        status: "pending"
+      })
+      const previous = current.find(item =>
+        (item.source === normalized.source && item.sourceModelId === normalized.sourceModelId) ||
+        (item.sourceUrl && normalized.sourceUrl && item.sourceUrl === normalized.sourceUrl)
+      )
+      const next = previous
+        ? { ...previous, ...normalized, id: previous.id, status: previous.status }
+        : normalized
+      await upsertModelCandidate(next)
+      if (next.productionStatus === "needs_review" || !next.coverImage || !next.title) needsReview += 1
+      if (previous) updated += 1
+      else created += 1
+    } catch (error) {
+      failed += 1
+      failures.push(importUrlFailure(sourceUrl, error.message))
+    }
+  }
+  return {
+    ok: true,
+    mode: "url",
+    created,
+    updated,
+    failed,
+    needsReview,
+    failures,
+    message: "真实链接解析导入完成"
+  }
 }
 
 async function syncModelCandidatesFromProvider(options = {}) {
@@ -8699,9 +8780,26 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/admin/model-candidates/import-urls" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, await importModelCandidatesFromUrls(Array.isArray(body.urls) ? body.urls : []))
+    return
+  }
+
+  if (url.pathname === "/api/admin/model-candidates/clear-mock" && req.method === "POST") {
+    sendJson(res, 200, await clearMockModelCandidates())
+    return
+  }
+
   if (url.pathname === "/api/admin/model-candidates/batch-draft" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     sendJson(res, 200, await batchCreateProductDraftsFromModels(Array.isArray(body.ids) ? body.ids : []))
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/model-candidates\/[^/]+$/) && req.method === "DELETE") {
+    const id = decodeURIComponent(url.pathname.split("/").pop())
+    sendJson(res, 200, await deleteModelCandidate(id))
     return
   }
 

@@ -739,9 +739,12 @@
           <div class="item-head">
             <div>
               <h3>模型选品库 / 爆款模型库</h3>
-              <div class="upload-help">用于同步 MakerWorld 或其他授权渠道的爆款模型。当前没有稳定公开接口，先通过 Provider 的 mock/授权渠道导入打通流程，后续可替换为网页抓取实现。</div>
+              <div class="upload-help">用于整理 MakerWorld 或其他授权渠道的爆款模型。当前真实模型优先使用“粘贴链接导入”，自动发现仍是测试数据模式。</div>
             </div>
-            <button class="primary" id="syncModelsBtn">同步热门模型</button>
+            <div class="table-actions">
+              <button class="primary" id="syncModelsBtn">同步热门模型</button>
+              <button class="danger" id="clearMockModelsBtn">清空测试数据</button>
+            </div>
           </div>
           <div class="filters">
             <input id="modelKeywordFilter" placeholder="搜索模型、作者、来源链接">
@@ -755,12 +758,22 @@
             <select id="modelSortFilter"><option value="score">分数最高</option><option value="downloads">下载量最高</option><option value="collects">收藏量最高</option><option value="prints">打印量最高</option><option value="latest">最新同步</option></select>
             <button class="secondary" id="filterModelsBtn">筛选</button>
           </div>
-          <label style="margin:12px 0 0">授权渠道网页 URL（可选，每行一个；留空时使用 Provider 默认/mock 数据）
+          <div class="drawer-section" style="margin-top:16px">
+            <h4>粘贴 MakerWorld 链接导入</h4>
+            <div class="upload-help">支持每行一个真实 MakerWorld 模型链接。系统会尽量解析标题、主图、作者、来源链接等基础信息；解析不完整时会创建“待补充模型”。</div>
+            <label>MakerWorld 模型链接
+              <textarea id="modelImportUrls" placeholder="https://makerworld.com/zh/models/xxxx&#10;https://makerworld.com/en/models/yyyy"></textarea>
+            </label>
+            <div class="table-actions" style="margin-top:10px">
+              <button class="primary" id="importModelUrlsBtn">解析并导入</button>
+            </div>
+          </div>
+          <label style="margin:12px 0 0">授权渠道网页 URL（可选，每行一个；留空或示例 URL 时使用 Provider 默认/mock 数据）
             <textarea id="modelSyncUrls" placeholder="https://makerworld.com/...\nhttps://授权渠道页面..."></textarea>
           </label>
           <div class="drawer-section" style="margin-top:16px">
             <h4>自动发现模型</h4>
-            <div class="upload-help">默认使用 mock discovery 测试数据；服务器配置网页发现模式后，会低频解析公开搜索页。不会自动下载模型、切片或上架。</div>
+            <div class="upload-help"><strong>当前模式：测试发现模式 mock_discovery。</strong> 当前未接入稳定 MakerWorld 搜索接口，自动发现使用测试数据。真实模型请使用“粘贴链接导入”。不会自动下载模型、切片或上架。</div>
             <div class="filters">
               <input id="discoverKeywords" value="桌面 收纳 钥匙扣 摆件 支架 灯饰 家居" placeholder="关键词，空格分隔">
               <select id="discoverCategory"><option value="">自动分类</option><option value="3D打印">3D打印</option><option value="潮玩手办">潮玩手办</option></select>
@@ -2256,7 +2269,7 @@
             <td><span class="pill">${commercialStatusText(item.commercialStatus)}</span><div class="muted">${escapeHtml(item.authorizationParty || "")}</div></td>
             <td><strong style="color:#FF5A00">${Number(item.score || 0)}</strong><div class="muted">${item.riskLevel === "high" ? "需确认授权范围" : "低风险"}</div></td>
             <td><span class="pill">${modelStatusText(item.status)}</span></td>
-            <td><div class="table-actions"><button class="secondary" data-action="view-model" data-index="${index}">详情</button><button class="primary" data-action="model-create-draft" data-index="${index}" ${["draft_created", "published"].includes(item.status) ? "disabled" : ""}>生成草稿</button></div></td>
+            <td><div class="table-actions"><button class="secondary" data-action="view-model" data-index="${index}">详情</button><button class="primary" data-action="model-create-draft" data-index="${index}" ${["draft_created", "published"].includes(item.status) ? "disabled" : ""}>生成草稿</button><button class="danger" data-action="delete-model" data-index="${index}">删除</button></div></td>
           </tr>`).join("") || `<tr><td colspan="7"><div class="empty">暂无模型，点击“同步热门模型”。</div></td></tr>`}</tbody>
       </table></div>`
     }
@@ -2345,6 +2358,22 @@
       return withButtonLoading(button, "生成中...", () => api(`/api/admin/model-candidates/${encodeURIComponent(item.id)}/draft`, "POST", {})
         .then(result => loadAll().then(() => result))
         .then(result => setStatus(`${result.reused ? "已存在商品草稿" : "商品草稿已生成"}：${result.product?.name || item.title}`)))
+    }
+    function deleteModelCandidate(index, button) {
+      const item = modelCandidates[index]
+      if (!item) return
+      const message = ["draft_created", "published"].includes(item.status)
+        ? "该模型已生成商品草稿，删除模型记录不会删除商品草稿，确认删除吗？"
+        : "确认删除该模型候选记录吗？"
+      if (!confirm(message)) return
+      return withButtonLoading(button, "删除中...", () => api(`/api/admin/model-candidates/${encodeURIComponent(item.id)}`, "DELETE", {})
+        .then(result => loadAll().then(() => result))
+        .then(result => setStatus(`模型候选记录已删除：${result.deleted || 0} 条`))
+        .catch(error => {
+          console.error("[admin-model-delete]", error)
+          setStatus(`删除失败：${error.message || "请稍后重试"}`)
+          throw error
+        }))
     }
     function renderProducts() {
       renderProductFilters()
@@ -3470,6 +3499,55 @@
         }
       })
     })
+    $("clearMockModelsBtn").addEventListener("click", event => {
+      if (!confirm("确认清空 mock 测试模型吗？不会删除商品草稿。")) return
+      const resultNode = $("modelSyncResult")
+      withButtonLoading(event.currentTarget, "清空中...", async () => {
+        try {
+          const result = await api("/api/admin/model-candidates/clear-mock", "POST", {})
+          const message = `已清空 mock 测试模型：删除 ${result.deleted || 0} 条，保留 ${result.kept || 0} 条真实/人工模型。`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          await loadAll()
+        } catch (error) {
+          console.error("[admin-model-clear-mock]", error)
+          const message = `清空失败：${error.message || "请稍后重试"}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          throw error
+        }
+      })
+    })
+    $("importModelUrlsBtn").addEventListener("click", event => {
+      console.debug("开始导入 MakerWorld 真实链接")
+      const urls = ($("modelImportUrls")?.value || "").split(/\n|,|，/).map(item => item.trim()).filter(Boolean)
+      const resultNode = $("modelSyncResult")
+      if (!urls.length) {
+        const message = "请先粘贴 MakerWorld 模型链接"
+        if (resultNode) resultNode.textContent = message
+        setStatus(message)
+        return
+      }
+      if (resultNode) resultNode.textContent = "正在解析真实链接并导入模型..."
+      withButtonLoading(event.currentTarget, "解析中...", async () => {
+        try {
+          const result = await api("/api/admin/model-candidates/import-urls", "POST", { urls })
+          const failures = Array.isArray(result.failures) ? result.failures : []
+          const failedText = failures.length ? `；失败示例：${failures.slice(0, 3).map(item => `${item.url}：${item.message}`).join("；")}` : ""
+          const reviewText = Number(result.needsReview || 0) > 0 ? "；部分模型需补充标题或主图" : ""
+          const message = `导入完成：新增 ${result.created || 0} 条，更新 ${result.updated || 0} 条，失败 ${result.failed || 0} 条，需补充 ${result.needsReview || 0} 条。当前使用：真实链接解析${reviewText}${failedText}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          await loadAll()
+        } catch (error) {
+          console.error("[admin-model-import-urls]", error)
+          const message = `导入失败：${error.message || "请稍后重试"}`
+          if (resultNode) resultNode.textContent = message
+          setStatus(message)
+          throw error
+        }
+      })
+    })
     $("discoverModelsBtn").addEventListener("click", event => {
       console.debug("开始自动发现模型")
       const resultNode = $("modelSyncResult")
@@ -3490,7 +3568,7 @@
       withButtonLoading(event.currentTarget, "发现中...", async () => {
         try {
           const result = await api("/api/admin/model-candidates/discover", "POST", payload)
-          const message = `自动发现完成：发现 ${result.found || 0} 个，新增 ${result.created || 0} 个，更新 ${result.updated || 0} 个，跳过 ${result.skipped || 0} 个，需补参数 ${result.needsReview || 0} 个，风险 ${result.riskCount || 0} 个。模式：${result.mode === "web_discovery" ? "网页解析" : "mock discovery"}`
+          const message = `自动发现完成：发现 ${result.found || 0} 个，新增 ${result.created || 0} 个，更新 ${result.updated || 0} 个，跳过 ${result.skipped || 0} 个，需补参数 ${result.needsReview || 0} 个，风险 ${result.riskCount || 0} 个。当前模式：测试发现模式 mock_discovery；真实模型请使用“粘贴链接导入”。`
           if (resultNode) resultNode.textContent = message
           setStatus(message)
           await loadAll()
@@ -3699,6 +3777,7 @@
       if (event.target.dataset.action === "view-model") openModelDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "save-model-drawer") saveModelDrawer(event.target)
       if (event.target.dataset.action === "model-create-draft") createModelDraft(Number(event.target.dataset.index), event.target)
+      if (event.target.dataset.action === "delete-model") deleteModelCandidate(Number(event.target.dataset.index), event.target)
       if (event.target.dataset.action === "save-sales-agent-drawer") saveSalesAgentDrawer(event.target)
       if (event.target.dataset.action === "view-order") openOrderDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "edit-store") openStoreDrawer(Number(event.target.dataset.index))
