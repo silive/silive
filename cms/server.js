@@ -3073,10 +3073,10 @@ function normalizeCustomer(customer, index) {
 function normalizePromotionRelation(relation, index) {
   return {
     id: relation.id || `PR${Date.now()}${index}`,
-    inviterPhone: relation.inviterPhone || "",
+    inviterPhone: normalizePhone(relation.inviterPhone || ""),
     inviterName: relation.inviterName || "",
     inviterCode: relation.inviterCode || inviteCodeFor(relation.inviterPhone),
-    inviteePhone: relation.inviteePhone || "",
+    inviteePhone: normalizePhone(relation.inviteePhone || ""),
     inviteeName: relation.inviteeName || "",
     level: Number(relation.level || 1),
     createdAt: relation.createdAt || new Date().toISOString().slice(0, 16).replace("T", " ")
@@ -4593,12 +4593,13 @@ async function resolvePersonalOrderAttribution(phone) {
   const buyerPhone = normalizePhone(phone)
   if (!buyerPhone) return { referrerUserId: "", parentReferrerUserId: "" }
   const relations = await getPromotionRelations()
-  const direct = relations.find(relation => normalizePhone(relation.inviteePhone) === buyerPhone)
-  if (!direct) return { referrerUserId: "", parentReferrerUserId: "" }
-  const parent = relations.find(relation => normalizePhone(relation.inviteePhone) === normalizePhone(direct.inviterPhone))
+  const chain = getPersonalReferralChain(buyerPhone, relations)
+  if (chain.circular) {
+    console.warn("[promotion-cycle-detected]", { phone: buyerPhone, circularAt: chain.circularAt })
+  }
   return {
-    referrerUserId: normalizePhone(direct.inviterPhone),
-    parentReferrerUserId: parent ? normalizePhone(parent.inviterPhone) : ""
+    referrerUserId: chain.directPhone,
+    parentReferrerUserId: chain.parentPhone
   }
 }
 
@@ -5965,6 +5966,111 @@ async function getPromotionVisits() {
   return await query("SELECT * FROM promotion_visits ORDER BY created_at DESC")
 }
 
+const CIRCULAR_PROMOTION_MESSAGE = "该推广关系已存在或会形成循环，不能绑定"
+
+function relationParentMap(relations = []) {
+  const map = new Map()
+  for (const relation of relations) {
+    const invitee = normalizePhone(relation.inviteePhone)
+    const inviter = normalizePhone(relation.inviterPhone)
+    if (invitee && inviter && !map.has(invitee)) map.set(invitee, relation)
+  }
+  return map
+}
+
+function promotionAncestorChain(phone, relations = [], options = {}) {
+  const startPhone = normalizePhone(phone)
+  const parentMap = relationParentMap(relations)
+  const seen = new Set()
+  const chain = []
+  let current = startPhone
+  let circularAt = ""
+  const maxDepth = Number(options.maxDepth || 50)
+  for (let depth = 0; current && depth < maxDepth; depth += 1) {
+    if (seen.has(current)) {
+      circularAt = current
+      break
+    }
+    seen.add(current)
+    const relation = parentMap.get(current)
+    if (!relation) break
+    const parentPhone = normalizePhone(relation.inviterPhone)
+    if (!parentPhone) break
+    chain.push({ phone: parentPhone, relation })
+    current = parentPhone
+  }
+  return { chain, circular: !!circularAt, circularAt }
+}
+
+function getPersonalReferralChain(phone, relations = []) {
+  const buyerPhone = normalizePhone(phone)
+  const ancestors = promotionAncestorChain(buyerPhone, relations)
+  const directPhone = normalizePhone(ancestors.chain[0]?.phone)
+  const parentPhone = normalizePhone(ancestors.chain[1]?.phone)
+  return {
+    directPhone: directPhone && directPhone !== buyerPhone ? directPhone : "",
+    parentPhone: parentPhone && parentPhone !== buyerPhone && parentPhone !== directPhone ? parentPhone : "",
+    circular: ancestors.circular,
+    circularAt: ancestors.circularAt,
+    chain: ancestors.chain
+  }
+}
+
+function promotionBindError(strict) {
+  if (strict) throw httpError(400, CIRCULAR_PROMOTION_MESSAGE)
+  return null
+}
+
+function validatePromotionBind({ inviterPhone, inviteePhone, relations = [], strict = true }) {
+  const parentPhone = normalizePhone(inviterPhone)
+  const childPhone = normalizePhone(inviteePhone)
+  if (!parentPhone || !childPhone) return promotionBindError(strict)
+  if (parentPhone === childPhone) return promotionBindError(strict)
+  const existing = relations.find(relation => normalizePhone(relation.inviteePhone) === childPhone)
+  if (existing) return promotionBindError(strict)
+  const inviterAncestors = promotionAncestorChain(parentPhone, relations)
+  if (inviterAncestors.circular || inviterAncestors.chain.some(item => normalizePhone(item.phone) === childPhone)) {
+    return promotionBindError(strict)
+  }
+  return true
+}
+
+function findCircularPromotionRelations(relations = []) {
+  const cycles = []
+  const seenKeys = new Set()
+  for (const relation of relations) {
+    const inviteePhone = normalizePhone(relation.inviteePhone)
+    if (!inviteePhone) continue
+    const ancestors = promotionAncestorChain(inviteePhone, relations)
+    if (!ancestors.circular) continue
+    const involvedPhones = ancestors.chain.map(item => normalizePhone(item.phone)).filter(Boolean)
+    involvedPhones.unshift(inviteePhone)
+    const uniquePhones = [...new Set(involvedPhones)]
+    const key = uniquePhones.slice().sort().join(">")
+    if (seenKeys.has(key)) continue
+    seenKeys.add(key)
+    const involvedSet = new Set(uniquePhones)
+    const involvedRelations = relations.filter(item => involvedSet.has(normalizePhone(item.inviterPhone)) && involvedSet.has(normalizePhone(item.inviteePhone)))
+    cycles.push({ phones: uniquePhones, relations: involvedRelations })
+  }
+  return cycles
+}
+
+function promotionCyclePublicView(cycle = {}) {
+  return {
+    phones: cycle.phones || [],
+    relations: (cycle.relations || []).map(relation => ({
+      id: relation.id,
+      inviter: relation.inviterPhone,
+      invitee: relation.inviteePhone,
+      level: relation.level,
+      createdAt: relation.createdAt,
+      inviterName: relation.inviterName,
+      inviteeName: relation.inviteeName
+    }))
+  }
+}
+
 async function bindPromotionFromOrder(order) {
   return bindPromotionRelation(order.inviterCode, order.phone, order.customerName, false)
 }
@@ -5982,12 +6088,13 @@ async function bindPromotionRelation(inviterCode, inviteePhone, inviteeName = "�
     return null
   }
   if (normalizePhone(inviter.phone) === inviteePhone) {
-    if (strict) throw httpError(400, "不能绑定自己的邀请码")
-    return null
+    return promotionBindError(strict)
   }
   const relations = await getPromotionRelations()
+  const validation = validatePromotionBind({ inviterPhone: inviter.phone, inviteePhone, relations, strict })
+  if (!validation) return null
   const existing = relations.find(relation => normalizePhone(relation.inviteePhone) === inviteePhone)
-  if (existing) return { ...existing, alreadyBound: true }
+  if (existing) return promotionBindError(strict)
   const relation = normalizePromotionRelation({
     inviterPhone: inviter.phone,
     inviterName: inviter.name,
@@ -6096,11 +6203,14 @@ async function createRewardsForOrder(order) {
   const relations = await getPromotionRelations()
   const customers = await getCustomers()
   const buyerPhone = normalizePhone(normalized.phone)
-  const directPhone = normalizePhone(normalized.referrerUserId) ||
-    normalizePhone((relations.find(relation => normalizePhone(relation.inviteePhone) === buyerPhone) || {}).inviterPhone)
+  const relationChain = getPersonalReferralChain(buyerPhone, relations)
+  if (relationChain.circular) {
+    console.warn("[promotion-cycle-reward-skip-parent]", { orderId: normalized.id, buyerPhone, circularAt: relationChain.circularAt })
+  }
+  const directPhone = normalizePhone(normalized.referrerUserId) || relationChain.directPhone
   if (!directPhone) return existing
-  const parentPhone = normalizePhone(normalized.parentReferrerUserId) ||
-    normalizePhone((relations.find(relation => normalizePhone(relation.inviteePhone) === directPhone) || {}).inviterPhone)
+  const rawParentPhone = normalizePhone(normalized.parentReferrerUserId) || relationChain.parentPhone
+  const parentPhone = rawParentPhone && rawParentPhone !== buyerPhone && rawParentPhone !== directPhone ? rawParentPhone : ""
   const rules = await getRewardRules()
   const rule = rules.find(item => item.productId === normalized.productId || item.productName === normalized.productName) || normalizeRewardRule({ productName: normalized.productName, firstReward: "0", secondReward: "0" }, 0)
   const firstRewardAmount = Number(rule.firstReward) > 0 ? money(rule.firstReward) : money(Number(normalized.amount || 0) * 0.05)
@@ -8562,6 +8672,12 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/customers" && req.method === "GET") {
     sendJson(res, 200, await getCustomers())
+    return
+  }
+
+  if (url.pathname === "/api/admin/promotion-relations/cycles" && req.method === "GET") {
+    const cycles = findCircularPromotionRelations(await getPromotionRelations())
+    sendJson(res, 200, { ok: true, count: cycles.length, cycles: cycles.map(promotionCyclePublicView) })
     return
   }
 
