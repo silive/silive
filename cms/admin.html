@@ -450,52 +450,6 @@
     .media-tools button { height: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: #f5f5f7; color: #1F2933; font-size: 12px; font-weight: 800; cursor: pointer; }
     .media-tools input[type="file"] { width: 118px; height: 28px; margin: 0; padding: 4px; font-size: 11px; }
     .media-add { width: 100%; height: 38px; border: 1px dashed #d9d4d1; border-radius: 999px; background: rgba(255,255,255,.72); color: #6B7280; font-weight: 850; cursor: pointer; }
-    .theme-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-    .theme-card {
-      min-width: 0;
-      padding: 12px;
-      border: 1px solid #FFD9BF;
-      border-radius: 18px;
-      background: rgba(255,255,255,.92);
-      cursor: pointer;
-    }
-    .theme-card.active { border-color: #FF7A00; box-shadow: 0 16px 34px rgba(255,122,0,.16); }
-    .theme-card.editing { outline: 2px solid rgba(29,29,31,.12); }
-    .theme-thumb {
-      position: relative;
-      height: 118px;
-      border-radius: 15px;
-      overflow: hidden;
-      background: linear-gradient(135deg, #FF7A00, #FF4D00);
-    }
-    .theme-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .theme-enabled {
-      position: absolute;
-      right: 10px;
-      top: 10px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.88);
-      color: #ff4d4f;
-      font-size: 12px;
-      font-weight: 900;
-    }
-    .theme-name { margin-top: 10px; color: #E94B00; font-size: 14px; font-weight: 900; }
-    .theme-desc { margin-top: 6px; color: #6B7280; font-size: 12px; line-height: 1.4; min-height: 34px; }
-    .theme-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    .color-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: end; }
-    .color-row input[type="color"] { width: 44px; padding: 0; }
-    .theme-preview-phone {
-      width: min(320px, 100%);
-      min-height: 480px;
-      padding: 18px;
-      border-radius: 34px;
-      background: linear-gradient(180deg, var(--preview-top, #fff8f5), var(--preview-bottom, #fff2f5));
-      box-shadow: 0 24px 60px rgba(0,0,0,.12);
-    }
-    .theme-preview-hero { height: 148px; padding: 20px; border-radius: 24px; background: linear-gradient(135deg, var(--preview-start, #FF7A00), var(--preview-end, #FF4D00)); color: #fff; font-size: 28px; font-weight: 950; }
-    .theme-preview-card { margin-top: 14px; padding: 14px; border-radius: var(--preview-radius, 24px); background: rgba(255,255,255,.88); box-shadow: 0 16px 36px rgba(255,122,0,.14); }
-    .theme-preview-btn { width: 160px; height: 42px; margin-top: 14px; border: 0; border-radius: 999px; background: linear-gradient(135deg, var(--preview-start, #FF7A00), var(--preview-end, #FF4D00)); color: #fff; font-weight: 900; }
     .benefit-list { display: grid; gap: 10px; margin-top: 12px; }
     .benefit-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 78px; gap: 10px; align-items: center; }
     .benefit-row input { margin-top: 0; }
@@ -542,7 +496,6 @@
         <button data-view="stores">合作门店</button>
         <button data-view="marketing">营销中心</button>
         <button data-view="home">页面装修</button>
-        <button data-view="theme">皮肤管理</button>
         <button data-view="settings">系统设置</button>
       </nav>
     </aside>
@@ -617,34 +570,6 @@
             </div>
             <div class="upload-help">支持标题、摘要、图片、富文本图文文章；排序越小越靠前，关闭后前台不展示。修改后保存当前页，小程序售后保障页实时读取。</div>
             <div class="list" id="helpArticles"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-theme">
-        <div class="panel">
-          <div class="item-head">
-            <div>
-              <h3>皮肤管理</h3>
-              <div class="upload-help">上传 colors.json、主题图片和图标资源后，一键启用即可让小程序自动读取最新皮肤，无需重新发版。theme.wxss 可上传留档，线上即时换肤通过主题变量生效。</div>
-            </div>
-            <div class="toolbar">
-              <button class="secondary" id="checkThemeApiBtn">检查当前主题接口</button>
-              <button class="secondary" id="addThemeBtn">新增皮肤</button>
-            </div>
-          </div>
-          <div class="theme-grid" id="themeList"></div>
-          <pre class="upload-help" id="themeApiResult" style="display:none;white-space:pre-wrap;max-height:180px;overflow:auto"></pre>
-        </div>
-        <div class="grid">
-          <div class="panel">
-            <h3>在线编辑</h3>
-            <div class="form-grid" id="themeEditor"></div>
-            <div class="upload-help">支持上传：colors.json、theme.wxss、缩略图、Banner 图。图标资源、tabbar 图标和商品卡片样式图可先上传到图片字段保存，后续前台模块可继续扩展读取。</div>
-          </div>
-          <div class="panel">
-            <h3>效果预览</h3>
-            <div id="themePreview"></div>
           </div>
         </div>
       </section>
@@ -968,7 +893,6 @@
       stores: ["合作门店", "维护展示点、自提点和门店收益结算。"],
       marketing: ["营销中心", "维护活动、新人福利、推广关系和奖励记录。"],
       home: ["页面装修", "修改 Banner、首页入口、客服和推荐商品。"],
-      theme: ["皮肤管理", "上传、编辑、预览并一键启用小程序视觉皮肤。"],
       settings: ["系统设置", "维护店铺基础信息和客服信息。"]
     }
     const $ = id => document.getElementById(id)
@@ -987,8 +911,6 @@
     let rewards = []
     let rewardDataSummary = {}
     let settings = {}
-    let themeState = { activeThemeSkin: "skin01", themes: [] }
-    let editingThemeSkin = "skin01"
     let orderFilters = { keyword: "", status: "" }
     let settlementFilters = { storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let storeLeadFilters = { status: "" }
@@ -1461,200 +1383,6 @@
     }
     function formatMoney(value) {
       return `¥${escapeHtml(value || "0")}`
-    }
-    function radiusNumber(value, fallback) {
-      const matched = String(value == null ? "" : value).match(/\d+/)
-      return matched ? Number(matched[0]) : fallback
-    }
-    function normalizeThemeClient(theme = {}, index = 0) {
-      const colors = theme.colors || {}
-      const gradient = Array.isArray(theme.buttonGradient) && theme.buttonGradient.length >= 2
-        ? theme.buttonGradient
-        : [colors.buttonGradientStart || theme.primaryColor || "#FF7A00", colors.buttonGradientEnd || theme.accentColor || "#FF4D00"]
-      const skinId = theme.skinId || theme.skin || `skin-custom-${Date.now()}-${index}`
-      const nextColors = {
-        primaryColor: colors.primaryColor || theme.primaryColor || "#FF7A00",
-        accentColor: colors.accentColor || theme.accentColor || "#FF4D00",
-        lightBg: colors.lightBg || theme.lightBg || theme.softColor || "#FFF0F3",
-        pageTopColor: colors.pageTopColor || theme.pageTopColor || "#FFF8F5",
-        pageBottomColor: colors.pageBottomColor || theme.pageBottomColor || "#FFF2F5",
-        cardColor: colors.cardColor || theme.cardColor || "rgba(255,255,255,.88)",
-        textColor: colors.textColor || theme.textColor || "#222024",
-        mutedTextColor: colors.mutedTextColor || theme.mutedTextColor || theme.mutedColor || "#8D7E80",
-        priceColor: colors.priceColor || theme.priceColor || "#FF5A3C",
-        buttonGradientStart: colors.buttonGradientStart || gradient[0],
-        buttonGradientEnd: colors.buttonGradientEnd || gradient[1],
-        shadowColor: colors.shadowColor || theme.shadowColor || "rgba(255,122,0,.16)"
-      }
-      const radius = theme.radius || {}
-      return {
-        ...theme,
-        skinId,
-        skin: skinId,
-        name: theme.name || `新皮肤 ${index + 1}`,
-        description: theme.description || "",
-        version: Number(theme.version || 1),
-        colors: nextColors,
-        radius: {
-          cardRadius: radiusNumber(radius.cardRadius ?? theme.cardRadius, 30),
-          buttonRadius: radiusNumber(radius.buttonRadius ?? theme.buttonRadius, 999)
-        },
-        tabbar: {
-          activeColor: theme.tabbar?.activeColor || nextColors.priceColor,
-          inactiveColor: theme.tabbar?.inactiveColor || "#999999",
-          backgroundColor: theme.tabbar?.backgroundColor || "#FFFFFF"
-        },
-        navigationBar: {
-          frontColor: theme.navigationBar?.frontColor === "#ffffff" ? "#ffffff" : "#000000",
-          backgroundColor: theme.navigationBar?.backgroundColor || nextColors.pageTopColor
-        },
-        banners: theme.banners || {},
-        icons: theme.icons || {},
-        primaryColor: nextColors.primaryColor,
-        accentColor: nextColors.accentColor,
-        softColor: nextColors.lightBg,
-        pageTopColor: nextColors.pageTopColor,
-        pageBottomColor: nextColors.pageBottomColor,
-        cardColor: nextColors.cardColor,
-        textColor: nextColors.textColor,
-        mutedColor: nextColors.mutedTextColor,
-        priceColor: nextColors.priceColor,
-        buttonGradient: [nextColors.buttonGradientStart, nextColors.buttonGradientEnd],
-        cardRadius: `${radiusNumber(radius.cardRadius ?? theme.cardRadius, 30)}rpx`,
-        buttonRadius: `${radiusNumber(radius.buttonRadius ?? theme.buttonRadius, 999)}rpx`,
-        shadowColor: nextColors.shadowColor,
-        banner: theme.banner || "",
-        thumbnail: theme.thumbnail || theme.banner || "",
-        themeWxssText: theme.themeWxssText || "",
-        createdAt: theme.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
-        updatedAt: theme.updatedAt || theme.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
-        enabled: String(theme.enabled || "false")
-      }
-    }
-    function themeId(theme) {
-      return theme?.skinId || theme?.skin || "skin01"
-    }
-    function currentEditingTheme() {
-      return themeState.themes.find(theme => themeId(theme) === editingThemeSkin) || themeState.themes[0] || normalizeThemeClient({}, 0)
-    }
-    function setThemePath(theme, key, value) {
-      const parts = key.split(".")
-      let target = theme
-      while (parts.length > 1) {
-        const part = parts.shift()
-        target[part] = target[part] || {}
-        target = target[part]
-      }
-      target[parts[0]] = key.startsWith("radius.") ? radiusNumber(value, key.includes("button") ? 999 : 30) : value
-    }
-    function getThemePath(theme, key) {
-      return key.split(".").reduce((value, part) => value && value[part], theme)
-    }
-    function collectThemeEditor() {
-      const theme = currentEditingTheme()
-      if (!theme || !$("themeEditor")) return
-      $("themeEditor").querySelectorAll("[data-theme-key]").forEach(input => {
-        setThemePath(theme, input.dataset.themeKey, input.value)
-      })
-      const normalized = normalizeThemeClient(theme, 0)
-      Object.assign(theme, normalized)
-      theme.enabled = themeId(theme) === (themeState.currentSkinId || themeState.activeThemeSkin) ? "true" : "false"
-    }
-    function renderThemes() {
-      themeState.themes = (themeState.themes || []).map(normalizeThemeClient)
-      themeState.currentSkinId = themeState.currentSkinId || themeState.activeThemeSkin || "skin01"
-      themeState.activeThemeSkin = themeState.currentSkinId
-      if (!themeState.themes.some(theme => themeId(theme) === editingThemeSkin)) editingThemeSkin = themeState.currentSkinId || themeId(themeState.themes[0]) || "skin01"
-      const active = themeState.currentSkinId
-      $("themeList").innerHTML = themeState.themes.map(theme => {
-        const id = themeId(theme)
-        const canDelete = id !== "skin01" && id !== active
-        return `
-          <div class="theme-card ${id === active ? "active" : ""} ${id === editingThemeSkin ? "editing" : ""}" data-action="edit-theme" data-skin="${escapeHtml(id)}">
-            <div class="theme-thumb" style="background:linear-gradient(135deg, ${escapeHtml(theme.colors.buttonGradientStart)}, ${escapeHtml(theme.colors.buttonGradientEnd)})">
-              ${theme.thumbnail ? `<img src="${escapeHtml(theme.thumbnail)}" alt="">` : ""}
-              ${id === active ? `<span class="theme-enabled">当前启用</span>` : ""}
-            </div>
-            <div class="theme-name">${escapeHtml(theme.name)}</div>
-            <div class="theme-desc">${escapeHtml(theme.description || "暂无说明")}</div>
-            <div class="theme-actions">
-              <button class="secondary" data-action="edit-theme" data-skin="${escapeHtml(id)}">编辑</button>
-              <button class="primary" data-action="enable-theme" data-skin="${escapeHtml(id)}">启用</button>
-              <button class="secondary" ${canDelete ? "" : "disabled"} data-action="delete-theme" data-skin="${escapeHtml(id)}">删除</button>
-            </div>
-          </div>
-        `
-      }).join("")
-      renderThemeEditor()
-    }
-    function renderThemeEditor() {
-      const theme = normalizeThemeClient(currentEditingTheme())
-      const colorField = (label, key) => `<label>${label}<div class="color-row"><input type="color" data-theme-key="${key}" value="${escapeHtml(getThemePath(theme, key))}"><input data-theme-key="${key}" value="${escapeHtml(getThemePath(theme, key))}"></div></label>`
-      $("themeEditor").innerHTML = `
-        <label>皮肤ID<input data-theme-key="skinId" value="${escapeHtml(themeId(theme))}" disabled></label>
-        <label>皮肤名称<input data-theme-key="name" value="${escapeHtml(theme.name)}"></label>
-        <label>皮肤说明<textarea data-theme-key="description">${escapeHtml(theme.description)}</textarea></label>
-        <label>版本号<input value="${escapeHtml(String(theme.version || 1))}" disabled></label>
-        <label>更新时间<input value="${escapeHtml(theme.updatedAt || "")}" disabled></label>
-        ${colorField("主色调", "colors.primaryColor")}
-        ${colorField("强调色", "colors.accentColor")}
-        ${colorField("浅色底", "colors.lightBg")}
-        ${colorField("页面顶部色", "colors.pageTopColor")}
-        ${colorField("页面底部色", "colors.pageBottomColor")}
-        ${colorField("文字颜色", "colors.textColor")}
-        ${colorField("弱文字颜色", "colors.mutedTextColor")}
-        ${colorField("价格颜色", "colors.priceColor")}
-        ${colorField("按钮渐变起始", "colors.buttonGradientStart")}
-        ${colorField("按钮渐变结束", "colors.buttonGradientEnd")}
-        ${colorField("TabBar选中色", "tabbar.activeColor")}
-        ${colorField("TabBar未选中色", "tabbar.inactiveColor")}
-        ${colorField("TabBar背景色", "tabbar.backgroundColor")}
-        ${colorField("导航栏背景色", "navigationBar.backgroundColor")}
-        <label>导航栏文字色<select data-theme-key="navigationBar.frontColor"><option value="#000000" ${theme.navigationBar.frontColor !== "#ffffff" ? "selected" : ""}>黑色</option><option value="#ffffff" ${theme.navigationBar.frontColor === "#ffffff" ? "selected" : ""}>白色</option></select></label>
-        <label>卡片圆角<input type="number" data-theme-key="radius.cardRadius" value="${escapeHtml(String(theme.radius.cardRadius))}" placeholder="28"></label>
-        <label>按钮圆角<input type="number" data-theme-key="radius.buttonRadius" value="${escapeHtml(String(theme.radius.buttonRadius))}" placeholder="999"></label>
-        <label>Banner图
-          <div class="upload-row"><input data-theme-key="banner" value="${escapeHtml(theme.banner)}"><input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-theme-upload="banner"></div>
-        </label>
-        <label>缩略图
-          <div class="upload-row"><input data-theme-key="thumbnail" value="${escapeHtml(theme.thumbnail)}"><input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-theme-upload="thumbnail"></div>
-        </label>
-        <label>上传 colors.json<input type="file" accept=".json,application/json" data-theme-file="colors"></label>
-        <label>上传 theme.wxss<input type="file" accept=".wxss,.css,text/css,text/plain" data-theme-file="wxss"></label>
-        <label style="grid-column:1/-1">theme.wxss 留档<textarea data-theme-key="themeWxssText">${escapeHtml(theme.themeWxssText || "")}</textarea></label>
-      `
-      renderThemePreview(theme)
-    }
-    function renderThemePreview(theme = currentEditingTheme()) {
-      const next = normalizeThemeClient(theme)
-      const c = next.colors
-      const cardRadius = `${next.radius.cardRadius}px`
-      const buttonRadius = `${next.radius.buttonRadius}px`
-      const buttonBg = `linear-gradient(135deg, ${c.buttonGradientStart}, ${c.buttonGradientEnd})`
-      $("themePreview").innerHTML = `<div class="theme-preview-phone" style="background:linear-gradient(180deg, ${escapeHtml(c.pageTopColor)}, ${escapeHtml(c.pageBottomColor)});color:${escapeHtml(c.textColor)}">
-        <div style="height:148px;padding:20px;border-radius:${escapeHtml(cardRadius)};background:${escapeHtml(buttonBg)};color:#fff;box-shadow:0 18px 38px ${escapeHtml(c.shadowColor)};font-size:28px;font-weight:950">给闺蜜的<br>生日礼物灵感<div style="margin-top:12px;font-size:12px;font-weight:800;opacity:.88">Banner 卡片</div></div>
-        <div style="margin-top:14px;padding:14px;border-radius:${escapeHtml(cardRadius)};background:${escapeHtml(c.cardColor)};box-shadow:0 16px 36px ${escapeHtml(c.shadowColor)}">
-          <strong style="color:${escapeHtml(c.textColor)}">热门推荐商品</strong>
-          <p style="color:${escapeHtml(c.mutedTextColor)};margin:8px 0 12px">生日、纪念日、宠物纪念都适合</p>
-          <div style="display:flex;align-items:center;justify-content:space-between">
-            <span style="color:${escapeHtml(c.priceColor)};font-size:22px;font-weight:950">¥129</span>
-            <button style="width:118px;height:42px;border:0;border-radius:${escapeHtml(buttonRadius)};background:${escapeHtml(buttonBg)};color:#fff;font-weight:900">立即定制</button>
-          </div>
-        </div>
-        <div style="margin-top:14px;padding:14px;border-radius:${escapeHtml(cardRadius)};background:${escapeHtml(c.lightBg)};box-shadow:0 16px 36px ${escapeHtml(c.shadowColor)}">
-          <strong style="color:${escapeHtml(c.textColor)}">微信快捷登录</strong>
-          <p style="color:${escapeHtml(c.mutedTextColor)};margin:8px 0 12px">同步订单、地址与会员权益</p>
-          <button style="width:170px;height:42px;border:0;border-radius:${escapeHtml(buttonRadius)};background:${escapeHtml(buttonBg)};color:#fff;font-weight:900">授权手机号并登录</button>
-        </div>
-      </div>`
-    }
-    function readLocalTextFile(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result || ""))
-        reader.onerror = () => reject(new Error("文件读取失败"))
-        reader.readAsText(file)
-      })
     }
     function closeDrawer(force = false) {
       if (!force && drawerDirty && !confirm("当前内容尚未保存，确认关闭吗？")) return false
@@ -3057,14 +2785,13 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, orderData, customerData, settingData, themeData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
         api("/api/admin/orders"),
         api("/api/admin/customers"),
         api("/api/admin/settings"),
-        api("/api/admin/themes"),
         api("/api/admin/stores"),
         api(`/api/admin/store-settlements${settlementQuery ? `?${settlementQuery}` : ""}`),
         api("/api/admin/sales-agents"),
@@ -3090,8 +2817,6 @@
       rewards = rewardData.records || rewardData
       rewardDataSummary = rewardData.summary || {}
       settings = settingData
-      themeState = themeData || { activeThemeSkin: settings.activeThemeSkin || "skin01", themes: settings.themes || [] }
-      if (!editingThemeSkin) editingThemeSkin = themeState.activeThemeSkin
       rebuildCategoryOptions()
       renderOverview(overview)
       renderHome()
@@ -3108,7 +2833,6 @@
       renderRelations()
       renderRewards()
       renderActivities()
-      renderThemes()
       renderSettings()
       setStatus("已同步")
     }
@@ -3174,14 +2898,6 @@
       if (currentView === "stores") {
         renderStores()
         renderStoreSettlements()
-      }
-      if (currentView === "theme") {
-        collectThemeEditor()
-        const theme = currentEditingTheme()
-        themeState = await api(`/api/admin/themes/${encodeURIComponent(themeId(theme))}`, "PUT", theme)
-        renderThemes()
-        setStatus("皮肤已保存，启用后小程序将读取最新皮肤。")
-        return
       }
       if (currentView === "settings") {
         settings = {
@@ -3333,27 +3049,6 @@
         keyword: $("rewardKeywordFilter").value.trim()
       }
       loadAll().catch(error => setStatus(error.message))
-    })
-    $("addThemeBtn").addEventListener("click", () => {
-      collectThemeEditor()
-      const skin = `skin-custom-${Date.now()}`
-      themeState.themes.push(normalizeThemeClient({
-        skinId: skin,
-        skin,
-        name: "新皮肤",
-        description: "可编辑主色、按钮渐变、Banner和圆角。",
-        createdAt: new Date().toISOString().slice(0, 16).replace("T", " ")
-      }, themeState.themes.length))
-      editingThemeSkin = skin
-      renderThemes()
-      setStatus("已新增皮肤，编辑后点击保存当前页")
-    })
-    $("checkThemeApiBtn").addEventListener("click", () => {
-      api(`/api/theme/current?t=${Date.now()}`).then(theme => {
-        $("themeApiResult").style.display = "block"
-        $("themeApiResult").textContent = JSON.stringify(theme, null, 2)
-        setStatus(`当前主题接口返回：${theme.skinId || theme.skin} v${theme.version || 1}`)
-      }).catch(error => setStatus(error.message))
     })
     $("filterProductsBtn").addEventListener("click", () => {
       productFilters = { keyword: $("productSearch").value.trim(), category: $("productCategoryFilter").value, status: $("productStatusFilter").value, hot: $("productHotFilter").value }
@@ -3869,34 +3564,6 @@
       if (event.target.dataset.action === "send-design-confirm") {
         setStatus("已生成确认提醒，请复制预览图发送客户确认")
       }
-      if (event.target.dataset.action === "edit-theme") {
-        collectThemeEditor()
-        editingThemeSkin = event.target.dataset.skin
-        renderThemes()
-      }
-      if (event.target.dataset.action === "enable-theme") {
-        collectThemeEditor()
-        api(`/api/admin/themes/${encodeURIComponent(event.target.dataset.skin)}/activate`, "POST", {})
-          .then(data => {
-            themeState = data
-            editingThemeSkin = data.currentSkinId || data.activeThemeSkin
-            renderThemes()
-            setStatus("皮肤已启用，小程序重新进入页面或切换 tab 后自动生效。")
-          })
-          .catch(error => setStatus(error.message))
-      }
-      if (event.target.dataset.action === "delete-theme") {
-        const skin = event.target.dataset.skin
-        if (!confirm("确定删除该皮肤吗？删除后不可恢复。")) return
-        api(`/api/admin/themes/${encodeURIComponent(skin)}`, "DELETE")
-          .then(data => {
-            themeState = data
-            editingThemeSkin = data.currentSkinId || data.activeThemeSkin || "skin01"
-            renderThemes()
-            setStatus("皮肤已删除")
-          })
-          .catch(error => setStatus(error.message))
-      }
     })
     document.body.addEventListener("change", event => {
       if (event.target.dataset.key === "targetType" && (event.target.closest("#homeEntries") || event.target.closest("#homeBanners"))) {
@@ -4014,17 +3681,6 @@
       }
     })
     document.body.addEventListener("input", event => {
-      if (event.target.dataset.themeKey) {
-        const key = event.target.dataset.themeKey
-        if (event.target.closest(".color-row")) {
-          event.target.closest(".color-row").querySelectorAll(`[data-theme-key="${key}"]`).forEach(input => {
-            if (input !== event.target) input.value = event.target.value
-          })
-        }
-        collectThemeEditor()
-        renderThemePreview(currentEditingTheme())
-        return
-      }
       if (event.target.dataset.productSearch) {
         activityProductSearch[event.target.dataset.productSearch] = event.target.value
         if (currentView === "marketing") {
@@ -4056,38 +3712,6 @@
             }).join("")}
           `
         }
-        return
-      }
-      if (event.target.dataset.themeKey) {
-        collectThemeEditor()
-        renderThemePreview(currentEditingTheme())
-        return
-      }
-      if (event.target.dataset.themeFile && event.target.files?.[0]) {
-        const file = event.target.files[0]
-        readLocalTextFile(file).then(text => {
-          const theme = currentEditingTheme()
-          if (event.target.dataset.themeFile === "colors") {
-            const parsed = JSON.parse(text)
-            Object.assign(theme, normalizeThemeClient({ ...theme, ...parsed }, 0), { skinId: themeId(theme), skin: themeId(theme) })
-          } else {
-            theme.themeWxssText = text
-          }
-          renderThemes()
-          setStatus("皮肤文件已读取，保存后生效")
-        }).catch(error => setStatus(error.message))
-        return
-      }
-      if (event.target.dataset.themeUpload && event.target.files?.[0]) {
-        const key = event.target.dataset.themeUpload
-        const file = event.target.files[0]
-        uploadImage(file).then(url => {
-          const theme = currentEditingTheme()
-          theme[key] = url
-          if (key === "banner" && !theme.thumbnail) theme.thumbnail = url
-          renderThemes()
-          setStatus(file.size > 2 * 1024 * 1024 ? "皮肤图片已上传。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "皮肤图片已上传，保存后生效")
-        }).catch(error => setStatus(error.message))
         return
       }
       if (!event.target.dataset.uploadKey || !event.target.files?.[0]) return

@@ -50,7 +50,6 @@ const productUploadsDir = path.join(uploadsDir, "products")
 const publicLogoFile = path.join(ROOT, "assets", "logo.png")
 const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
 const BRAND_QR_LOGO_VERSION = "orange-v5-release"
-const themesDir = path.join(ROOT, "themes")
 const seedDir = path.join(__dirname, "data")
 const importTempDir = path.join(seedDir, "import-temp")
 const certDir = path.join(seedDir, "certs")
@@ -84,7 +83,6 @@ fs.mkdirSync(uploadsDir, { recursive: true })
 fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
 fs.mkdirSync(productUploadsDir, { recursive: true })
 fs.mkdirSync(certDir, { recursive: true })
-fs.mkdirSync(themesDir, { recursive: true })
 fs.mkdirSync(importTempDir, { recursive: true })
 
 function loadEnv(file) {
@@ -238,85 +236,43 @@ function writeJsonFile(file, data) {
   fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
 }
 
-function readThemeFile(skin) {
-  const safeSkin = String(skin || "").replace(/[^\w-]/g, "")
-  if (!safeSkin) return null
-  const file = path.join(themesDir, safeSkin, "colors.json")
-  if (!file.startsWith(themesDir) || !fs.existsSync(file)) return null
-  return readJsonFile(file, null)
-}
-
-function defaultThemes() {
-  return ["skin01", "skin02", "skin03", "skin04"].map(skin => readThemeFile(skin)).filter(Boolean)
-}
-
-function radiusNumber(value, fallback) {
-  const text = String(value == null ? "" : value).trim()
-  const matched = text.match(/\d+/)
-  return matched ? Number(matched[0]) : fallback
-}
-
-function rpxValue(value, fallback) {
-  const num = radiusNumber(value, fallback)
-  return `${num}rpx`
-}
-
-function themeSkinId(theme = {}, index = 0) {
-  return String(theme.skinId || theme.skin || `skin${String(index + 1).padStart(2, "0")}`).replace(/[^\w-]/g, "")
-}
-
-function normalizeTheme(theme = {}, index = 0) {
-  const skinId = themeSkinId(theme, index)
-  const sourceColors = theme.colors || {}
-  const sourceRadius = theme.radius || {}
-  const gradient = Array.isArray(theme.buttonGradient) && theme.buttonGradient.length >= 2
-    ? theme.buttonGradient
-    : [sourceColors.buttonGradientStart || theme.primaryColor || "#FF7A00", sourceColors.buttonGradientEnd || theme.accentColor || "#FF4D8D"]
+function currentThemeFromSettings() {
   const colors = {
-    primaryColor: sourceColors.primaryColor || theme.primaryColor || "#FF7A00",
-    accentColor: sourceColors.accentColor || theme.accentColor || "#FF4D8D",
-    lightBg: sourceColors.lightBg || theme.lightBg || theme.softColor || "#FFF0F3",
-    pageTopColor: sourceColors.pageTopColor || theme.pageTopColor || "#FFF8F5",
-    pageBottomColor: sourceColors.pageBottomColor || theme.pageBottomColor || "#FFF2F5",
-    cardColor: sourceColors.cardColor || theme.cardColor || "rgba(255,255,255,.88)",
-    textColor: sourceColors.textColor || theme.textColor || "#222024",
-    mutedTextColor: sourceColors.mutedTextColor || theme.mutedTextColor || theme.mutedColor || "#8D7E80",
-    priceColor: sourceColors.priceColor || theme.priceColor || "#FF5A3C",
-    buttonGradientStart: sourceColors.buttonGradientStart || gradient[0],
-    buttonGradientEnd: sourceColors.buttonGradientEnd || gradient[1],
-    shadowColor: sourceColors.shadowColor || theme.shadowColor || "rgba(255,122,0,.16)"
-  }
-  const radius = {
-    cardRadius: radiusNumber(sourceRadius.cardRadius ?? theme.cardRadius, 30),
-    buttonRadius: radiusNumber(sourceRadius.buttonRadius ?? theme.buttonRadius, 999)
-  }
-  const tabbar = {
-    activeColor: theme.tabbar?.activeColor || colors.priceColor,
-    inactiveColor: theme.tabbar?.inactiveColor || "#999999",
-    backgroundColor: theme.tabbar?.backgroundColor || "#FFFFFF"
-  }
-  const navigationBar = {
-    frontColor: theme.navigationBar?.frontColor === "#ffffff" ? "#ffffff" : "#000000",
-    backgroundColor: theme.navigationBar?.backgroundColor || colors.pageTopColor
+    primaryColor: "#FF5A00",
+    accentColor: "#FFD21A",
+    lightBg: "#FFF9F3",
+    pageTopColor: "#FFF9F3",
+    pageBottomColor: "#FFF9F3",
+    cardColor: "rgba(255,255,255,.88)",
+    textColor: "#222024",
+    mutedTextColor: "#8D7E80",
+    priceColor: "#FF4D00",
+    buttonGradientStart: "#FF5A00",
+    buttonGradientEnd: "#FF7A00",
+    shadowColor: "rgba(255,90,0,.16)"
   }
   return {
-    ...theme,
-    skinId,
-    skin: skinId,
-    name: theme.name || `Skin${String(index + 1).padStart(2, "0")} 未命名皮肤`,
-    description: theme.description || "",
-    version: Number(theme.version || 1),
-    createdAt: theme.createdAt || formatDateTime(new Date()),
-    updatedAt: theme.updatedAt || theme.createdAt || formatDateTime(new Date()),
-    activatedAt: theme.activatedAt || "",
+    skinId: "fixed-orange",
+    skin: "fixed-orange",
+    name: "非常智造固定橙色主题",
+    description: "小程序固定使用非常智造橙色视觉。",
+    version: 1,
+    enabled: "true",
     colors,
-    radius,
-    tabbar,
-    navigationBar,
-    banners: theme.banners || {},
-    icons: theme.icons || {},
+    radius: { cardRadius: 30, buttonRadius: 999 },
+    tabbar: {
+      activeColor: colors.priceColor,
+      inactiveColor: "#999999",
+      backgroundColor: "#FFFFFF"
+    },
+    navigationBar: {
+      frontColor: "#000000",
+      backgroundColor: colors.pageTopColor
+    },
     primaryColor: colors.primaryColor,
+    secondaryColor: "#FF7A00",
     accentColor: colors.accentColor,
+    background: colors.lightBg,
     softColor: colors.lightBg,
     lightBg: colors.lightBg,
     pageTopColor: colors.pageTopColor,
@@ -327,41 +283,12 @@ function normalizeTheme(theme = {}, index = 0) {
     mutedTextColor: colors.mutedTextColor,
     priceColor: colors.priceColor,
     buttonGradient: [colors.buttonGradientStart, colors.buttonGradientEnd],
-    cardRadius: rpxValue(radius.cardRadius, 30),
-    buttonRadius: rpxValue(radius.buttonRadius, 999),
+    cardRadius: "30rpx",
+    buttonRadius: "999rpx",
     shadowColor: colors.shadowColor,
-    banner: publicAssetUrl(theme.banner || ""),
-    thumbnail: publicAssetUrl(theme.thumbnail || theme.banner || ""),
-    themeWxssText: theme.themeWxssText || "",
-    enabled: String(theme.enabled || "false")
+    banner: "",
+    thumbnail: ""
   }
-}
-
-function normalizeThemeSettings(settings = {}) {
-  const deleted = Array.isArray(settings.deletedThemeSkins) ? settings.deletedThemeSkins : []
-  const base = defaultThemes().filter(theme => !deleted.includes(themeSkinId(theme)))
-  const custom = Array.isArray(settings.themes) ? settings.themes.filter(theme => !deleted.includes(themeSkinId(theme))) : []
-  const merged = [...base, ...custom].reduce((list, theme) => {
-    const normalized = normalizeTheme(theme, list.length)
-    const existing = list.findIndex(item => item.skinId === normalized.skinId)
-    if (existing >= 0) list[existing] = { ...list[existing], ...normalized }
-    else list.push(normalized)
-    return list
-  }, [])
-  const requestedActive = settings.currentSkinId || settings.activeThemeSkin || settings.theme?.skinId || settings.theme?.skin || "skin01"
-  const activeSkin = merged.some(item => item.skinId === requestedActive) ? requestedActive : "skin01"
-  return {
-    currentSkinId: activeSkin,
-    activeThemeSkin: activeSkin,
-    currentThemeVersion: Number(settings.currentThemeVersion || 1),
-    deletedThemeSkins: deleted,
-    themes: merged.map(item => ({ ...item, enabled: item.skinId === activeSkin ? "true" : "false" }))
-  }
-}
-
-function currentThemeFromSettings(settings = {}) {
-  const themeSettings = normalizeThemeSettings(settings)
-  return themeSettings.themes.find(item => item.skinId === themeSettings.currentSkinId) || themeSettings.themes[0] || normalizeTheme(readThemeFile("skin01") || {})
 }
 
 function readSeed(file, fallback) {
@@ -6349,7 +6276,6 @@ async function getSettings() {
     return {
       ...settings,
       categoryCatalog,
-      ...normalizeThemeSettings(settings),
       newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
       newcomerBenefits: normalizeNewcomerBenefits(settings),
       helpArticles: normalizeHelpArticles(settings.helpArticles),
@@ -6366,7 +6292,6 @@ async function saveSettings(settings) {
   settings = {
     ...settings,
     categoryCatalog,
-    ...normalizeThemeSettings(settings),
     newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
     newcomerBenefits: normalizeNewcomerBenefits(settings),
     helpArticles: normalizeHelpArticles(settings.helpArticles),
@@ -8789,102 +8714,6 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/settings" && req.method === "PUT") {
     sendJson(res, 200, { ok: true, data: await saveSettings(JSON.parse((await readBody(req)).toString())) })
-    return
-  }
-
-  if (url.pathname === "/api/admin/themes" && req.method === "GET") {
-    const settings = await getSettings()
-    sendJson(res, 200, { ok: true, data: normalizeThemeSettings(settings) })
-    return
-  }
-
-  const themeApiMatch = url.pathname.match(/^\/api\/admin\/themes\/([^/]+)(?:\/(activate))?$/)
-  if (themeApiMatch && req.method === "PUT" && !themeApiMatch[2]) {
-    const skinId = themeApiMatch[1].replace(/[^\w-]/g, "")
-    const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const current = await getSettings()
-    const themeSettings = normalizeThemeSettings(current)
-    let existingIndex = themeSettings.themes.findIndex(theme => theme.skinId === skinId)
-    if (existingIndex < 0) existingIndex = themeSettings.themes.length
-    const previous = themeSettings.themes[existingIndex] || {}
-    const savedTheme = normalizeTheme({
-      ...previous,
-      ...body,
-      skinId,
-      skin: skinId,
-      version: Number(previous.version || body.version || 1) + 1,
-      updatedAt: formatDateTime(new Date())
-    }, existingIndex)
-    const themes = [...themeSettings.themes]
-    themes[existingIndex] = savedTheme
-    const nextSettings = await saveSettings({ ...current, ...themeSettings, themes })
-    sendJson(res, 200, { ok: true, data: normalizeThemeSettings(nextSettings), message: "皮肤已保存，启用后小程序将读取最新皮肤。" })
-    return
-  }
-
-  if (themeApiMatch && req.method === "POST" && themeApiMatch[2] === "activate") {
-    const skinId = themeApiMatch[1].replace(/[^\w-]/g, "")
-    const current = await getSettings()
-    const themeSettings = normalizeThemeSettings(current)
-    const targetIndex = themeSettings.themes.findIndex(theme => theme.skinId === skinId)
-    if (targetIndex < 0) {
-      sendJson(res, 404, { ok: false, message: "皮肤不存在" })
-      return
-    }
-    const activatedAt = formatDateTime(new Date())
-    const themes = themeSettings.themes.map((theme, index) => normalizeTheme({
-      ...theme,
-      activatedAt: index === targetIndex ? activatedAt : theme.activatedAt,
-      updatedAt: index === targetIndex ? activatedAt : theme.updatedAt,
-      enabled: theme.skinId === skinId ? "true" : "false"
-    }, index))
-    const nextSettings = await saveSettings({
-      ...current,
-      ...themeSettings,
-      themes,
-      currentSkinId: skinId,
-      activeThemeSkin: skinId,
-      currentThemeVersion: Number(themeSettings.currentThemeVersion || 1) + 1
-    })
-    sendJson(res, 200, { ok: true, data: normalizeThemeSettings(nextSettings), message: "皮肤已启用，小程序重新进入页面或切换 tab 后自动生效。" })
-    return
-  }
-
-  if (themeApiMatch && req.method === "DELETE" && !themeApiMatch[2]) {
-    const skinId = themeApiMatch[1].replace(/[^\w-]/g, "")
-    const current = await getSettings()
-    const themeSettings = normalizeThemeSettings(current)
-    if (skinId === "skin01") {
-      sendJson(res, 400, { ok: false, message: "默认皮肤 skin01 不允许删除" })
-      return
-    }
-    if (skinId === themeSettings.currentSkinId) {
-      sendJson(res, 400, { ok: false, message: "当前启用皮肤不允许删除" })
-      return
-    }
-    if (!themeSettings.themes.some(theme => theme.skinId === skinId)) {
-      sendJson(res, 404, { ok: false, message: "皮肤不存在" })
-      return
-    }
-    const deletedThemeSkins = Array.from(new Set([...(themeSettings.deletedThemeSkins || []), skinId]))
-    const themes = themeSettings.themes.filter(theme => theme.skinId !== skinId)
-    const themePath = path.join(themesDir, skinId)
-    if (themePath.startsWith(themesDir)) fs.rmSync(themePath, { recursive: true, force: true })
-    const nextSettings = await saveSettings({ ...current, ...themeSettings, deletedThemeSkins, themes })
-    sendJson(res, 200, { ok: true, data: normalizeThemeSettings(nextSettings), message: "皮肤已删除" })
-    return
-  }
-
-  if (url.pathname === "/api/admin/themes" && req.method === "PUT") {
-    const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const current = await getSettings()
-    const themeSettings = normalizeThemeSettings({
-      ...current,
-      themes: Array.isArray(body.themes) ? body.themes.map(normalizeTheme) : current.themes,
-      currentSkinId: body.currentSkinId || body.activeThemeSkin || current.currentSkinId || current.activeThemeSkin,
-      activeThemeSkin: body.activeThemeSkin || body.currentSkinId || current.activeThemeSkin
-    })
-    sendJson(res, 200, { ok: true, data: await saveSettings({ ...current, ...themeSettings }) })
     return
   }
 
