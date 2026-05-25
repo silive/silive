@@ -3,6 +3,39 @@ const { applyTheme } = require("../../utils/theme")
 const { isPromotionEnabled, isReviewMode, isStoreFeaturesEnabled } = require("../../utils/review")
 const { copyText } = require("../../utils/privacy")
 
+const STORE_IDENTITY_CACHE_KEY = "storeIdentityCache"
+const STORE_IDENTITY_CACHE_TTL = 5 * 60 * 1000
+
+function readStoreIdentityCache() {
+  try {
+    const cache = wx.getStorageSync(STORE_IDENTITY_CACHE_KEY)
+    if (!cache || !cache.checkedAt || Date.now() - Number(cache.checkedAt || 0) > STORE_IDENTITY_CACHE_TTL) {
+      if (cache) console.log("[store-identity-expired]", { hasCache: true })
+      return null
+    }
+    return cache
+  } catch (error) {
+    return null
+  }
+}
+
+function writeStoreIdentityCache(payload = {}) {
+  try {
+    wx.setStorageSync(STORE_IDENTITY_CACHE_KEY, {
+      isStoreOwner: !!payload.isStoreOwner,
+      storeId: payload.storeId || "",
+      storeName: payload.storeName || "",
+      checkedAt: Date.now()
+    })
+  } catch (error) {}
+}
+
+function clearStoreIdentityCache() {
+  try {
+    wx.removeStorageSync(STORE_IDENTITY_CACHE_KEY)
+  } catch (error) {}
+}
+
 Page({
   data: {
     userInfo: {},
@@ -32,6 +65,9 @@ Page({
     storeChecked: false,
     storeBound: false,
     isStoreManager: false,
+    isStoreOwner: false,
+    identityLoading: false,
+    storeIdentityReady: false,
     storeInfo: null,
     storeStats: null,
     storeConflictMessage: "",
@@ -65,6 +101,7 @@ Page({
     const { getLoginState } = require("../../utils/auth")
     const state = getLoginState()
     const memberAvatar = wx.getStorageSync("memberAvatar") || ""
+    const ownerCache = state.loggedIn ? readStoreIdentityCache() : null
     const userInfo = {
       ...(this.data.userInfo || {}),
       avatarUrl: memberAvatar || this.data.userInfo.avatarUrl || "",
@@ -76,9 +113,12 @@ Page({
       memberPhone: state.phone,
       maskedPhone: this.maskPhone(state.phone),
       storeChecked: !state.loggedIn,
-      storeBound: state.loggedIn ? this.data.storeBound : false,
-      isStoreManager: state.loggedIn ? this.data.isStoreManager : false,
-      storeInfo: state.loggedIn ? this.data.storeInfo : null,
+      identityLoading: !!state.loggedIn,
+      storeIdentityReady: !state.loggedIn || !!(ownerCache && ownerCache.isStoreOwner),
+      storeBound: state.loggedIn ? !!(ownerCache && ownerCache.isStoreOwner) : false,
+      isStoreManager: state.loggedIn ? !!(ownerCache && ownerCache.isStoreOwner) : false,
+      isStoreOwner: state.loggedIn ? !!(ownerCache && ownerCache.isStoreOwner) : false,
+      storeInfo: state.loggedIn && ownerCache && ownerCache.isStoreOwner ? { id: ownerCache.storeId, name: ownerCache.storeName } : null,
       storeStats: state.loggedIn ? this.data.storeStats : null,
       storeConflictMessage: state.loggedIn ? this.data.storeConflictMessage : ""
     })
@@ -202,6 +242,9 @@ Page({
         storeChecked: false,
         storeBound: false,
         isStoreManager: false,
+        isStoreOwner: false,
+        identityLoading: true,
+        storeIdentityReady: false,
         storeInfo: null,
         storeStats: null
       })
@@ -311,26 +354,33 @@ Page({
 
   loadStoreMe() {
     if (!this.data.storeFeaturesEnabled) {
-      this.setData({ storeChecked: true, storeBound: false, isStoreManager: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
+      this.setData({ storeChecked: true, identityLoading: false, storeIdentityReady: true, storeBound: false, isStoreManager: false, isStoreOwner: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
       return
     }
     if (!this.data.loggedIn) {
-      this.setData({ storeChecked: true, storeBound: false, isStoreManager: false, storeInfo: null, storeStats: null })
+      clearStoreIdentityCache()
+      this.setData({ storeChecked: true, identityLoading: false, storeIdentityReady: true, storeBound: false, isStoreManager: false, isStoreOwner: false, storeInfo: null, storeStats: null })
       return
     }
-    this.setData({ storeChecked: false, storeConflictMessage: "" })
+    const { getLoginState, clearExpiredLoginState } = require("../../utils/auth")
+    const loginState = getLoginState()
+    console.log("[profile-identity-check]", {
+      hasToken: !!loginState.hasToken,
+      hasPhone: !!loginState.hasPhone
+    })
+    this.setData({ storeChecked: false, identityLoading: true, storeIdentityReady: false, storeConflictMessage: "" })
     const { request } = require("../../utils/api")
     request("/api/store/me")
       .then(data => {
-        console.log("[store-me] profile response", {
+        console.log("[store-identity-result]", {
           hasUserSession: !!wx.getStorageSync("userSession"),
           ok: data.ok !== false,
           bound: !!data.bound,
+          storeBound: !!data.storeBound,
+          hasStoreId: !!data.storeId,
           error: data.error || "",
           message: data.message || "",
-          storeName: data.storeInfo && data.storeInfo.name || "",
-          debugStatus: data.debugStatus || "",
-          managerPhone: data.storeInfo && data.storeInfo.managerPhone || ""
+          debugStatus: data.debugStatus || ""
         })
         const levelMap = { display: "展示点", pickup: "自提点", supplier: "供货点", partner: "合伙点" }
         const storeInfo = data.storeInfo
@@ -343,18 +393,42 @@ Page({
           storeInfo?.id ||
           /manager|owner|负责人|店长/.test(String(data.role || data.storeRole || storeInfo?.storeRole || storeInfo?.role || ""))
         )
+        if (isStoreManager) {
+          writeStoreIdentityCache({
+            isStoreOwner: true,
+            storeId: data.storeId || storeInfo?.id || "",
+            storeName: storeInfo?.name || ""
+          })
+        } else {
+          clearStoreIdentityCache()
+        }
         this.setData({
           storeChecked: true,
-          storeBound: !!data.bound,
+          identityLoading: false,
+          storeIdentityReady: true,
+          storeBound: !!(data.bound || data.storeBound || data.storeId || storeInfo?.id),
           isStoreManager,
+          isStoreOwner: isStoreManager,
           storeInfo,
           storeStats: data.stats || null,
           storeConflictMessage: data.error || ""
         })
         if (data.error) wx.showToast({ title: data.error, icon: "none" })
       })
-      .catch(() => {
-        this.setData({ storeChecked: true, storeBound: false, isStoreManager: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
+      .catch(error => {
+        console.warn("[store-identity-error]", {
+          statusCode: error.statusCode || 0,
+          message: error.message || "unknown"
+        })
+        if (error.statusCode === 401 || /登录|授权/.test(error.message || "")) {
+          clearExpiredLoginState()
+          clearStoreIdentityCache()
+          this.refreshLoginState()
+          wx.showToast({ title: "登录状态已过期，请重新登录", icon: "none" })
+          return
+        }
+        clearStoreIdentityCache()
+        this.setData({ storeChecked: true, identityLoading: false, storeIdentityReady: true, storeBound: false, isStoreManager: false, isStoreOwner: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
       })
   },
 

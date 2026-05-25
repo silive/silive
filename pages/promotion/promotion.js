@@ -1,5 +1,5 @@
 const { apiUrl, request } = require("../../utils/api")
-const { loginWithPhoneDetail } = require("../../utils/auth")
+const { clearExpiredLoginState, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { isPromotionEnabled, isReviewMode } = require("../../utils/review")
 const { saveImage } = require("../../utils/privacy")
@@ -48,7 +48,8 @@ Page({
 
   onShow() {
     applyTheme(this)
-    const phone = wx.getStorageSync("memberPhone") || ""
+    const loginState = getLoginState()
+    const phone = loginState.phone || ""
     this.setData({ phone })
     this.loadStoreShareImage()
     if (!this.data.promotionEnabled) {
@@ -56,7 +57,7 @@ Page({
       wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/profile/profile" }) })
       return
     }
-    if (phone) {
+    if (loginState.loggedIn) {
       this.loadSummary(phone)
     } else {
       const localCode = wx.getStorageSync("profileInviteCode") || wx.getStorageSync("localUserId") || "U0000"
@@ -110,7 +111,19 @@ Page({
         this.refreshInviteLink(data.profile)
         this.loadPosterCode(data.profile?.inviteCode)
       })
-      .catch(() => wx.showToast({ title: "推广数据加载失败", icon: "none" }))
+      .catch(error => {
+        console.warn("[promotion-summary-error]", {
+          statusCode: error.statusCode || 0,
+          message: error.message || "unknown"
+        })
+        if (error.statusCode === 401 || /登录|授权/.test(error.message || "")) {
+          clearExpiredLoginState()
+          this.setData({ phone: "", loginVisible: true })
+          wx.showToast({ title: "登录状态已过期，请重新登录", icon: "none" })
+          return
+        }
+        wx.showToast({ title: "推广数据加载失败，请稍后重试", icon: "none" })
+      })
       .finally(() => this.setData({ loading: false }))
   },
 
@@ -133,7 +146,7 @@ Page({
       const title = "非常智造邀请海报"
       const shareImage = this.data.storeShareImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE
       wx.navigateTo({
-        url: `/pages/poster/poster?title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
+        url: `/pages/poster/poster?mode=promotion&title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
       })
     }).catch(error => {
       wx.showModal({ title: "小程序码生成失败", content: error.message || "请稍后重试", showCancel: false })

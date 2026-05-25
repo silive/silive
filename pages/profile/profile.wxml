@@ -16,7 +16,7 @@
     <navigator class="protocol-link" url="/pages/agreement/privacy">《隐私政策》</navigator>
   </view>
 
-  <view wx:if="{{promotionEnabled && loggedIn && storeChecked && !isStoreManager}}" class="wallet-card" style="{{walletCardStyle}}">
+  <view wx:if="{{promotionEnabled && loggedIn && storeIdentityReady && !identityLoading && !isStoreOwner}}" class="wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">推广奖励</view>
       <view class="wallet-value">¥{{actualPayable || pendingReward || '0.00'}}</view>
@@ -28,7 +28,7 @@
       <view class="wallet-note">订单完成后进入可结算</view>
     </view>
   </view>
-  <view wx:elif="{{loggedIn && storeChecked && isStoreManager}}" class="wallet-card store-wallet-card" style="{{walletCardStyle}}">
+  <view wx:elif="{{loggedIn && storeIdentityReady && isStoreOwner}}" class="wallet-card store-wallet-card" style="{{walletCardStyle}}">
     <view>
       <view class="wallet-label">当前可结算</view>
       <view class="wallet-value">¥{{storeStats.actualPayable || storeStats.payableTotal || '0.00'}}</view>
@@ -38,6 +38,9 @@
       <view class="wallet-pending">累计已结算 ¥{{storeStats.settledTotal || '0.00'}}</view>
       <view class="wallet-note">完成自提/订单确认后进入可结算</view>
     </view>
+  </view>
+  <view wx:elif="{{loggedIn && identityLoading && !storeIdentityReady}}" class="reward-login-tip" style="{{cardStyle}}">
+    正在加载身份...
   </view>
   <view wx:elif="{{promotionEnabled && !loggedIn}}" class="reward-login-tip" style="{{cardStyle}}">
     登录后查看推荐奖励和订单进度
@@ -52,17 +55,22 @@
         <view class="feature-subtitle" style="{{mutedTextStyle}}">查看进度</view>
       </button>
       <block wx:if="{{promotionEnabled || storeFeaturesEnabled}}">
-        <button wx:if="{{storeFeaturesEnabled && loggedIn && isStoreManager}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
+        <button wx:if="{{storeFeaturesEnabled && loggedIn && storeIdentityReady && isStoreOwner}}" class="feature-card" style="{{cardStyle}}" bindtap="goStoreCenter">
           <view class="feature-icon" style="{{iconBadgeStyle}}">店</view>
           <view class="feature-title">门店中心</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">订单与收益</view>
+        </button>
+        <button wx:elif="{{storeFeaturesEnabled && loggedIn && identityLoading && !storeIdentityReady}}" class="feature-card" style="{{cardStyle}}">
+          <view class="feature-icon" style="{{iconBadgeStyle}}">…</view>
+          <view class="feature-title">身份确认中</view>
+          <view class="feature-subtitle" style="{{mutedTextStyle}}">正在加载</view>
         </button>
         <button wx:elif="{{storeFeaturesEnabled && loggedIn && storeConflictMessage}}" class="feature-card" style="{{cardStyle}}">
           <view class="feature-icon" style="{{iconBadgeStyle}}">!</view>
           <view class="feature-title">门店异常</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">{{storeConflictMessage}}</view>
         </button>
-        <button wx:if="{{promotionEnabled && !isStoreManager}}" class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
+        <button wx:if="{{promotionEnabled && (!loggedIn || (loggedIn && storeIdentityReady && !identityLoading && !isStoreOwner))}}" class="feature-card" style="{{cardStyle}}" bindtap="goPromotion">
           <view class="feature-icon" style="{{iconBadgeStyle}}">¥</view>
           <view class="feature-title">我的推广</view>
           <view class="feature-subtitle" style="{{mutedTextStyle}}">分享好物</view>
