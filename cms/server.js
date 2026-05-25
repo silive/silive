@@ -8268,11 +8268,6 @@ async function handle(req, res) {
     return
   }
 
-  if (url.pathname.startsWith("/api/admin/model-candidates")) {
-    sendJson(res, 410, { ok: false, message: "模型选品库功能已下线" })
-    return
-  }
-
   if (url.pathname === "/api/admin/orders" && req.method === "GET") {
     sendJson(res, 200, await getOrders({ keyword: url.searchParams.get("keyword"), status: url.searchParams.get("status") }))
     return
