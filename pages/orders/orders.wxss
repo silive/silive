@@ -591,20 +591,29 @@ textarea {
 .refund-images {
   display: flex;
   flex-wrap: wrap;
-  gap: 14rpx;
-  margin-top: 16rpx;
+  align-items: flex-start;
+  gap: 16rpx;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 20rpx;
+  box-sizing: border-box;
 }
 
 .refund-image-wrap {
   position: relative;
-  width: 168rpx;
-  height: 168rpx;
+  width: 160rpx;
+  height: 160rpx;
+  flex: 0 0 160rpx;
+  border-radius: 24rpx;
+  overflow: visible;
 }
 
 .refund-image {
-  width: 168rpx;
-  height: 168rpx;
-  border-radius: 18rpx;
+  display: block;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 24rpx;
+  background: #FFF3E8;
 }
 
 .refund-remove {
@@ -622,6 +631,55 @@ textarea {
   color: #fff;
   font-size: 24rpx;
   line-height: 1;
+}
+
+.refund-upload-card {
+  flex: 0 0 160rpx;
+  width: 160rpx;
+  height: 160rpx;
+  min-width: 160rpx;
+  min-height: 160rpx;
+  max-width: 160rpx;
+  margin: 0;
+  padding: 0 12rpx;
+  border: 1rpx dashed #FFD9BF;
+  border-radius: 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+  line-height: 1.2;
+  white-space: normal;
+  overflow: hidden;
+}
+
+.refund-upload-card::after {
+  border: none;
+}
+
+.upload-plus {
+  color: #FF5A00;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.upload-text {
+  color: #FF5A00;
+  font-size: 21rpx;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.upload-count {
+  color: #9A6B47;
+  font-size: 19rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .modal-actions {

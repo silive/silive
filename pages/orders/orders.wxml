@@ -154,12 +154,16 @@
         <view class="field">售后原因<textarea value="{{afterSaleForm.afterSalesReason}}" data-field="afterSalesReason" bindinput="onRefundInput" placeholder="请填写售后原因"></textarea></view>
         <view class="field">问题说明<textarea value="{{afterSaleForm.afterSalesDesc}}" data-field="afterSalesDesc" bindinput="onRefundInput" placeholder="补充说明问题现象、处理诉求"></textarea></view>
         <view class="field">联系电话<input value="{{afterSaleForm.contactPhone}}" data-field="contactPhone" bindinput="onRefundInput" type="number" placeholder="请填写联系电话" /></view>
-        <button class="upload-btn" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">上传图片凭证（最多6张）</button>
-        <view class="refund-images" wx:if="{{afterSaleForm.afterSalesImages.length}}">
+        <view class="refund-images">
           <view class="refund-image-wrap" wx:for="{{afterSaleForm.afterSalesImages}}" wx:key="*this">
             <image class="refund-image" src="{{item}}" mode="aspectFill" />
             <button class="refund-remove" bindtap="removeRefundImage" data-index="{{index}}">×</button>
           </view>
+          <button wx:if="{{afterSaleForm.afterSalesImages.length !== 6}}" class="upload-btn refund-upload-card" style="{{secondaryButtonStyle}}" bindtap="chooseRefundImage">
+            <text class="upload-plus">＋</text>
+            <text class="upload-text">上传图片凭证</text>
+            <text class="upload-count">最多6张</text>
+          </button>
         </view>
         <view class="muted refund-note" style="{{mutedTextStyle}}">提交后进入后台审核，不会自动退款。</view>
       </scroll-view>

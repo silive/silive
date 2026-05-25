@@ -69,10 +69,25 @@ function getPosterCopy(mode) {
   }
 }
 
+function decodeOption(value = "") {
+  return decodeURIComponent(value || "")
+}
+
+function inferPosterMode(options = {}) {
+  const explicit = String(options.mode || "").trim()
+  if (explicit) return explicit
+  const path = decodeOption(options.path || "")
+  if (options.invite || options.inviterCode || options.inviteCode || /[?&](invite|inviterCode|inviteCode)=/.test(path)) return "promotion"
+  if (options.store_id || options.storeId || /[?&](store_id|storeId)=/.test(path)) return "store"
+  if (options.productId || options.productCode || /[?&](id|productId|productCode)=/.test(path)) return "product"
+  return "product"
+}
+
 Page({
   data: {
     title: "商品海报",
     mode: "product",
+    posterCopy: getPosterCopy("product"),
     image: "",
     code: "",
     path: "",
@@ -86,16 +101,18 @@ Page({
 
   onLoad(options) {
     applyTheme(this)
-    const mode = options.mode || "product"
-    const title = decodeURIComponent(options.title || (mode === "product" ? "商品海报" : "活动海报"))
+    const mode = inferPosterMode(options)
+    const posterCopy = getPosterCopy(mode)
+    const title = decodeOption(options.title || (mode === "product" ? "商品海报" : posterCopy.headline || "活动海报"))
     wx.setNavigationBarTitle({ title })
     this.setData({
       title,
       mode,
-      image: decodeURIComponent(options.image || ""),
-      code: decodeURIComponent(options.code || ""),
-      path: decodeURIComponent(options.path || ""),
-      shareImage: decodeURIComponent(options.shareImage || "")
+      posterCopy,
+      image: decodeOption(options.image || ""),
+      code: decodeOption(options.code || options.inviteCode || options.inviterCode || options.invite || options.productCode || options.storeId || options.store_id || ""),
+      path: decodeOption(options.path || ""),
+      shareImage: decodeOption(options.shareImage || "")
     })
     setTimeout(() => this.generatePoster(), 200)
   },
@@ -150,7 +167,7 @@ Page({
         ctx.fillText(isStorePoster ? posterCopy.headline : (this.data.title || posterCopy.headline || "非常智造"), 82, isStorePoster ? 420 : 512)
         ctx.setFontSize(28)
         ctx.setFillStyle("#6B7280")
-        ctx.fillText(isStorePoster ? posterCopy.subline : "定制礼品推荐", 82, isStorePoster ? 470 : 562)
+        ctx.fillText(posterCopy.subline, 82, isStorePoster ? 470 : 562)
         ctx.fillText("3D打印 · 激光雕刻 · 创意好物", 82, isStorePoster ? 512 : 604)
         if (qrImage && qrImage.path && this.data.code) {
           ctx.setFillStyle("#FFF3E8")

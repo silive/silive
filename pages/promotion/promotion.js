@@ -146,7 +146,7 @@ Page({
       const title = "非常智造邀请海报"
       const shareImage = this.data.storeShareImage || DEFAULT_SHARE_IMAGE || ONLINE_SHARE_IMAGE
       wx.navigateTo({
-        url: `/pages/poster/poster?mode=promotion&title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
+        url: `/pages/poster/poster?mode=promotion&title=${encodeURIComponent(title)}&image=${encodeURIComponent(image)}&code=${encodeURIComponent(code)}&inviteCode=${encodeURIComponent(code)}&inviterCode=${encodeURIComponent(code)}&path=${encodeURIComponent(this.buildInviteLink())}&shareImage=${encodeURIComponent(shareImage)}`
       })
     }).catch(error => {
       wx.showModal({ title: "小程序码生成失败", content: error.message || "请稍后重试", showCancel: false })
