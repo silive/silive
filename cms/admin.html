@@ -450,6 +450,14 @@
     .media-tools button { height: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: #f5f5f7; color: #1F2933; font-size: 12px; font-weight: 800; cursor: pointer; }
     .media-tools input[type="file"] { width: 118px; height: 28px; margin: 0; padding: 4px; font-size: 11px; }
     .media-add { width: 100%; height: 38px; border: 1px dashed #d9d4d1; border-radius: 999px; background: rgba(255,255,255,.72); color: #6B7280; font-weight: 850; cursor: pointer; }
+    .media-batch-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .media-batch-tools .media-add { width: auto; min-width: 150px; padding: 0 18px; border-style: solid; border-color: rgba(255,106,0,.28); background: #FFF7F0; color: #E94B00; }
+    .media-batch-tools .secondary { height: 38px; }
+    .media-selection-count { color: #6B7280; font-size: 13px; font-weight: 750; }
+    .media-upload-status { display: block; min-height: 18px; margin-top: 6px; color: #6B7280; font-size: 12px; font-weight: 750; line-height: 1.45; }
+    .media-upload-status.uploading { color: #E94B00; }
+    .media-upload-status.success { color: #087443; }
+    .media-upload-status.error { color: #b42318; }
     .benefit-list { display: grid; gap: 10px; margin-top: 12px; }
     .benefit-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 78px; gap: 10px; align-items: center; }
     .benefit-row input { margin-top: 0; }
@@ -928,6 +936,7 @@
     let drawerMode = ""
     let drawerIndex = -1
     let drawerDirty = false
+    const pendingProductMediaFiles = new Map()
     const selectedProducts = new Set()
     const defaultCategoryTree = {
       "激光定制": ["照片雕刻", "刻字礼品", "首饰吊牌", "文具刻字", "手机配件", "自带物品加工", "企业LOGO"],
@@ -1386,6 +1395,7 @@
     }
     function closeDrawer(force = false) {
       if (!force && drawerDirty && !confirm("当前内容尚未保存，确认关闭吗？")) return false
+      resetPendingProductMediaFiles()
       $("detailDrawer").classList.remove("show")
       $("detailDrawer").querySelector(".drawer")?.classList.remove("sales-agent-drawer")
       drawerMode = ""
@@ -1395,6 +1405,27 @@
       $("drawerBody").innerHTML = ""
       $("drawerActions").innerHTML = ""
       return true
+    }
+    function resetPendingProductMediaFiles() {
+      pendingProductMediaFiles.forEach(item => {
+        if (item.objectUrl) URL.revokeObjectURL(item.objectUrl)
+      })
+      pendingProductMediaFiles.clear()
+    }
+    function mediaFileIdentity(file) {
+      return `${file.name}::${file.size}::${file.lastModified || 0}`
+    }
+    function validateMediaFile(file, kind = "image") {
+      const ext = String(file.name || "").split(".").pop().toLowerCase()
+      if (kind === "video") {
+        if (ext !== "mp4" || file.type !== "video/mp4") throw new Error("视频格式不支持，请选择mp4")
+        if (file.size > 50 * 1024 * 1024) throw new Error("视频超过50MB，请压缩后上传")
+        return
+      }
+      const allowedExts = ["jpg", "jpeg", "png", "webp"]
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
+      if (!allowedExts.includes(ext) || !allowedTypes.includes(file.type)) throw new Error("图片格式不支持，请选择jpg/jpeg/png/webp")
+      if (file.size > 10 * 1024 * 1024) throw new Error("图片超过10MB，请压缩后上传")
     }
     async function api(path, method = "GET", body) {
       const controller = new AbortController()
@@ -1475,16 +1506,7 @@
       return data.url
     }
     async function uploadMedia(file, kind = "image") {
-      const ext = file.name.split(".").pop().toLowerCase()
-      if (kind === "video") {
-        if (ext !== "mp4" || file.type !== "video/mp4") throw new Error("视频格式不支持，请选择mp4")
-        if (file.size > 50 * 1024 * 1024) throw new Error("视频超过50MB，请压缩后上传")
-      } else {
-        const allowedExts = ["jpg", "jpeg", "png", "webp"]
-        const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
-        if (!allowedExts.includes(ext) || !allowedTypes.includes(file.type)) throw new Error("图片格式不支持，请选择jpg/png/webp")
-        if (file.size > 10 * 1024 * 1024) throw new Error("图片超过10MB，请压缩后上传")
-      }
+      validateMediaFile(file, kind)
       const form = new FormData()
       form.append("file", file)
       const res = await fetch("/api/upload", { method: "POST", body: form })
@@ -1567,21 +1589,29 @@
     function mediaManager(label, key, value, kind = "image") {
       const list = normalizeMediaList(value)
       const accept = kind === "video" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+      const isGallery = key === "galleryImages"
       return `<div class="drawer-section" data-media-manager="${key}" data-media-kind="${kind}">
         <h4>${label}</h4>
         <div class="upload-help">${kind === "video" ? "支持 mp4，最大 50MB。" : "支持 jpg、jpeg、png、webp，最大 10MB。可新增、删除、排序。"}</div>
         <div class="media-list">${list.map((url, index) => mediaRow(key, url, index, kind, accept)).join("")}</div>
-        <button class="media-add" data-action="add-media" data-key="${key}" data-kind="${kind}">新增${kind === "video" ? "视频" : "图片"}</button>
+        ${isGallery ? `<div class="media-batch-tools">
+          <input type="file" hidden multiple accept="${accept}" data-media-batch-upload="${key}">
+          <button type="button" class="media-add" data-action="pick-media-batch">批量添加图片</button>
+          <button type="button" class="secondary" data-action="add-media" data-key="${key}" data-kind="${kind}">手动填写图片地址</button>
+          <span class="media-selection-count" data-media-selection-count>已选择 0 张图片</span>
+        </div>` : `<button type="button" class="media-add" data-action="add-media" data-key="${key}" data-kind="${kind}">新增${kind === "video" ? "视频" : "图片"}</button>`}
       </div>`
     }
-    function mediaRow(key, url, index, kind, accept) {
+    function mediaRow(key, url, index, kind, accept, pending = null) {
       const preview = kind === "video"
         ? `<video class="media-thumb" src="${escapeHtml(url)}"></video>`
         : `<img class="media-thumb" src="${escapeHtml(url)}" alt="">`
-      return `<div class="media-row" data-media-row="${index}">
+      const pendingAttr = pending ? ` data-pending-media-token="${escapeHtml(pending.token)}"` : ""
+      return `<div class="media-row" data-media-row="${index}"${pendingAttr}>
         ${preview}
         <div>
           <input data-media-url="${key}" value="${escapeHtml(url)}" placeholder="${kind === "video" ? "视频地址" : "图片地址"}">
+          <span class="media-upload-status${pending ? "" : " success"}" data-media-upload-status>${pending ? `待上传：${escapeHtml(pending.file.name)}` : (url ? "已上传" : "")}</span>
           <div class="media-tools">
             <input type="file" accept="${accept}" data-media-upload="${key}" data-kind="${kind}">
             <button data-action="media-up" data-key="${key}" data-index="${index}">上移</button>
@@ -1590,6 +1620,85 @@
           </div>
         </div>
       </div>`
+    }
+    function updateGallerySelectionCount(manager) {
+      if (!manager) return
+      const countEl = manager.querySelector("[data-media-selection-count]")
+      if (!countEl) return
+      countEl.textContent = `已选择 ${manager.querySelectorAll("[data-pending-media-token]").length} 张图片`
+    }
+    function appendGalleryFiles(input) {
+      const manager = input.closest("[data-media-manager]")
+      const list = manager?.querySelector(".media-list")
+      if (!manager || !list) return
+      const existingIdentities = new Set(Array.from(pendingProductMediaFiles.values()).map(item => item.identity))
+      const batchIdentities = new Set()
+      const failures = []
+      let added = 0
+      Array.from(input.files || []).forEach(file => {
+        const identity = mediaFileIdentity(file)
+        if (existingIdentities.has(identity) || batchIdentities.has(identity)) {
+          failures.push(`${file.name}（已忽略重复文件）`)
+          return
+        }
+        try {
+          validateMediaFile(file, "image")
+        } catch (error) {
+          failures.push(`${file.name}（${error.message}）`)
+          return
+        }
+        const token = `gallery-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        const objectUrl = URL.createObjectURL(file)
+        const pending = { token, file, identity, objectUrl }
+        pendingProductMediaFiles.set(token, pending)
+        batchIdentities.add(identity)
+        const count = list.querySelectorAll("[data-media-row]").length
+        list.insertAdjacentHTML("beforeend", mediaRow("galleryImages", objectUrl, count, "image", ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp", pending))
+        added += 1
+      })
+      input.value = ""
+      updateGallerySelectionCount(manager)
+      if (added) {
+        drawerDirty = true
+        setStatus(`已添加 ${added} 张轮播图，保存商品时自动上传`)
+      }
+      if (failures.length) {
+        const message = failures.join("；")
+        setStatus(message)
+        alert(message)
+      }
+    }
+    async function uploadPendingGalleryFiles() {
+      const manager = $("drawerBody").querySelector('[data-media-manager="galleryImages"]')
+      if (!manager) return
+      const failures = []
+      const rows = Array.from(manager.querySelectorAll("[data-pending-media-token]"))
+      for (const row of rows) {
+        const token = row.dataset.pendingMediaToken
+        const pending = pendingProductMediaFiles.get(token)
+        if (!pending) continue
+        const statusEl = row.querySelector("[data-media-upload-status]")
+        statusEl.textContent = `上传中：${pending.file.name}`
+        statusEl.className = "media-upload-status uploading"
+        try {
+          const url = await uploadMedia(pending.file, "image")
+          if (!url) throw new Error("上传接口未返回图片地址")
+          row.querySelector("[data-media-url]").value = url
+          row.querySelector(".media-thumb").src = url
+          statusEl.textContent = `已上传：${pending.file.name}`
+          statusEl.className = "media-upload-status success"
+          row.removeAttribute("data-pending-media-token")
+          if (pending.objectUrl) URL.revokeObjectURL(pending.objectUrl)
+          pendingProductMediaFiles.delete(token)
+        } catch (error) {
+          console.error("[admin-gallery-upload]", { fileName: pending.file.name, message: error.message })
+          statusEl.textContent = `上传失败：${pending.file.name}（${error.message || "请重试"}）`
+          statusEl.className = "media-upload-status error"
+          failures.push(`${pending.file.name}：${error.message || "上传失败"}`)
+        }
+      }
+      updateGallerySelectionCount(manager)
+      if (failures.length) throw new Error(`以下图片上传失败：${failures.join("；")}`)
     }
     function switchView(name) {
       currentView = name
@@ -2047,6 +2156,7 @@
     function openProductDrawer(index) {
       const item = products[index]
       if (!item) return
+      resetPendingProductMediaFiles()
       drawerMode = "product"
       drawerIndex = index
       $("drawerTitle").textContent = "商品详情编辑"
@@ -2125,15 +2235,17 @@
         const key = manager.dataset.mediaManager
         const values = Array.from(manager.querySelectorAll("[data-media-url]")).map(input => input.value.trim()).filter(Boolean)
         if (key === "videoUrl") target[key] = values[0] || ""
-        else target[key] = values
+        else target[key] = key === "galleryImages" ? Array.from(new Set(values)) : values
       })
     }
     function saveProductDrawer(button) {
-      collectProductDrawer()
-      return withButtonLoading(button, "保存中...", () => saveProductsAndRefresh("商品已保存").then(() => {
+      return withButtonLoading(button, "上传并保存中...", async () => {
+        await uploadPendingGalleryFiles()
+        collectProductDrawer()
+        await saveProductsAndRefresh("商品已保存")
         drawerDirty = false
         closeDrawer(true)
-      }))
+      })
     }
     function openOrderDrawer(index) {
       const order = orders[index]
@@ -3444,14 +3556,26 @@
         const accept = kind === "video" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
         const count = manager.querySelectorAll("[data-media-row]").length
         manager.querySelector(".media-list").insertAdjacentHTML("beforeend", mediaRow(key, "", count, kind, accept))
+        drawerDirty = true
+      }
+      if (event.target.dataset.action === "pick-media-batch") {
+        event.target.closest("[data-media-manager]")?.querySelector("[data-media-batch-upload]")?.click()
       }
       if (["media-up", "media-down", "media-remove"].includes(event.target.dataset.action)) {
         const manager = event.target.closest("[data-media-manager]")
         const row = event.target.closest("[data-media-row]")
         const list = manager.querySelector(".media-list")
-        if (event.target.dataset.action === "media-remove") row.remove()
+        if (event.target.dataset.action === "media-remove") {
+          const token = row.dataset.pendingMediaToken
+          const pending = token ? pendingProductMediaFiles.get(token) : null
+          if (pending?.objectUrl) URL.revokeObjectURL(pending.objectUrl)
+          if (token) pendingProductMediaFiles.delete(token)
+          row.remove()
+          updateGallerySelectionCount(manager)
+        }
         if (event.target.dataset.action === "media-up" && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling)
         if (event.target.dataset.action === "media-down" && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row)
+        drawerDirty = true
       }
       if (event.target.dataset.action === "remove-product") {
         if (!confirm("确认删除该商品？此操作保存后生效。")) return
@@ -3752,17 +3876,46 @@
       }).catch(error => setStatus(error.message))
     })
     document.body.addEventListener("change", event => {
+      if (event.target.dataset.mediaBatchUpload) {
+        appendGalleryFiles(event.target)
+        return
+      }
       if (!event.target.dataset.mediaUpload || !event.target.files?.[0]) return
       const kind = event.target.dataset.kind || "image"
       const row = event.target.closest("[data-media-row]")
       const inputEl = row.querySelector("[data-media-url]")
       const previewEl = row.querySelector(".media-thumb")
+      const statusEl = row.querySelector("[data-media-upload-status]")
+      const file = event.target.files[0]
+      event.target.value = ""
       setStatus(kind === "video" ? "视频上传中..." : "图片上传中...")
-      uploadMedia(event.target.files[0], kind).then(url => {
+      if (statusEl) {
+        statusEl.textContent = `上传中：${file.name}`
+        statusEl.className = "media-upload-status uploading"
+      }
+      uploadMedia(file, kind).then(url => {
+        const token = row.dataset.pendingMediaToken
+        const pending = token ? pendingProductMediaFiles.get(token) : null
         inputEl.value = url
         previewEl.src = url
+        if (pending?.objectUrl) URL.revokeObjectURL(pending.objectUrl)
+        if (token) pendingProductMediaFiles.delete(token)
+        row.removeAttribute("data-pending-media-token")
+        updateGallerySelectionCount(row.closest("[data-media-manager]"))
+        if (statusEl) {
+          statusEl.textContent = `已上传：${file.name}`
+          statusEl.className = "media-upload-status success"
+        }
+        drawerDirty = true
         setStatus("上传成功，记得保存商品")
-      }).catch(error => setStatus(error.message))
+      }).catch(error => {
+        console.error("[admin-media-upload]", { fileName: file.name, message: error.message })
+        if (statusEl) {
+          statusEl.textContent = `上传失败：${file.name}（${error.message || "请重试"}）`
+          statusEl.className = "media-upload-status error"
+        }
+        setStatus(`${file.name}：${error.message || "上传失败"}`)
+      })
     })
     document.body.addEventListener("change", event => {
       if (!event.target.dataset.orderFinalUpload || !event.target.files?.[0]) return
