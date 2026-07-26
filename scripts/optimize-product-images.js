@@ -214,10 +214,18 @@ function publicUrlFor(oldUrl, filename) {
 function groupReferencesByFile(references) {
   const groups = new Map()
   let externalOrMissing = 0
+  let alreadyOptimized = 0
   for (const reference of references) {
     const resolved = localFileForUrl(reference.url)
     if (!resolved) {
       externalOrMissing += 1
+      continue
+    }
+    if (
+      resolved.relative.startsWith(`products${path.sep}`) &&
+      path.extname(resolved.relative).toLowerCase() === ".webp"
+    ) {
+      alreadyOptimized += 1
       continue
     }
     const group = groups.get(resolved.file) || {
@@ -230,7 +238,7 @@ function groupReferencesByFile(references) {
     group.references.push(reference)
     groups.set(resolved.file, group)
   }
-  return { groups: [...groups.values()], externalOrMissing }
+  return { groups: [...groups.values()], externalOrMissing, alreadyOptimized }
 }
 
 function replaceExactUrls(value, mapping, stats = { replacements: 0 }) {
@@ -539,6 +547,7 @@ async function migrate(options, pool) {
       convertedImages: records.filter(item => item.status !== "failed").length,
       failedImages: failed,
       externalOrMissing: grouped.externalOrMissing,
+      alreadyOptimized: grouped.alreadyOptimized,
       affectedProducts: changes.productChanges.length,
       databaseFields: changes.databaseFields,
       referenceOccurrences: changes.referenceOccurrences,
