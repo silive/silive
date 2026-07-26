@@ -4,6 +4,10 @@ const fs = require("fs")
 const path = require("path")
 const crypto = require("crypto")
 const { execFileSync } = require("child_process")
+const {
+  MAX_PRODUCT_IMAGE_SIZE,
+  optimizeProductImageUpload
+} = require("./product-image-optimizer")
 
 let mysql
 try {
@@ -8054,6 +8058,7 @@ async function handle(req, res) {
       return
     }
     const isPublicUpload = url.pathname === "/api/upload/public"
+    const isProductImageUpload = url.pathname === "/api/upload" && url.searchParams.get("purpose") === "product-image"
     const userSession = isPublicUpload ? userSessionFromRequest(req) : null
     const loggedInPublicUpload = !!userSession?.openid
     if (isPublicUpload && !loggedInPublicUpload && !checkPublicUploadRateLimit(req)) {
@@ -8075,6 +8080,40 @@ async function handle(req, res) {
     }
     if (isPublicUpload && files.length > 9) {
       sendJson(res, 400, { ok: false, message: "每次最多上传9张图片" })
+      return
+    }
+    if (isProductImageUpload) {
+      const uploaded = []
+      for (const file of files) {
+        if (file.body.length > MAX_PRODUCT_IMAGE_SIZE) {
+          throw uploadInputError(413, "商品图片超过10MB")
+        }
+        let optimized
+        try {
+          optimized = await optimizeProductImageUpload({
+            buffer: file.body,
+            outputDir: productUploadsDir,
+            sourceName: file.filename || "product-image"
+          })
+        } catch (error) {
+          throw uploadInputError(400, error.message || "商品图片压缩失败")
+        }
+        uploaded.push({
+          url: `${PUBLIC_BASE_URL}/uploads/products/${optimized.filename}`,
+          type: "image",
+          width: optimized.width,
+          height: optimized.height,
+          originalSizeBytes: optimized.originalSizeBytes,
+          sizeBytes: optimized.sizeBytes
+        })
+      }
+      const first = uploaded[0]
+      sendJson(res, 200, {
+        ok: true,
+        ...first,
+        urls: uploaded.map(item => item.url),
+        type: "image"
+      })
       return
     }
     const uploaded = []

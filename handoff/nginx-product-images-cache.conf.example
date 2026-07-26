@@ -1,0 +1,16 @@
+# Review and merge into the existing api.feichangjiandan.xyz server block.
+# Back up the active Nginx config and run `nginx -t` before reloading.
+
+# New CMS uploads and migrated historical product images use new random/hash WebP
+# names under /uploads/products/. The old files remain under the existing /uploads/
+# location and are not overwritten.
+location ^~ /uploads/products/ {
+    alias /www/wwwroot/very-simple-custom/cms/uploads/products/;
+    expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    access_log off;
+    try_files $uri =404;
+}
+
+# Keep the existing broader /uploads/ rule at 30 days for legacy URLs. Do not
+# apply immutable caching to admin.html or API responses.

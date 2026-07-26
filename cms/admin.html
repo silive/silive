@@ -1202,12 +1202,13 @@
         const isProductMainImage = label.includes("商品主图")
         const sizeText = isBanner ? "Banner图：1200x500 像素，建议300KB以内" : "商品图：800x800 像素，建议300KB以内"
         const productMainImageTip = isProductMainImage ? "<br>商品主图建议 800×800 像素，重要文字和主体距离边缘至少 80px，避免不同设备显示时被裁切。" : ""
+        const optimizationText = isProductMainImage ? "系统会在服务端自动压缩并保持兼容图片格式" : "系统会自动生成前台压缩图，原图仅作备份"
         return `<label>${label}
           <div class="upload-row">
             <input data-key="${key}" value="${v}">
-            <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-upload-key="${key}">
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-upload-key="${key}"${isProductMainImage ? ' data-upload-purpose="product-image"' : ""}>
           </div>
-          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB<br>系统会自动生成前台压缩图，原图仅作备份${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}${productMainImageTip}</div>
+          <div class="upload-help">支持格式：jpg、jpeg、png、webp<br>建议尺寸：${sizeText}<br>文件大小限制：最大 10MB<br>${optimizationText}${isBanner ? "<br>建议控制在 2MB 内，提升小程序加载速度" : ""}${productMainImageTip}</div>
           <img class="image-preview ${v ? "show" : ""}" src="${v}" alt="图片预览">
         </label>`
       }
@@ -1471,7 +1472,7 @@
           button.textContent = oldText
         })
     }
-    async function uploadImageData(file) {
+    async function uploadImageData(file, purpose = "") {
       const ext = file.name.split(".").pop().toLowerCase()
       const allowedExts = ["jpg", "jpeg", "png", "webp"]
       const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
@@ -1488,7 +1489,8 @@
       form.append("file", file)
       let res
       try {
-        res = await fetch("/api/upload", { method: "POST", body: form })
+        const endpoint = purpose === "product-image" ? "/api/upload?purpose=product-image" : "/api/upload"
+        res = await fetch(endpoint, { method: "POST", body: form })
       } catch (error) {
         throw new Error("上传失败，请重试")
       }
@@ -1505,11 +1507,14 @@
       const data = await uploadImageData(file)
       return data.url
     }
-    async function uploadMedia(file, kind = "image") {
+    async function uploadMedia(file, kind = "image", purpose = "") {
       validateMediaFile(file, kind)
       const form = new FormData()
       form.append("file", file)
-      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const endpoint = purpose === "product-image" && kind === "image"
+        ? "/api/upload?purpose=product-image"
+        : "/api/upload"
+      const res = await fetch(endpoint, { method: "POST", body: form })
       if (res.status === 401) {
         location.href = "/login"
         return ""
@@ -1681,7 +1686,7 @@
         statusEl.textContent = `上传中：${pending.file.name}`
         statusEl.className = "media-upload-status uploading"
         try {
-          const url = await uploadMedia(pending.file, "image")
+          const url = await uploadMedia(pending.file, "image", "product-image")
           if (!url) throw new Error("上传接口未返回图片地址")
           row.querySelector("[data-media-url]").value = url
           row.querySelector(".media-thumb").src = url
@@ -3843,7 +3848,7 @@
       const inputEl = event.target.closest("label").querySelector(`[data-key='${event.target.dataset.uploadKey}']`)
       const previewEl = event.target.closest("label").querySelector(".image-preview")
       setStatus("图片上传中...")
-      uploadImageData(file).then(data => {
+      uploadImageData(file, event.target.dataset.uploadPurpose || "").then(data => {
         const url = data.url || ""
         inputEl.value = url
         previewEl.src = data.bannerUrl || data.optimizedUrl || data.webpUrl || url
@@ -3893,7 +3898,7 @@
         statusEl.textContent = `上传中：${file.name}`
         statusEl.className = "media-upload-status uploading"
       }
-      uploadMedia(file, kind).then(url => {
+      uploadMedia(file, kind, kind === "image" && drawerMode === "product" ? "product-image" : "").then(url => {
         const token = row.dataset.pendingMediaToken
         const pending = token ? pendingProductMediaFiles.get(token) : null
         inputEl.value = url
