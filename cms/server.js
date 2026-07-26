@@ -1958,10 +1958,15 @@ function pickBanner(banners, index) {
 function assertProductionRuntimeConfig() {
   if (!IS_PRODUCTION) return
   if (PAY_MOCK_ENV === "true") throw new Error("生产环境禁止 PAY_MOCK=true")
-  if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) {
-    throw new Error("生产环境必须配置 ADMIN_USER 和 ADMIN_PASSWORD，禁止使用默认后台账号")
+  const adminPasswordHash = String(process.env.ADMIN_PASSWORD_HASH || "")
+  const legacyAdminPassword = String(process.env.ADMIN_PASSWORD || "")
+  if (!process.env.ADMIN_USER || (!adminPasswordHash && !legacyAdminPassword)) {
+    throw new Error("生产环境必须配置 ADMIN_USER 和 ADMIN_PASSWORD_HASH，禁止使用默认后台账号")
   }
-  if (process.env.ADMIN_USER === "admin" || process.env.ADMIN_PASSWORD === "ChangeMe123!" || process.env.ADMIN_PASSWORD.length < 16) {
+  if (adminPasswordHash && !/^scrypt\$[a-f0-9]{32}\$[a-f0-9]{128}$/i.test(adminPasswordHash)) {
+    throw new Error("生产环境 ADMIN_PASSWORD_HASH 格式无效")
+  }
+  if (process.env.ADMIN_USER === "admin" || legacyAdminPassword === "ChangeMe123!" || (legacyAdminPassword && legacyAdminPassword.length < 16)) {
     throw new Error("生产环境后台账号密码不安全，请更换至少16位强密码")
   }
   if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
@@ -7313,8 +7318,12 @@ async function handle(req, res) {
     }
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const user = process.env.ADMIN_USER || "admin"
-    const pass = process.env.ADMIN_PASSWORD || "ChangeMe123!"
-    if (body.username !== user || body.password !== pass) {
+    const passwordHash = process.env.ADMIN_PASSWORD_HASH || ""
+    const legacyPassword = process.env.ADMIN_PASSWORD || "ChangeMe123!"
+    const passwordMatches = passwordHash
+      ? verifyPassword(body.password || "", passwordHash)
+      : body.password === legacyPassword
+    if (body.username !== user || !passwordMatches) {
       if (recordAdminLoginFailure(req)) {
         sendJson(res, 429, { ok: false, message: "尝试次数过多，请稍后再试" })
         return
