@@ -137,7 +137,7 @@ async function main() {
   assert.match(server, /upload_shipping_info/)
   assert.match(server, /startWechatFulfillmentWorker\(\)/)
   assert.match(server, /startRefundSyncWorker\(\)/)
-  assert.match(server, /queryWechatRefundById/)
+  assert.match(server, /const queryRefundNo = order\.refundNo \|\| generateRefundNo\(order\.id\)/)
   assert.match(checkout, /ensureAuthenticated/)
   assert.match(checkout, /pendingOrderId/)
   assert.match(checkout, /requestKey: this\.data\.submitRequestKey/)

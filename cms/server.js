@@ -7781,32 +7781,15 @@ async function queryWechatRefundByNo(refundNo) {
   return result.data
 }
 
-async function queryWechatRefundById(refundId) {
-  if (!refundId) throw httpError(400, "缺少微信退款 ID")
-  if (PAY_MOCK || !IS_PRODUCTION) {
-    return { refund_id: refundId, status: "SUCCESS" }
-  }
-  const urlPath = `/v3/refund/domestic/refunds/refund-id/${encodeURIComponent(refundId)}`
-  const result = await requestJson(`https://api.mch.weixin.qq.com${urlPath}`, {
-    method: "GET",
-    headers: {
-      Authorization: wechatAuthorization("GET", urlPath, ""),
-      Accept: "application/json"
-    }
-  })
-  if (result.statusCode < 200 || result.statusCode >= 300) {
-    throw httpError(400, result.data.message || "微信退款查询失败")
-  }
-  return result.data
-}
-
 async function syncRefundStatus(orderId) {
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (!order) throw httpError(404, "订单不存在")
   if (!order.refundNo && !order.refundId) return { order, refund: null }
-  const refund = order.refundNo
-    ? await queryWechatRefundByNo(order.refundNo)
-    : await queryWechatRefundById(order.refundId)
+  // Older records may have kept only refund_id. This service generated
+  // out_refund_no deterministically, so recover that exact identifier and query;
+  // this endpoint never submits a new refund.
+  const queryRefundNo = order.refundNo || generateRefundNo(order.id)
+  const refund = await queryWechatRefundByNo(queryRefundNo)
   const status = refund.status || refund.refund_status || ""
   if (status === "SUCCESS") {
     return { order: await markRefundSuccess(order, refund), refund }
