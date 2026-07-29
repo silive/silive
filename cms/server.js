@@ -5569,7 +5569,8 @@ function chinaIsoTime(value = new Date()) {
     hour: "2-digit", minute: "2-digit", second: "2-digit",
     hour12: false
   }).formatToParts(safe).reduce((result, item) => ({ ...result, [item.type]: item.value }), {})
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+08:00`
+  const milliseconds = String(safe.getMilliseconds()).padStart(3, "0")
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}+08:00`
 }
 
 function maskedShippingContact(value) {
