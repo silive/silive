@@ -16,6 +16,11 @@ const {
   safeError: safeWecomError,
   sendWecomMarkdown
 } = require("./wecom-order-notifier")
+const {
+  claimDueNotifications,
+  compensateMissingPaidNotifications,
+  markOrderPaidAndEnqueue
+} = require("./wecom-order-outbox")
 
 let mysql
 try {
@@ -5218,7 +5223,7 @@ async function backfillOrderIdentity(orderId, identity = {}) {
   )
 }
 
-async function markOrderPaid(orderId, transactionId = "") {
+async function markOrderPaid(orderId, transactionId = "", options = {}) {
   if (!pool) {
     const orders = readJsonFile(ordersFile, []).map(normalizeOrder)
     const index = orders.findIndex(order => order.id === orderId)
@@ -5245,12 +5250,31 @@ async function markOrderPaid(orderId, transactionId = "") {
     console.warn("[pay] markOrderPaid order missing", { orderId })
     return false
   }
-  const result = await query(
-    "UPDATE orders SET payment_status = '已支付', status = '待发货', transaction_id = :transactionId, paid_at = NOW() WHERE id = :orderId AND payment_status <> '已支付'",
-    { orderId, transactionId }
-  )
-  const affectedRows = Number(result.affectedRows || 0)
-  console.log("[pay] markOrderPaid mysql update", { orderId, affectedRows, hasTransactionId: !!transactionId })
+  let affectedRows = 0
+  let notificationQueued = false
+  if (options.queueWecomNotification) {
+    const result = await markOrderPaidAndEnqueue({
+      pool,
+      orderId,
+      transactionId,
+      notificationType: WECOM_ORDER_PAID_NOTIFICATION
+    })
+    affectedRows = result.updated ? 1 : 0
+    notificationQueued = result.queued
+    setImmediate(() => runWecomOrderNotificationWorkerSafe())
+  } else {
+    const result = await query(
+      "UPDATE orders SET payment_status = '已支付', status = '待发货', transaction_id = :transactionId, paid_at = NOW() WHERE id = :orderId AND payment_status <> '已支付'",
+      { orderId, transactionId }
+    )
+    affectedRows = Number(result.affectedRows || 0)
+  }
+  console.log("[pay] markOrderPaid mysql update", {
+    orderId,
+    affectedRows,
+    notificationQueued,
+    hasTransactionId: !!transactionId
+  })
   if (!affectedRows) return false
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (order) {
@@ -5270,77 +5294,14 @@ function isWecomOrderNotificationEnabled() {
   return !!String(process.env.WECOM_ORDER_WEBHOOK_URL || "").trim()
 }
 
-async function ensureWecomOrderPaidNotification(orderId) {
-  if (!pool || !orderId) return { queued: false, reason: "database_unavailable" }
-  const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
-  if (!order || order.paymentStatus !== "已支付") {
-    return { queued: false, reason: "order_not_paid" }
-  }
-  const result = await query(
-    `INSERT IGNORE INTO order_notification_records
-      (order_id, notification_type, status, attempt_count, next_retry_at, created_at, updated_at)
-     VALUES
-      (:orderId, :notificationType, 'PENDING', 0, NOW(), NOW(), NOW())`,
-    { orderId, notificationType: WECOM_ORDER_PAID_NOTIFICATION }
-  )
-  const queued = Number(result.affectedRows || 0) === 1
-  console.log("[wecom-order-notification] queue", {
-    orderId,
-    queued,
-    configured: isWecomOrderNotificationEnabled()
-  })
-  setImmediate(() => runWecomOrderNotificationWorkerSafe())
-  return { queued, reason: queued ? "created" : "already_exists" }
-}
-
 async function claimDueWecomOrderNotifications(limit = 10) {
-  const rows = await query(
-    `SELECT id
-     FROM order_notification_records
-     WHERE notification_type = :notificationType
-       AND (
-         (status IN ('PENDING', 'RETRY') AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
-         OR (status = 'PROCESSING' AND updated_at < DATE_SUB(NOW(), INTERVAL 2 MINUTE))
-       )
-       AND attempt_count < :maxAttempts
-     ORDER BY COALESCE(next_retry_at, created_at), id
-     LIMIT ${Math.max(1, Math.min(50, Number(limit || 10)))}`,
-    {
-      notificationType: WECOM_ORDER_PAID_NOTIFICATION,
-      maxAttempts: WECOM_NOTIFICATION_MAX_ATTEMPTS
-    }
-  )
-  const claimed = []
-  for (const row of rows) {
-    const result = await query(
-      `UPDATE order_notification_records
-       SET status = 'PROCESSING',
-           attempt_count = attempt_count + 1,
-           updated_at = NOW()
-       WHERE id = :id
-         AND notification_type = :notificationType
-         AND attempt_count < :maxAttempts
-         AND (
-           (status IN ('PENDING', 'RETRY') AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
-           OR (status = 'PROCESSING' AND updated_at < DATE_SUB(NOW(), INTERVAL 2 MINUTE))
-         )`,
-      {
-        id: row.id,
-        notificationType: WECOM_ORDER_PAID_NOTIFICATION,
-        maxAttempts: WECOM_NOTIFICATION_MAX_ATTEMPTS
-      }
-    )
-    if (Number(result.affectedRows || 0) !== 1) continue
-    const records = await query(
-      `SELECT id, order_id, attempt_count
-       FROM order_notification_records
-       WHERE id = :id
-       LIMIT 1`,
-      { id: row.id }
-    )
-    if (records[0]) claimed.push(records[0])
-  }
-  return claimed
+  return claimDueNotifications({
+    pool,
+    notificationType: WECOM_ORDER_PAID_NOTIFICATION,
+    maxAttempts: WECOM_NOTIFICATION_MAX_ATTEMPTS,
+    limit,
+    lockMinutes: 2
+  })
 }
 
 async function completeWecomOrderNotification(record) {
@@ -5350,9 +5311,11 @@ async function completeWecomOrderNotification(record) {
          last_error = NULL,
          sent_at = NOW(),
          next_retry_at = NULL,
-         updated_at = NOW()
-     WHERE id = :id AND status = 'PROCESSING'`,
-    { id: record.id }
+         updated_at = NOW(),
+         claim_token = NULL,
+         processing_started_at = NULL
+     WHERE id = :id AND status = 'PROCESSING' AND claim_token = :claimToken`,
+    { id: record.id, claimToken: record.claim_token }
   )
 }
 
@@ -5366,10 +5329,13 @@ async function failWecomOrderNotification(record, error) {
      SET status = :status,
          last_error = :lastError,
          next_retry_at = ${exhausted ? "NULL" : `DATE_ADD(NOW(), INTERVAL ${delayMinutes} MINUTE)`},
+         claim_token = NULL,
+         processing_started_at = NULL,
          updated_at = NOW()
-     WHERE id = :id AND status = 'PROCESSING'`,
+     WHERE id = :id AND status = 'PROCESSING' AND claim_token = :claimToken`,
     {
       id: record.id,
+      claimToken: record.claim_token,
       status: exhausted ? "FAILED" : "RETRY",
       lastError
     }
@@ -5429,6 +5395,18 @@ function startWecomOrderNotificationWorker() {
     configured: isWecomOrderNotificationEnabled(),
     maxAttempts: WECOM_NOTIFICATION_MAX_ATTEMPTS
   })
+}
+
+async function compensateMissingWecomOrderNotifications() {
+  if (!pool) return
+  const result = await compensateMissingPaidNotifications({
+    pool,
+    notificationType: WECOM_ORDER_PAID_NOTIFICATION,
+    recentHours: 48,
+    scanDays: 90,
+    limit: 200
+  })
+  console.log("[wecom-order-notification] compensation", result)
 }
 
 async function applyShipment(data) {
@@ -6709,6 +6687,8 @@ async function initDb() {
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     attempt_count INT NOT NULL DEFAULT 0,
     last_error VARCHAR(500),
+    claim_token VARCHAR(64),
+    processing_started_at DATETIME,
     sent_at DATETIME,
     next_retry_at DATETIME,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -6716,6 +6696,8 @@ async function initDb() {
     UNIQUE KEY uniq_order_notification (order_id, notification_type),
     INDEX idx_order_notification_due (notification_type, status, next_retry_at)
   )`)
+  await ensureColumn("order_notification_records", "claim_token", "VARCHAR(64)")
+  await ensureColumn("order_notification_records", "processing_started_at", "DATETIME")
   await query(`CREATE TABLE IF NOT EXISTS partner_stores (
     id VARCHAR(40) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -8004,9 +7986,10 @@ async function handle(req, res) {
       if (confirmed.trade_state !== "SUCCESS") throw new Error("微信支付订单未确认成功")
       await assertConfirmedPaymentMatchesOrder(confirmed)
       const transactionId = confirmed.transaction_id || resource.transaction_id || ""
-      const updated = await markOrderPaid(resource.out_trade_no, transactionId)
+      const updated = await markOrderPaid(resource.out_trade_no, transactionId, {
+        queueWecomNotification: true
+      })
       console.log("[pay] notify mark paid result", { orderId: resource.out_trade_no || "", updated })
-      await ensureWecomOrderPaidNotification(resource.out_trade_no)
     }
     sendJson(res, 200, { code: "SUCCESS", message: "成功" })
     return
@@ -8976,6 +8959,9 @@ initDb().then(async () => {
   await ensureLegacyStoreMembers().catch(error => console.warn("门店成员兼容迁移失败：", error.message))
   await ensureReferralRewardRecords().catch(error => console.warn("推广收益补偿检查失败：", error.message))
   cleanupOrphanTempUploads(true).catch(error => console.warn("临时图片清理失败：", error.message))
+  await compensateMissingWecomOrderNotifications().catch(error => {
+    console.error("[wecom-order-notification] compensation error", { error: safeWecomError(error) })
+  })
   startWecomOrderNotificationWorker()
   const serverHandler = (req, res) => {
     handle(req, res).catch(error => {

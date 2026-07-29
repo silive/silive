@@ -2,6 +2,11 @@ const assert = require("assert")
 const fs = require("fs")
 const path = require("path")
 const mysql = require("mysql2/promise")
+const {
+  claimDueNotifications,
+  compensateMissingPaidNotifications,
+  markOrderPaidAndEnqueue
+} = require("../cms/wecom-order-outbox")
 
 function loadEnv(file) {
   if (!fs.existsSync(file)) return
@@ -21,44 +26,231 @@ async function main() {
     password: process.env.MYSQL_PASSWORD,
     database: process.env.MYSQL_DATABASE || "very_simple_custom",
     namedPlaceholders: true,
-    connectionLimit: 3
+    connectionLimit: 8,
+    dateStrings: true
   })
-  const orderId = `WECOMTEST${Date.now()}`.slice(0, 32)
-  try {
-    const insertSql = `INSERT IGNORE INTO order_notification_records
-      (order_id, notification_type, status, attempt_count, next_retry_at, created_at, updated_at)
-      VALUES (:orderId, 'WECOM_ORDER_PAID', 'PENDING', 0, NOW(), NOW(), NOW())`
-    const [first] = await pool.query(insertSql, { orderId })
-    const [duplicate] = await pool.query(insertSql, { orderId })
-    assert.strictEqual(Number(first.affectedRows), 1)
-    assert.strictEqual(Number(duplicate.affectedRows), 0)
+  const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-12)
+  const orderIds = []
+  const notificationTypes = [
+    `WECOM_TX_${suffix}`,
+    `WECOM_FAIL_${suffix}`,
+    `WECOM_CON_${suffix}`,
+    `WECOM_COMP_${suffix}`,
+    `WECOM_CLAIM_${suffix}`
+  ]
 
-    const [[record]] = await pool.query(
-      "SELECT id FROM order_notification_records WHERE order_id = :orderId AND notification_type = 'WECOM_ORDER_PAID'",
-      { orderId }
+  async function insertOrder(label, overrides = {}) {
+    const orderId = `WCT${label}${suffix}`.slice(0, 32)
+    orderIds.push(orderId)
+    await pool.query(
+      `INSERT INTO orders
+        (id, customer_name, product_name, amount, status, payment_status, created_at, paid_at, transaction_id)
+       VALUES
+        (:id, '通知可靠性测试', '测试商品', 0.01, :status, :paymentStatus, :createdAt, :paidAt, :transactionId)`,
+      {
+        id: orderId,
+        status: overrides.status || "待支付",
+        paymentStatus: overrides.paymentStatus || "待支付",
+        createdAt: overrides.createdAt || new Date(),
+        paidAt: overrides.paidAt || null,
+        transactionId: overrides.transactionId || null
+      }
     )
-    const claimSql = `UPDATE order_notification_records
-      SET status = 'PROCESSING', attempt_count = attempt_count + 1, updated_at = NOW()
-      WHERE id = :id
-        AND status IN ('PENDING', 'RETRY')
-        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-        AND attempt_count < 4`
-    const claims = await Promise.all([
-      pool.query(claimSql, { id: record.id }),
-      pool.query(claimSql, { id: record.id })
+    return orderId
+  }
+
+  try {
+    const successOrderId = await insertOrder("OK")
+    const success = await markOrderPaidAndEnqueue({
+      pool,
+      orderId: successOrderId,
+      transactionId: `TX${suffix}`,
+      notificationType: notificationTypes[0]
+    })
+    assert.deepStrictEqual(success, { updated: true, queued: true })
+    const [[successOrder]] = await pool.query("SELECT payment_status FROM orders WHERE id = ?", [successOrderId])
+    const [[successNotification]] = await pool.query(
+      "SELECT status FROM order_notification_records WHERE order_id = ? AND notification_type = ?",
+      [successOrderId, notificationTypes[0]]
+    )
+    assert.strictEqual(successOrder.payment_status, "已支付")
+    assert.strictEqual(successNotification.status, "PENDING")
+
+    const rollbackOrderId = await insertOrder("RB")
+    await assert.rejects(() => markOrderPaidAndEnqueue({
+      pool,
+      orderId: rollbackOrderId,
+      transactionId: `TXRB${suffix}`,
+      notificationType: null
+    }))
+    const [[rollbackOrder]] = await pool.query("SELECT payment_status FROM orders WHERE id = ?", [rollbackOrderId])
+    const [[rollbackCount]] = await pool.query(
+      "SELECT COUNT(*) count FROM order_notification_records WHERE order_id = ?",
+      [rollbackOrderId]
+    )
+    assert.strictEqual(rollbackOrder.payment_status, "待支付")
+    assert.strictEqual(Number(rollbackCount.count), 0)
+
+    const missingOrderId = `WCTMISS${suffix}`.slice(0, 32)
+    await assert.rejects(() => markOrderPaidAndEnqueue({
+      pool,
+      orderId: missingOrderId,
+      transactionId: `TXMISS${suffix}`,
+      notificationType: notificationTypes[1]
+    }), /订单不存在/)
+    const [[missingNotification]] = await pool.query(
+      "SELECT COUNT(*) count FROM order_notification_records WHERE order_id = ?",
+      [missingOrderId]
+    )
+    assert.strictEqual(Number(missingNotification.count), 0)
+
+    const concurrentOrderId = await insertOrder("CON")
+    const concurrentResults = await Promise.all([
+      markOrderPaidAndEnqueue({
+        pool,
+        orderId: concurrentOrderId,
+        transactionId: `TXCON${suffix}`,
+        notificationType: notificationTypes[2]
+      }),
+      markOrderPaidAndEnqueue({
+        pool,
+        orderId: concurrentOrderId,
+        transactionId: `TXCON${suffix}`,
+        notificationType: notificationTypes[2]
+      })
     ])
-    assert.strictEqual(claims.reduce((sum, result) => sum + Number(result[0].affectedRows || 0), 0), 1)
+    assert.strictEqual(concurrentResults.filter(item => item.updated).length, 1)
+    assert.strictEqual(concurrentResults.filter(item => item.queued).length, 1)
+    const [[concurrentCount]] = await pool.query(
+      "SELECT COUNT(*) count FROM order_notification_records WHERE order_id = ? AND notification_type = ?",
+      [concurrentOrderId, notificationTypes[2]]
+    )
+    assert.strictEqual(Number(concurrentCount.count), 1)
+
+    const recentOrderId = await insertOrder("NEW", {
+      status: "待发货",
+      paymentStatus: "已支付",
+      paidAt: new Date(),
+      transactionId: `TXNEW${suffix}`
+    })
+    const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+    const oldOrderId = await insertOrder("OLD", {
+      status: "已完成",
+      paymentStatus: "已支付",
+      createdAt: oldDate,
+      paidAt: oldDate,
+      transactionId: `TXOLD${suffix}`
+    })
+    const refundedOrderId = await insertOrder("REF", {
+      status: "已退款",
+      paymentStatus: "已支付",
+      paidAt: new Date(),
+      transactionId: `TXREF${suffix}`
+    })
+    const compensation = await compensateMissingPaidNotifications({
+      pool,
+      notificationType: notificationTypes[3],
+      recentHours: 48,
+      scanDays: 90,
+      limit: 50,
+      orderIdPrefix: "WCT"
+    })
+    assert.strictEqual(compensation.queued, 1)
+    assert.strictEqual(compensation.skippedHistorical, 1)
+    const [compensated] = await pool.query(
+      "SELECT order_id, status FROM order_notification_records WHERE notification_type = ?",
+      [notificationTypes[3]]
+    )
+    assert.strictEqual(compensated.find(item => item.order_id === recentOrderId)?.status, "PENDING")
+    assert.strictEqual(compensated.find(item => item.order_id === oldOrderId)?.status, "SKIPPED")
+    assert(!compensated.some(item => item.order_id === refundedOrderId))
+    const compensationAgain = await compensateMissingPaidNotifications({
+      pool,
+      notificationType: notificationTypes[3],
+      recentHours: 48,
+      scanDays: 90,
+      limit: 50,
+      orderIdPrefix: "WCT"
+    })
+    assert.strictEqual(compensationAgain.queued, 0)
+    assert.strictEqual(compensationAgain.skippedHistorical, 0)
+
+    const claimOrderIds = []
+    for (const label of ["PEN", "RET", "FUT", "STL", "SNT", "FLD"]) {
+      claimOrderIds.push(await insertOrder(label, {
+        status: "待发货",
+        paymentStatus: "已支付",
+        paidAt: new Date(),
+        transactionId: `TX${label}${suffix}`
+      }))
+    }
+    const claimRows = [
+      [claimOrderIds[0], "PENDING", 0, new Date(Date.now() - 60000), null],
+      [claimOrderIds[1], "RETRY", 1, new Date(Date.now() - 60000), null],
+      [claimOrderIds[2], "RETRY", 1, new Date(Date.now() + 10 * 60000), null],
+      [claimOrderIds[3], "PROCESSING", 1, null, new Date(Date.now() - 5 * 60000)],
+      [claimOrderIds[4], "SENT", 1, null, null],
+      [claimOrderIds[5], "FAILED", 4, null, null]
+    ]
+    for (const [orderId, status, attempts, nextRetryAt, processingStartedAt] of claimRows) {
+      await pool.query(
+        `INSERT INTO order_notification_records
+          (order_id, notification_type, status, attempt_count, next_retry_at, processing_started_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+        [
+          orderId,
+          notificationTypes[4],
+          status,
+          attempts,
+          nextRetryAt,
+          processingStartedAt,
+          processingStartedAt || new Date()
+        ]
+      )
+    }
+    const claimOptions = {
+      pool,
+      notificationType: notificationTypes[4],
+      maxAttempts: 4,
+      limit: 20,
+      lockMinutes: 2
+    }
+    const [claimedA, claimedB] = await Promise.all([
+      claimDueNotifications(claimOptions),
+      claimDueNotifications(claimOptions)
+    ])
+    const claimedIds = [...claimedA, ...claimedB].map(item => item.id)
+    assert.strictEqual(claimedIds.length, 3)
+    assert.strictEqual(new Set(claimedIds).size, 3)
+    const [excluded] = await pool.query(
+      "SELECT order_id, status, attempt_count FROM order_notification_records WHERE notification_type = ?",
+      [notificationTypes[4]]
+    )
+    assert.strictEqual(excluded.find(item => item.order_id === claimOrderIds[2]).status, "RETRY")
+    assert.strictEqual(excluded.find(item => item.order_id === claimOrderIds[4]).status, "SENT")
+    assert.strictEqual(excluded.find(item => item.order_id === claimOrderIds[5]).status, "FAILED")
 
     console.log(JSON.stringify({
       ok: true,
-      uniqueConstraintVerified: true,
-      concurrentClaimVerified: true
+      transactionCommitVerified: true,
+      transactionRollbackVerified: true,
+      missingOrderRollbackVerified: true,
+      duplicateCallbackVerified: true,
+      concurrentCallbackVerified: true,
+      compensationVerified: true,
+      compensationIdempotent: true,
+      dueRetryVerified: true,
+      futureRetryExcluded: true,
+      staleClaimRecovered: true,
+      concurrentClaimVerified: true,
+      sentExcluded: true,
+      failedExcluded: true
     }, null, 2))
   } finally {
-    await pool.query(
-      "DELETE FROM order_notification_records WHERE order_id = :orderId AND notification_type = 'WECOM_ORDER_PAID'",
-      { orderId }
-    ).catch(() => {})
+    if (orderIds.length) {
+      await pool.query("DELETE FROM order_notification_records WHERE notification_type IN (?)", [notificationTypes]).catch(() => {})
+      await pool.query("DELETE FROM orders WHERE id IN (?)", [orderIds]).catch(() => {})
+    }
     await pool.end()
   }
 }
