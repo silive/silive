@@ -127,21 +127,21 @@ async function main() {
     )
     assert.strictEqual(Number(concurrentCount.count), 1)
 
-    const recentOrderId = await insertOrder("NEW", {
+    const recentOrderId = await insertOrder("ZNEW", {
       status: "待发货",
       paymentStatus: "已支付",
       paidAt: new Date(),
       transactionId: `TXNEW${suffix}`
     })
     const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
-    const oldOrderId = await insertOrder("OLD", {
+    const oldOrderId = await insertOrder("ZOLD", {
       status: "已完成",
       paymentStatus: "已支付",
       createdAt: oldDate,
       paidAt: oldDate,
       transactionId: `TXOLD${suffix}`
     })
-    const refundedOrderId = await insertOrder("REF", {
+    const refundedOrderId = await insertOrder("ZREF", {
       status: "已退款",
       paymentStatus: "已支付",
       paidAt: new Date(),
@@ -153,7 +153,7 @@ async function main() {
       recentHours: 48,
       scanDays: 90,
       limit: 50,
-      orderIdPrefix: "WCT"
+      orderIdPrefix: "WCTZ"
     })
     assert.strictEqual(compensation.queued, 1)
     assert.strictEqual(compensation.skippedHistorical, 1)
@@ -170,7 +170,7 @@ async function main() {
       recentHours: 48,
       scanDays: 90,
       limit: 50,
-      orderIdPrefix: "WCT"
+      orderIdPrefix: "WCTZ"
     })
     assert.strictEqual(compensationAgain.queued, 0)
     assert.strictEqual(compensationAgain.skippedHistorical, 0)
@@ -256,6 +256,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(error.message)
+  console.error(error.stack || error.message)
   process.exit(1)
 })

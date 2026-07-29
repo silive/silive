@@ -37,12 +37,12 @@ async function markOrderPaidAndEnqueue(options = {}) {
       updated = true
     }
 
+    if (!notificationType) throw new Error("支付通知类型不能为空")
     const [notificationResult] = await connection.query(
-      `INSERT INTO order_notification_records
+      `INSERT IGNORE INTO order_notification_records
         (order_id, notification_type, status, attempt_count, next_retry_at, created_at, updated_at)
        VALUES
-        (:orderId, :notificationType, 'PENDING', 0, NOW(), NOW(), NOW())
-       ON DUPLICATE KEY UPDATE id = id`,
+        (:orderId, :notificationType, 'PENDING', 0, NOW(), NOW(), NOW())`,
       { orderId, notificationType }
     )
     await connection.commit()
