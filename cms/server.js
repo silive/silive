@@ -30,6 +30,13 @@ const {
   claimDueFulfillment,
   enqueueFulfillment
 } = require("./wechat-fulfillment-outbox")
+const {
+  ATTRIBUTION_TTL_MS,
+  hashAnonymousVisitor,
+  hashAttributionToken,
+  issueAttributionToken,
+  safeAttributionSource
+} = require("./store-attribution")
 
 let mysql
 try {
@@ -2386,6 +2393,7 @@ function normalizeOrder(order, index) {
     userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
     pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
     referrerStoreId: order.referrerStoreId || order.referrer_store_id || "",
+    storeAttributionId: order.storeAttributionId || order.store_attribution_id || "",
     sourceType: order.sourceType || order.source_type || (sourceStoreId ? "store" : ""),
     sourceStoreId,
     sourceStoreCode: order.sourceStoreCode || order.source_store_code || "",
@@ -2620,6 +2628,7 @@ function normalizeSettlementRecord(record = {}, index = 0) {
     settleNote: record.settleNote || record.settle_note || "",
     cancelReason: record.cancelReason || record.cancel_reason || "",
     batchId: record.batchId || record.batch_id || "",
+    relatedRecordId: record.relatedRecordId || record.related_record_id || "",
     storeOrderType,
     storeOrderTypeText,
     isStoreMemberOrder,
@@ -2945,7 +2954,36 @@ async function resolveIdentityFromRequest(req, payload = {}) {
   ).trim()
   const session = await resolveUserSession(token)
   if (!session?.openid) return {}
-  return { openid: session.openid, phone: session.phone || "", userSession: token, userToken: token }
+  const customer = await findCustomerForIdentity(session)
+  return {
+    userId: customer?.id || "",
+    openid: session.openid,
+    phone: session.phone || customer?.phone || "",
+    userSession: token,
+    userToken: token
+  }
+}
+
+async function findCustomerForIdentity(identity = {}) {
+  const phone = normalizePhone(identity.phone)
+  const openid = String(identity.openid || "").trim()
+  if (!phone && !openid) return null
+  if (!pool) {
+    return (await getCustomers()).find(customer =>
+      (phone && normalizePhone(customer.phone) === phone) ||
+      (openid && String(customer.openid || "") === openid)
+    ) || null
+  }
+  const rows = await query(
+    `SELECT id, phone, openid, name, nickname
+     FROM customers
+     WHERE (:phone <> '' AND phone = :phone)
+        OR (:openid <> '' AND openid = :openid)
+     ORDER BY CASE WHEN phone = :phone THEN 0 ELSE 1 END
+     LIMIT 1`,
+    { phone, openid }
+  )
+  return rows[0] || null
 }
 
 function inferAiPreviewType(product = {}) {
@@ -3153,6 +3191,7 @@ function normalizeRewardRecord(record, index) {
     settleNote: record.settleNote || record.settle_note || "",
     cancelReason: record.cancelReason || record.cancel_reason || "",
     batchId: record.batchId || record.batch_id || "",
+    relatedRecordId: record.relatedRecordId || record.related_record_id || "",
     createdAt: record.createdAt || new Date().toISOString().slice(0, 16).replace("T", " "),
     updatedAt: record.updatedAt || ""
   }
@@ -3945,6 +3984,50 @@ async function saveStoreSettlementRecords(records) {
   return list
 }
 
+function storeSettlementBusinessKey(record = {}) {
+  const canonicalType = isStoreReferralSettlement(record.type)
+    ? "store_referral_commission"
+    : isPickupServiceSettlement(record.type)
+      ? "pickup_service_fee"
+      : String(record.type || "")
+  return record.orderId && record.storeId && canonicalType
+    ? `${record.orderId}:${record.storeId}:${canonicalType}`
+    : `manual:${record.id}`
+}
+
+async function insertStoreSettlementRecord(record, connection = null) {
+  const normalized = normalizeSettlementRecord(record)
+  const params = {
+    ...normalized,
+    businessKey: storeSettlementBusinessKey(normalized),
+    relatedRecordId: normalized.relatedRecordId || "",
+    isStoreMemberOrder: normalized.isStoreMemberOrder ? "true" : "false",
+    createdAt: toMysqlDatetime(normalized.createdAt, nowMysqlDatetime()),
+    settledAt: toMysqlDatetime(normalized.settledAt),
+    updatedAt: toMysqlDatetime(normalized.updatedAt, nowMysqlDatetime())
+  }
+  const sql = `INSERT IGNORE INTO store_settlement_records
+    (id, business_key, related_record_id, store_id, order_id, type, amount,
+     commission_type, commission_value, order_paid_amount, status, description,
+     created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id,
+     store_order_type, is_store_member_order, store_operator_user_id,
+     store_operator_phone, store_operator_openid, store_operator_role,
+     store_operator_name, updated_at)
+   VALUES
+    (:id, :businessKey, :relatedRecordId, :storeId, :orderId, :type, :amount,
+     :commissionType, :commissionValue, :orderPaidAmount, :status, :description,
+     :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId,
+     :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId,
+     :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole,
+     :storeOperatorName, :updatedAt)`
+  if (connection) {
+    const [result] = await connection.query(sql, params)
+    return Number(result.affectedRows || 0) === 1
+  }
+  const result = await query(sql, params)
+  return Number(result.affectedRows || 0) === 1
+}
+
 async function getSalesAgentCommissions(filters = {}) {
   if (!pool) {
     let records = readJsonFile(salesAgentCommissionsFile, []).map(normalizeSalesAgentCommission)
@@ -4372,6 +4455,7 @@ async function getOrders(filters = {}) {
     userLongitude: row.user_longitude,
     pickupDistance: row.pickup_distance,
     referrerStoreId: row.referrer_store_id || "",
+    storeAttributionId: row.store_attribution_id || "",
     sourceType: row.source_type || "",
     sourceStoreId: row.source_store_id || "",
     sourceStoreCode: row.source_store_code || "",
@@ -4583,9 +4667,138 @@ function isStoreReferrerWindowValid(data = {}) {
 }
 
 async function resolveValidReferrerStoreId(storeId, data = {}) {
-  if (!storeId || !isStoreReferrerWindowValid(data)) return ""
+  if (!storeId) return ""
   const store = await getPartnerStore(storeId || "")
   return isValidReferrerStore(store) ? store.id : ""
+}
+
+async function issueStoreAttribution(data = {}, identity = {}) {
+  const storeId = String(data.storeId || data.store_id || "").trim()
+  const store = await getPartnerStore(storeId)
+  if (!isValidReferrerStore(store)) throw httpError(400, "门店推广来源无效")
+  const token = issueAttributionToken()
+  const tokenHash = hashAttributionToken(token)
+  const visitorHash = hashAnonymousVisitor(data.visitorId || data.localUserId || "")
+  const userId = String(identity.userId || "").trim()
+  if (!userId && !visitorHash) throw httpError(400, "缺少推广访问标识")
+  const attributionId = `SRA${Date.now()}${crypto.randomBytes(4).toString("hex").toUpperCase()}`
+  const source = safeAttributionSource(data.source || "mini_program_store_code")
+  const shareCode = String(data.storeCode || data.shareCode || "").trim().slice(0, 80)
+  if (!pool) {
+    throw httpError(503, "门店推广归因仅在数据库模式下可用")
+  }
+  await query(
+    `INSERT INTO store_referral_attributions
+      (id, token_hash, store_id, user_id, visitor_hash, source, share_code,
+       attribution_type, status, created_at, expires_at, updated_at)
+     VALUES
+      (:id, :tokenHash, :storeId, :userId, :visitorHash, :source, :shareCode,
+       'store_external', 'active', NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY), NOW())`,
+    {
+      id: attributionId,
+      tokenHash,
+      storeId: store.id,
+      userId,
+      visitorHash,
+      source,
+      shareCode
+    }
+  )
+  console.log("[store-attribution-issued]", {
+    storeId: store.id,
+    authenticated: !!userId,
+    hasVisitor: !!visitorHash,
+    source
+  })
+  return {
+    attributionToken: token,
+    storeId: store.id,
+    storeCode: shareCode,
+    boundAt: Date.now(),
+    expiresAt: Date.now() + ATTRIBUTION_TTL_MS
+  }
+}
+
+async function resolveTrustedStoreAttribution(data = {}, identity = {}) {
+  const requestedStoreId = String(
+    data.referrerStoreId || data.sourceStoreId || data.storeId || data.referrer_store_id || ""
+  ).trim()
+  if (!requestedStoreId) return { storeId: "", attributionId: "", attributionType: "" }
+  const store = await getPartnerStore(requestedStoreId)
+  if (!isValidReferrerStore(store)) return { storeId: "", attributionId: "", attributionType: "" }
+
+  const members = (await getStoreMembers({ storeId: requestedStoreId }))
+    .filter(member => member.status === "active")
+  const member = members.find(item =>
+    (identity.userId && item.userId && item.userId === identity.userId) ||
+    (identity.phone && normalizePhone(item.phone) === normalizePhone(identity.phone)) ||
+    (identity.openid && item.openid && item.openid === identity.openid)
+  )
+  if (member) {
+    return {
+      storeId: requestedStoreId,
+      attributionId: "",
+      attributionType: "store_self",
+      member
+    }
+  }
+
+  const token = String(data.storeAttributionToken || data.attributionToken || "").trim()
+  if (!pool || !token) {
+    console.warn("[store-attribution-rejected]", {
+      requestedStore: !!requestedStoreId,
+      reason: token ? "database_unavailable" : "missing_server_credential"
+    })
+    return { storeId: "", attributionId: "", attributionType: "" }
+  }
+  const tokenHash = hashAttributionToken(token)
+  const visitorHash = hashAnonymousVisitor(data.storeAttributionVisitorId || data.visitorId || data.localUserId || "")
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      `SELECT id, store_id, user_id, visitor_hash, status, expires_at
+       FROM store_referral_attributions
+       WHERE token_hash = :tokenHash
+       LIMIT 1
+       FOR UPDATE`,
+      { tokenHash }
+    )
+    const attribution = rows[0]
+    const valid = attribution &&
+      attribution.status === "active" &&
+      attribution.store_id === requestedStoreId &&
+      new Date(attribution.expires_at).getTime() > Date.now() &&
+      (!attribution.user_id || attribution.user_id === identity.userId) &&
+      (attribution.user_id || (visitorHash && attribution.visitor_hash === visitorHash))
+    if (!valid) {
+      await connection.rollback()
+      console.warn("[store-attribution-rejected]", {
+        requestedStore: !!requestedStoreId,
+        reason: !attribution ? "not_found" : "invalid_or_replayed"
+      })
+      return { storeId: "", attributionId: "", attributionType: "" }
+    }
+    if (!attribution.user_id && identity.userId) {
+      await connection.query(
+        `UPDATE store_referral_attributions
+         SET user_id = :userId, updated_at = NOW()
+         WHERE id = :id AND (user_id IS NULL OR user_id = '')`,
+        { id: attribution.id, userId: identity.userId }
+      )
+    }
+    await connection.commit()
+    return {
+      storeId: requestedStoreId,
+      attributionId: attribution.id,
+      attributionType: "store_external"
+    }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
 }
 
 async function resolveStoreOrderSource(referrerStoreId, data = {}) {
@@ -4652,7 +4865,129 @@ async function resolvePersonalOrderAttribution(phone) {
   }
 }
 
+async function createStoreSettlementRecordsForOrderMysql(order) {
+  if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return []
+  const referrerStore = await getPartnerStore(order.referrerStoreId)
+  const pickupStore = await getPartnerStore(order.pickupStoreId)
+  const referralAmount = referrerStore && Number(order.referralCommission || 0) <= 0
+    ? calculateStoreAmount(order.amount, referrerStore.referralCommissionType, referrerStore.referralCommissionValue)
+    : money(order.referralCommission || 0)
+  const pickupAmount = pickupStore
+    ? calculatePickupServiceFee(
+      order.amount,
+      Number(order.pickupServiceFee || 0) > 0 ? "fixed" : pickupStore.pickupFeeType,
+      Number(order.pickupServiceFee || 0) > 0 ? order.pickupServiceFee : pickupStore.pickupFeeValue
+    )
+    : "0.00"
+  const sourceMeta = {
+    storeOrderType: order.storeOrderType || "",
+    isStoreMemberOrder: order.isStoreMemberOrder || false,
+    storeOperatorUserId: order.storeOperatorUserId || "",
+    storeOperatorPhone: order.storeOperatorPhone || "",
+    storeOperatorOpenid: order.storeOperatorOpenid || "",
+    storeOperatorRole: order.storeOperatorRole || "",
+    storeOperatorName: order.storeOperatorName || ""
+  }
+  const candidates = []
+  if (referrerStore && Number(referralAmount) > 0) {
+    candidates.push({
+      id: `SSR${order.id}REF`,
+      storeId: referrerStore.id,
+      orderId: order.id,
+      type: "store_referral_commission",
+      amount: referralAmount,
+      commissionType: referrerStore.referralCommissionType,
+      commissionValue: referrerStore.referralCommissionValue,
+      orderPaidAmount: order.amount,
+      status: order.storeSettlementStatus || "pending_confirm",
+      description: `推广佣金：${order.productName}`,
+      ...sourceMeta
+    })
+  }
+  if (pickupStore && Number(pickupAmount) > 0) {
+    candidates.push({
+      id: `SSR${order.id}PIC`,
+      storeId: pickupStore.id,
+      orderId: order.id,
+      type: "pickup_service_fee",
+      amount: pickupAmount,
+      commissionType: pickupStore.pickupFeeType,
+      commissionValue: pickupStore.pickupFeeValue,
+      orderPaidAmount: order.amount,
+      status: order.storeSettlementStatus || "pending_confirm",
+      description: `自提服务费：${order.productName}`,
+      ...sourceMeta
+    })
+  }
+  for (const record of candidates) await insertStoreSettlementRecord(record)
+  return await getStoreSettlementRecordsForOrder(order.id)
+}
+
+async function getStoreSettlementRecordsForOrder(orderId) {
+  if (!pool) return (await getStoreSettlementRecords()).filter(record => record.orderId === orderId)
+  const rows = await query(
+    "SELECT * FROM store_settlement_records WHERE order_id = :orderId ORDER BY created_at DESC",
+    { orderId }
+  )
+  return rows.map((row, index) => normalizeSettlementRecord(row, index))
+}
+
+async function settleStoreSettlementRecords(ids = [], options = {}) {
+  const uniqueIds = [...new Set(ids.map(String).filter(Boolean))].slice(0, 500)
+  if (!uniqueIds.length) return { count: 0, batchId: options.batchId || "" }
+  const connection = await pool.getConnection()
+  const params = {
+    note: String(options.note || "后台标记已结算").slice(0, 500),
+    batchId: String(options.batchId || "").slice(0, 80)
+  }
+  const placeholders = uniqueIds.map((id, index) => {
+    params[`id${index}`] = id
+    return `:id${index}`
+  }).join(",")
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      `SELECT r.id
+       FROM store_settlement_records r
+       LEFT JOIN orders o ON o.id=r.order_id
+       WHERE r.id IN (${placeholders})
+         AND r.status IN ('pending_confirm','unsettled','chargeback')
+         AND (
+           r.amount < 0
+           OR r.order_id IS NULL OR r.order_id=''
+           OR o.status IN ('已完成','completed')
+           OR (
+             o.pickup_status IN ('picked_up','pickedup','已自提')
+             AND (o.pickup_verified_at IS NOT NULL OR o.force_pickup_verified_at IS NOT NULL)
+           )
+         )
+       FOR UPDATE`,
+      params
+    )
+    const eligible = rows.map(row => row.id)
+    let count = 0
+    for (const id of eligible) {
+      const [result] = await connection.query(
+        `UPDATE store_settlement_records
+         SET status='settled', settled_at=NOW(), settled_by='admin',
+             settle_note=:note, batch_id=:batchId, updated_at=NOW()
+         WHERE id=:id AND status IN ('pending_confirm','unsettled','chargeback')`,
+        { id, note: params.note, batchId: params.batchId }
+      )
+      count += Number(result.affectedRows || 0)
+    }
+    await connection.commit()
+    return { count, batchId: params.batchId }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
 async function createStoreSettlementRecordsForOrder(order) {
+  if (pool) return await createStoreSettlementRecordsForOrderMysql(order)
   const existing = await getStoreSettlementRecords()
   if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return existing.filter(record => record.orderId === order.id)
   const next = [...existing]
@@ -5223,8 +5558,17 @@ async function createOrder(data) {
     pickupStore = await getPartnerStore(data.pickupStoreId)
     if (!pickupStore || !isStoreEnabled(pickupStore) || pickupStore.isPickupEnabled !== "true") throw new Error("请选择有效的自提门店")
   }
-  const referrerStoreId = await resolveValidReferrerStoreId(data.referrerStoreId || data.sourceStoreId || data.storeId || data.referrer_store_id || "", data)
+  const trustedAttribution = await resolveTrustedStoreAttribution(data, {
+    userId: data.userId,
+    phone: data.phone,
+    openid: data.openid
+  })
+  const referrerStoreId = trustedAttribution.storeId
   const storeOrderSource = await resolveStoreOrderSource(referrerStoreId, data)
+  if (trustedAttribution.attributionType) {
+    storeOrderSource.storeOrderType = trustedAttribution.attributionType
+    storeOrderSource.isStoreMemberOrder = trustedAttribution.attributionType === "store_self"
+  }
   const personalAttribution = referrerStoreId
     ? { referrerUserId: "", parentReferrerUserId: "" }
     : await resolvePersonalOrderAttribution(data.phone)
@@ -5276,7 +5620,7 @@ async function createOrder(data) {
     isCustomOrder: productType === "normal" ? "false" : (String(data.isCustomOrder || "false") === "true" ? "true" : "false"),
     openid: data.openid || "",
     userId: data.userId || "",
-    userToken: data.userToken || "",
+    userToken: "",
     remark: [
       data.remark || "",
       cartItems.length ? `购物车：${cartItems.map(item => `${item.product.name}x${item.quantity}`).join("，")}` : "",
@@ -5295,6 +5639,7 @@ async function createOrder(data) {
     userLongitude: data.userLongitude || "",
     pickupDistance: data.pickupDistance || "",
     referrerStoreId,
+    storeAttributionId: trustedAttribution.attributionId || "",
     ...storeOrderSource,
     referrerUserId: personalAttribution.referrerUserId,
     parentReferrerUserId: personalAttribution.parentReferrerUserId,
@@ -5317,7 +5662,7 @@ async function createOrder(data) {
     return order
   }
   await query(
-    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, store_attribution_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :storeAttributionId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
     {
       ...mysqlOrderParams(order),
       originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -5326,6 +5671,18 @@ async function createOrder(data) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
   )
+  if (order.storeAttributionId) {
+    await query(
+      `UPDATE store_referral_attributions
+       SET last_order_id = :orderId, updated_at = NOW()
+       WHERE id = :attributionId AND store_id = :storeId AND status = 'active'`,
+      {
+        orderId: order.id,
+        attributionId: order.storeAttributionId,
+        storeId: order.referrerStoreId
+      }
+    )
+  }
   if (data.source === "order-recommendation") {
     await recordOrderRecommendationEvent({ type: "conversion", productId: order.productId, productName: order.productName, orderId: order.id, amount: order.amount, phone: order.phone })
   }
@@ -5380,6 +5737,22 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
         console.log("[pay] markOrderPaid skipped already paid", { orderId })
         return false
       }
+      const blocked = ["已退款", "退款中", "退款处理中"].includes(orders[index].status) ||
+        ["已退款", "退款处理中"].includes(orders[index].paymentStatus) ||
+        ["refunded", "refund_pending"].includes(orders[index].afterSalesStatus)
+      if (blocked) {
+        console.warn("[pay-state-guard]", { orderId, outcome: "PAYMENT_FACT_ONLY" })
+        return false
+      }
+      if (["已取消", "cancelled", "canceled", "已关闭", "closed", "已作废", "void"].includes(orders[index].status)) {
+        orders[index].paymentStatus = "异常已支付"
+        orders[index].status = "PAID_AFTER_CANCEL"
+        orders[index].transactionId = orders[index].transactionId || transactionId
+        orders[index].paidAt = orders[index].paidAt || new Date().toISOString().slice(0, 16).replace("T", " ")
+        writeJsonFile(ordersFile, orders)
+        console.warn("[pay-state-guard]", { orderId, outcome: "PAID_AFTER_CANCEL" })
+        return true
+      }
       orders[index].paymentStatus = "已支付"
       orders[index].status = "待发货"
       orders[index].transactionId = transactionId
@@ -5400,6 +5773,7 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
   }
   let affectedRows = 0
   let notificationQueued = false
+  let paymentOutcome = ""
   if (options.queueWecomNotification) {
     const result = await markOrderPaidAndEnqueue({
       pool,
@@ -5409,6 +5783,7 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
     })
     affectedRows = result.updated ? 1 : 0
     notificationQueued = result.queued
+    paymentOutcome = result.outcome || ""
     setImmediate(() => runWecomOrderNotificationWorkerSafe())
   } else {
     const result = await query(
@@ -5421,9 +5796,11 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
     orderId,
     affectedRows,
     notificationQueued,
-    hasTransactionId: !!transactionId
+    hasTransactionId: !!transactionId,
+    paymentOutcome
   })
   if (!affectedRows) return false
+  if (paymentOutcome === "PAID_AFTER_CANCEL" || paymentOutcome === "PAYMENT_FACT_ONLY") return true
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (order) {
     if (order.deliveryType === "pickup" && (!order.pickupCode || !order.pickupQrCodeUrl)) {
@@ -6140,7 +6517,56 @@ async function reviewRefund(data) {
   return approveAfterSalesRefund(data.orderId, data)
 }
 
+async function rollbackRewardsForOrderMysql(orderId) {
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      `SELECT * FROM reward_records
+       WHERE order_id=:orderId AND type NOT LIKE '%chargeback%'
+       FOR UPDATE`,
+      { orderId }
+    )
+    for (const row of rows) {
+      if (normalizeRewardStatus(row.status) === "settled") {
+        await insertRewardRecord({
+          id: `RW${orderId}CHARGEBACK${row.level || 0}${crypto.createHash("md5").update(row.id).digest("hex").slice(0, 8)}`,
+          relatedRecordId: row.id,
+          orderId,
+          productName: `订单退款冲正：${row.product_name || orderId}`,
+          buyerPhone: row.buyer_phone,
+          promoterPhone: row.promoter_phone,
+          promoterName: row.promoter_name,
+          level: row.level,
+          type: "chargeback",
+          amount: money(-Math.abs(Number(row.amount || 0))),
+          status: "unsettled",
+          settleNote: `订单退款冲正，关联原订单号：${orderId}，原奖励记录：${row.id}`,
+          batchId: `refund-chargeback:${row.id}`
+        }, connection)
+      } else {
+        await connection.query(
+          `UPDATE reward_records
+           SET status='cancelled',
+               cancel_reason=COALESCE(NULLIF(cancel_reason,''),'订单退款成功，推广奖励失效'),
+               updated_at=NOW()
+           WHERE id=:id AND status IN ('pending_confirm','unsettled','pending')`,
+          { id: row.id }
+        )
+      }
+    }
+    await connection.commit()
+    return rows.length
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
 async function rollbackRewardsForOrder(orderId) {
+  if (pool) return await rollbackRewardsForOrderMysql(orderId)
   const records = await getRewardRecords()
   let changed = false
   const now = formatDateTime(new Date())
@@ -6186,7 +6612,84 @@ async function rollbackRewardsForOrder(orderId) {
   return records
 }
 
+async function invalidateStoreSettlementRecordsForOrderMysql(orderId, options = {}) {
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [orders] = await connection.query(
+      `SELECT id, delivery_type, pickup_status, pickup_verified_at, force_pickup_verified_at
+       FROM orders WHERE id=:orderId FOR UPDATE`,
+      { orderId }
+    )
+    const retainVerifiedPickupFee = !!orders[0] &&
+      isPickupVerified(orders[0]) &&
+      !options.chargebackVerifiedPickupFee
+    const [rows] = await connection.query(
+      `SELECT * FROM store_settlement_records
+       WHERE order_id=:orderId AND type <> 'chargeback'
+       FOR UPDATE`,
+      { orderId }
+    )
+    for (const row of rows) {
+      if (retainVerifiedPickupFee && isPickupServiceSettlement(row.type)) {
+        await connection.query(
+          `UPDATE store_settlement_records
+           SET description=CONCAT(
+             REPLACE(COALESCE(description,''),'；退款后保留',''),
+             '；退款后保留（已完成真实自提服务）'
+           ), updated_at=NOW()
+           WHERE id=:id`,
+          { id: row.id }
+        )
+        continue
+      }
+      if (normalizeSettlementStatus(row.status) === "settled") {
+        await insertStoreSettlementRecord({
+          id: `SSR${orderId}CHARGEBACK${crypto.createHash("md5").update(row.id).digest("hex").slice(0, 10)}`,
+          relatedRecordId: row.id,
+          storeId: row.store_id,
+          orderId,
+          type: "chargeback",
+          amount: money(-Math.abs(Number(row.amount || 0))),
+          commissionType: "none",
+          commissionValue: "0.00",
+          orderPaidAmount: row.order_paid_amount || "0.00",
+          status: "unsettled",
+          description: `订单退款冲正，关联原订单号：${orderId}`,
+          settleNote: `订单退款冲正，关联原订单号：${orderId}，原收益记录：${row.id}`,
+          batchId: `refund-chargeback:${row.id}`,
+          storeOrderType: row.store_order_type || "",
+          isStoreMemberOrder: boolValue(row.is_store_member_order),
+          storeOperatorUserId: row.store_operator_user_id || "",
+          storeOperatorPhone: row.store_operator_phone || "",
+          storeOperatorOpenid: row.store_operator_openid || "",
+          storeOperatorRole: row.store_operator_role || "",
+          storeOperatorName: row.store_operator_name || ""
+        }, connection)
+      } else {
+        await connection.query(
+          `UPDATE store_settlement_records
+           SET status='cancelled',
+               cancel_reason=COALESCE(NULLIF(cancel_reason,''),'订单退款成功，结算失效'),
+               description=CONCAT(COALESCE(description,''),'；订单退款成功，结算失效'),
+               updated_at=NOW()
+           WHERE id=:id AND status IN ('pending_confirm','unsettled','pending')`,
+          { id: row.id }
+        )
+      }
+    }
+    await connection.commit()
+    return rows.length
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
 async function invalidateStoreSettlementRecordsForOrder(orderId, options = {}) {
+  if (pool) return await invalidateStoreSettlementRecordsForOrderMysql(orderId, options)
   const records = await getStoreSettlementRecords()
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   const retainVerifiedPickupFee = !!order && isPickupVerified(order) && !options.chargebackVerifiedPickupFee
@@ -6250,6 +6753,40 @@ async function invalidateStoreSettlementRecordsForOrder(orderId, options = {}) {
 async function confirmOrderRewards(orderId) {
   const order = (await getOrders()).find(item => item.id === orderId)
   if (!order || !isOrderRewardConfirmed(order) || isOrderRefunded(order)) return { changed: false }
+  if (pool) {
+    const connection = await pool.getConnection()
+    try {
+      await connection.beginTransaction()
+      const [rewardResult] = await connection.query(
+        `UPDATE reward_records
+         SET status='unsettled', release_at=COALESCE(release_at,NOW()), updated_at=NOW()
+         WHERE order_id=:orderId AND status='pending_confirm'`,
+        { orderId }
+      )
+      const [settlementResult] = await connection.query(
+        `UPDATE store_settlement_records
+         SET status='unsettled', updated_at=NOW()
+         WHERE order_id=:orderId AND status='pending_confirm'`,
+        { orderId }
+      )
+      const [salesResult] = await connection.query(
+        `UPDATE sales_agent_commissions
+         SET status='unsettled'
+         WHERE order_id=:orderId AND status='pending_confirm'`,
+        { orderId }
+      )
+      await connection.commit()
+      return {
+        changed: [rewardResult, settlementResult, salesResult]
+          .some(result => Number(result.affectedRows || 0) > 0)
+      }
+    } catch (error) {
+      await connection.rollback().catch(() => {})
+      throw error
+    } finally {
+      connection.release()
+    }
+  }
   const now = formatDateTime(new Date())
   let changed = false
   const rewardRecords = await getRewardRecords()
@@ -6672,11 +7209,45 @@ async function saveRewardRecords(records) {
   return list
 }
 
+function rewardBusinessKey(record = {}) {
+  if (record.relatedRecordId && isChargebackRecord(record)) {
+    return `chargeback:${record.relatedRecordId}`
+  }
+  return `${record.orderId}:${normalizePhone(record.promoterPhone)}:${Number(record.level || 1)}:${record.type || "level1"}`
+}
+
+async function insertRewardRecord(record, connection = null) {
+  const normalized = normalizeRewardRecord(record, 0)
+  const params = {
+    ...normalized,
+    businessKey: rewardBusinessKey(normalized),
+    relatedRecordId: normalized.relatedRecordId || "",
+    releaseAt: toMysqlDatetime(normalized.releaseAt),
+    settledAt: toMysqlDatetime(normalized.settledAt),
+    createdAt: toMysqlDatetime(normalized.createdAt, nowMysqlDatetime()),
+    updatedAt: toMysqlDatetime(normalized.updatedAt, nowMysqlDatetime())
+  }
+  const sql = `INSERT IGNORE INTO reward_records
+    (id, business_key, related_record_id, order_id, product_name, buyer_phone,
+     promoter_phone, promoter_name, level, amount, type, status, release_at,
+     settled_at, settled_by, settle_note, cancel_reason, batch_id, created_at, updated_at)
+   VALUES
+    (:id, :businessKey, :relatedRecordId, :orderId, :productName, :buyerPhone,
+     :promoterPhone, :promoterName, :level, :amount, :type, :status, :releaseAt,
+     :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :createdAt, :updatedAt)`
+  if (connection) {
+    const [result] = await connection.query(sql, params)
+    return Number(result.affectedRows || 0) === 1
+  }
+  const result = await query(sql, params)
+  return Number(result.affectedRows || 0) === 1
+}
+
 async function createRewardsForOrder(order) {
   const normalized = normalizeOrder(order, 0)
   if (!isOrderPaidForPickupCredential(normalized) || isOrderRefunded(normalized)) return []
-  if (normalized.referrerStoreId) return await getRewardRecords()
-  const existing = await getRewardRecords()
+  if (normalized.referrerStoreId) return []
+  const existing = pool ? [] : await getRewardRecords()
   const relations = await getPromotionRelations()
   const customers = await getCustomers()
   const buyerPhone = normalizePhone(normalized.phone)
@@ -6716,8 +7287,33 @@ async function createRewardsForOrder(order) {
     Number(record.level || 1) === Number(level) &&
     record.type !== "adjustment"
   )
-  if (Number(firstRewardAmount) > 0 && !hasReward(directPhone, 1)) next.unshift(makeRecord(directPhone, 1, firstRewardAmount))
-  if (parentPhone && Number(secondRewardAmount) > 0 && !hasReward(parentPhone, 2)) next.unshift(makeRecord(parentPhone, 2, secondRewardAmount))
+  const candidates = []
+  if (Number(firstRewardAmount) > 0 && !hasReward(directPhone, 1)) candidates.push(makeRecord(directPhone, 1, firstRewardAmount))
+  if (parentPhone && Number(secondRewardAmount) > 0 && !hasReward(parentPhone, 2)) candidates.push(makeRecord(parentPhone, 2, secondRewardAmount))
+  if (pool) {
+    for (const record of candidates) await insertRewardRecord(record)
+    const rows = await query("SELECT * FROM reward_records WHERE order_id=:orderId ORDER BY created_at DESC", {
+      orderId: normalized.id
+    })
+    return rows.map((row, index) => normalizeRewardRecord({
+      ...row,
+      orderId: row.order_id,
+      productName: row.product_name,
+      buyerPhone: row.buyer_phone,
+      promoterPhone: row.promoter_phone,
+      promoterName: row.promoter_name,
+      releaseAt: row.release_at,
+      settledAt: row.settled_at,
+      settledBy: row.settled_by,
+      settleNote: row.settle_note,
+      cancelReason: row.cancel_reason,
+      batchId: row.batch_id,
+      relatedRecordId: row.related_record_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }, index))
+  }
+  next.unshift(...candidates)
   await saveRewardRecords(next)
   return next
 }
@@ -6753,6 +7349,24 @@ async function ensureReferralRewardRecords() {
 }
 
 async function processRewardState() {
+  if (pool) {
+    await query(
+      `UPDATE reward_records r
+       INNER JOIN orders o ON o.id=r.order_id
+       SET r.status='unsettled',
+           r.release_at=COALESCE(r.release_at,DATE_ADD(COALESCE(o.completed_at,NOW()),INTERVAL 7 DAY)),
+           r.updated_at=NOW()
+       WHERE r.status='pending_confirm'
+         AND (
+           o.status IN ('已完成','completed')
+           OR (
+             o.pickup_status IN ('picked_up','pickedup','已自提')
+             AND (o.pickup_verified_at IS NOT NULL OR o.force_pickup_verified_at IS NOT NULL)
+           )
+         )`
+    )
+    return await getRewardRecords()
+  }
   const orders = await getOrders()
   const records = await getRewardRecords()
   let changed = false
@@ -7068,6 +7682,7 @@ async function initDb() {
   await ensureColumn("orders", "supplier_settlement_amount", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "custom_commission_amount", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "store_settlement_status", "VARCHAR(30) DEFAULT 'pending_confirm'")
+  await ensureColumn("orders", "store_attribution_id", "VARCHAR(60)")
   await ensureColumn("orders", "fulfillment_status", "VARCHAR(40)")
   await ensureColumn("orders", "wechat_fulfillment_status", "VARCHAR(30)")
   await ensureColumn("orders", "wechat_fulfillment_synced_at", "DATETIME")
@@ -7109,6 +7724,36 @@ async function initDb() {
     service_fee_impact VARCHAR(100),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_order_state_audit_order (order_id, created_at)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_payment_facts (
+    id VARCHAR(64) PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    transaction_id VARCHAR(80),
+    payment_state VARCHAR(30) NOT NULL,
+    amount_verified TINYINT(1) NOT NULL DEFAULT 0,
+    verified_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_payment_fact_transaction (transaction_id),
+    INDEX idx_payment_fact_order (order_id, created_at)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS store_referral_attributions (
+    id VARCHAR(60) PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL,
+    store_id VARCHAR(40) NOT NULL,
+    user_id VARCHAR(32),
+    visitor_hash CHAR(64),
+    source VARCHAR(80),
+    share_code VARCHAR(80),
+    attribution_type VARCHAR(30) NOT NULL DEFAULT 'store_external',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    last_order_id VARCHAR(32),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_store_attribution_token (token_hash),
+    INDEX idx_store_attribution_user (user_id, status, expires_at),
+    INDEX idx_store_attribution_visitor (visitor_hash, status, expires_at),
+    INDEX idx_store_attribution_store (store_id, status, expires_at)
   )`)
   await query(`CREATE TABLE IF NOT EXISTS wechat_fulfillment_records (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -7221,6 +7866,9 @@ async function initDb() {
   await ensureColumn("store_settlement_records", "store_operator_role", "VARCHAR(20)")
   await ensureColumn("store_settlement_records", "store_operator_name", "VARCHAR(80)")
   await ensureColumn("store_settlement_records", "updated_at", "DATETIME")
+  await ensureColumn("store_settlement_records", "business_key", "VARCHAR(180)")
+  await ensureColumn("store_settlement_records", "related_record_id", "VARCHAR(60)")
+  await ensureIndex("store_settlement_records", "uniq_store_settlement_business", "UNIQUE KEY", ["business_key"])
   await query(`CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -7284,6 +7932,9 @@ async function initDb() {
   await ensureColumn("reward_records", "settle_note", "TEXT")
   await ensureColumn("reward_records", "cancel_reason", "TEXT")
   await ensureColumn("reward_records", "batch_id", "VARCHAR(80)")
+  await ensureColumn("reward_records", "business_key", "VARCHAR(180)")
+  await ensureColumn("reward_records", "related_record_id", "VARCHAR(60)")
+  await ensureIndex("reward_records", "uniq_reward_business", "UNIQUE KEY", ["business_key"])
   await query(`CREATE TABLE IF NOT EXISTS sales_agents (
     id VARCHAR(60) PRIMARY KEY,
     name VARCHAR(80),
@@ -7381,6 +8032,23 @@ async function ensureColumn(table, column, definition) {
     { schema: dbConfig.database, table, column }
   )
   if (!rows.length) await query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`)
+}
+
+async function ensureIndex(table, indexName, kind, columns) {
+  if (![table, indexName, ...columns].every(value => /^[A-Za-z0-9_]+$/.test(String(value || "")))) {
+    throw new Error("数据库索引名称不安全")
+  }
+  const rows = await query(
+    `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA=:schema AND TABLE_NAME=:table AND INDEX_NAME=:indexName
+     LIMIT 1`,
+    { schema: dbConfig.database, table, indexName }
+  )
+  if (rows.length) return
+  const indexKind = kind === "UNIQUE KEY" ? "UNIQUE KEY" : "INDEX"
+  await query(
+    `ALTER TABLE \`${table}\` ADD ${indexKind} \`${indexName}\` (${columns.map(column => `\`${column}\``).join(",")})`
+  )
 }
 
 function ensureDevCertificate() {
@@ -8117,6 +8785,14 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/store/source/attribution" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req, 32 * 1024)).toString() || "{}")
+    const identity = await resolveIdentityFromRequest(req, body)
+    const result = await issueStoreAttribution(body, identity)
+    sendJson(res, 200, { ok: true, data: result })
+    return
+  }
+
   if (url.pathname === "/api/store/me" && req.method === "GET") {
     const storeSession = await getStoreSession(req)
     if (storeSession?.duplicated) {
@@ -8313,11 +8989,11 @@ async function handle(req, res) {
     }
     const order = await createOrder({
       ...body,
-      phone: body.phone || identity.phone || "",
+      phone: identity.phone || "",
       openid: identity.openid,
-      userId: "",
-      userToken: identity.userToken,
-      userSession: identity.userSession
+      userId: identity.userId || "",
+      userToken: "",
+      userSession: ""
     })
     sendJson(res, 200, { ok: true, data: order })
     return
@@ -9317,19 +9993,26 @@ async function handle(req, res) {
   if (url.pathname === "/api/admin/store-settlements/mark-settled" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : []
-    const records = await getStoreSettlementRecords()
-    const orderLookup = buildOrderLookup(await getOrders())
-    const now = formatDateTime(new Date())
-    records.forEach(record => {
-      if (ids.includes(record.id) && isFinancialRecordReadyToSettle(record, orderLookup)) {
-        record.status = "settled"
-        record.settledAt = now
-        record.settledBy = "admin"
-        record.settleNote = body.note || record.settleNote || "后台批量标记已结算"
-        record.updatedAt = now
-      }
-    })
-    await saveStoreSettlementRecords(records)
+    if (pool) {
+      await settleStoreSettlementRecords(ids, {
+        note: body.note || "后台批量标记已结算",
+        batchId: body.batchId || `BATCH${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+      })
+    } else {
+      const records = await getStoreSettlementRecords()
+      const orderLookup = buildOrderLookup(await getOrders())
+      const now = formatDateTime(new Date())
+      records.forEach(record => {
+        if (ids.includes(record.id) && isFinancialRecordReadyToSettle(record, orderLookup)) {
+          record.status = "settled"
+          record.settledAt = now
+          record.settledBy = "admin"
+          record.settleNote = body.note || record.settleNote || "后台批量标记已结算"
+          record.updatedAt = now
+        }
+      })
+      await saveStoreSettlementRecords(records)
+    }
     sendJson(res, 200, { ok: true, data: await getStoreSettlementSummary({}) })
     return
   }
@@ -9349,26 +10032,51 @@ async function handle(req, res) {
   if (storeEarningMatch && req.method === "POST") {
     const [, id, action] = storeEarningMatch
     const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const recordId = decodeURIComponent(id)
     const records = await getStoreSettlementRecords()
-    const record = records.find(item => item.id === decodeURIComponent(id))
+    const record = records.find(item => item.id === recordId)
     if (!record) throw httpError(404, "收益记录不存在")
     if (action === "settle") {
       if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
       if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
       const orderLookup = buildOrderLookup(await getOrders())
       if (!isFinancialRecordReadyToSettle(record, orderLookup)) throw httpError(400, "该记录仍为待确认，订单完成后才能结算。")
-      record.status = "settled"
-      record.settledAt = formatDateTime(new Date())
-      record.settledBy = "admin"
-      record.settleNote = body.note || body.settleNote || ""
+      if (pool) {
+        const result = await settleStoreSettlementRecords([recordId], {
+          note: body.note || body.settleNote || "",
+          batchId: `SINGLE${Date.now()}`
+        })
+        if (result.count !== 1) throw httpError(409, "该记录已被处理或尚不可结算")
+      } else {
+        record.status = "settled"
+        record.settledAt = formatDateTime(new Date())
+        record.settledBy = "admin"
+        record.settleNote = body.note || body.settleNote || ""
+      }
     } else {
       if (record.status === "cancelled") throw httpError(400, "该记录已取消。")
-      record.status = "cancelled"
-      record.cancelReason = body.reason || body.cancelReason || "后台取消收益"
+      if (record.status === "settled") throw httpError(409, "已结算历史记录不可取消")
+      if (pool) {
+        const result = await query(
+          `UPDATE store_settlement_records
+           SET status='cancelled', cancel_reason=:reason, updated_at=NOW()
+           WHERE id=:id AND status IN ('pending_confirm','unsettled')`,
+          {
+            id: recordId,
+            reason: body.reason || body.cancelReason || "后台取消收益"
+          }
+        )
+        if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "该记录已被其他操作处理")
+      } else {
+        record.status = "cancelled"
+        record.cancelReason = body.reason || body.cancelReason || "后台取消收益"
+      }
     }
-    record.updatedAt = formatDateTime(new Date())
-    await saveStoreSettlementRecords(records)
-    sendJson(res, 200, { ok: true, data: record })
+    if (!pool) {
+      record.updatedAt = formatDateTime(new Date())
+      await saveStoreSettlementRecords(records)
+    }
+    sendJson(res, 200, { ok: true, data: (await getStoreSettlementRecords()).find(item => item.id === recordId) })
     return
   }
 
@@ -9377,9 +10085,8 @@ async function handle(req, res) {
     const amount = money(body.amount)
     if (!body.storeId) throw httpError(400, "请选择门店")
     if (Number(amount) === 0) throw httpError(400, "调整金额不能为 0")
-    const records = await getStoreSettlementRecords()
     const now = formatDateTime(new Date())
-    records.unshift(normalizeSettlementRecord({
+    const adjustment = normalizeSettlementRecord({
       id: `SSA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
       storeId: body.storeId,
       orderId: "",
@@ -9395,8 +10102,13 @@ async function handle(req, res) {
       settleNote: body.note || "",
       createdAt: now,
       updatedAt: now
-    }))
-    await saveStoreSettlementRecords(records)
+    })
+    if (pool) await insertStoreSettlementRecord(adjustment)
+    else {
+      const records = await getStoreSettlementRecords()
+      records.unshift(adjustment)
+      await saveStoreSettlementRecords(records)
+    }
     sendJson(res, 200, { ok: true })
     return
   }
@@ -9411,21 +10123,28 @@ async function handle(req, res) {
       endAt: body.endAt || ""
     })
     const orderLookup = buildOrderLookup(await getOrders())
-    const allRecords = await getStoreSettlementRecords()
     const ids = new Set(records.filter(item => isFinancialRecordReadyToSettle(item, orderLookup)).map(item => item.id))
-    const now = formatDateTime(new Date())
     let count = 0
-    allRecords.forEach(record => {
-      if (!ids.has(record.id) || !isFinancialRecordReadyToSettle(record, orderLookup)) return
-      record.status = "settled"
-      record.settledAt = now
-      record.settledBy = "admin"
-      record.settleNote = body.note || "后台批量结算"
-      record.batchId = batchId
-      record.updatedAt = now
-      count += 1
-    })
-    await saveStoreSettlementRecords(allRecords)
+    if (pool) {
+      count = (await settleStoreSettlementRecords([...ids], {
+        note: body.note || "后台批量结算",
+        batchId
+      })).count
+    } else {
+      const allRecords = await getStoreSettlementRecords()
+      const now = formatDateTime(new Date())
+      allRecords.forEach(record => {
+        if (!ids.has(record.id) || !isFinancialRecordReadyToSettle(record, orderLookup)) return
+        record.status = "settled"
+        record.settledAt = now
+        record.settledBy = "admin"
+        record.settleNote = body.note || "后台批量结算"
+        record.batchId = batchId
+        record.updatedAt = now
+        count += 1
+      })
+      await saveStoreSettlementRecords(allRecords)
+    }
     sendJson(res, 200, { ok: true, batchId, recordCount: count })
     return
   }
@@ -9500,18 +10219,49 @@ async function handle(req, res) {
       if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
       const orderLookup = buildOrderLookup(await getOrders())
       if (!isFinancialRecordReadyToSettle(record, orderLookup)) throw httpError(400, "该奖励仍为待确认，订单完成后才能结算。")
-      record.status = "settled"
-      record.settledAt = formatDateTime(new Date())
-      record.settledBy = "admin"
-      record.settleNote = body.note || body.settleNote || ""
+      if (pool) {
+        const result = await query(
+          `UPDATE reward_records
+           SET status='settled', settled_at=NOW(), settled_by='admin',
+               settle_note=:note, updated_at=NOW()
+           WHERE id=:id AND status IN ('unsettled','chargeback')`,
+          {
+            id: record.id,
+            note: body.note || body.settleNote || ""
+          }
+        )
+        if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "该记录已被处理或尚不可结算")
+      } else {
+        record.status = "settled"
+        record.settledAt = formatDateTime(new Date())
+        record.settledBy = "admin"
+        record.settleNote = body.note || body.settleNote || ""
+      }
     } else {
       if (record.status === "cancelled") throw httpError(400, "该记录已取消。")
-      record.status = "cancelled"
-      record.cancelReason = body.reason || body.cancelReason || "后台取消奖励"
+      if (record.status === "settled") throw httpError(409, "已结算历史记录不可取消")
+      if (pool) {
+        const result = await query(
+          `UPDATE reward_records
+           SET status='cancelled', cancel_reason=:reason, updated_at=NOW()
+           WHERE id=:id AND status IN ('pending_confirm','unsettled')`,
+          {
+            id: record.id,
+            reason: body.reason || body.cancelReason || "后台取消奖励"
+          }
+        )
+        if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "该记录已被其他操作处理")
+      } else {
+        record.status = "cancelled"
+        record.cancelReason = body.reason || body.cancelReason || "后台取消奖励"
+      }
     }
-    record.updatedAt = formatDateTime(new Date())
-    await saveRewardRecords(records)
-    sendJson(res, 200, { ok: true, data: normalizeRewardRecord(record, 0) })
+    if (!pool) {
+      record.updatedAt = formatDateTime(new Date())
+      await saveRewardRecords(records)
+    }
+    const refreshed = (await getRewardRecords()).find(item => item.id === record.id)
+    sendJson(res, 200, { ok: true, data: normalizeRewardRecord(refreshed || record, 0) })
     return
   }
 
@@ -9523,9 +10273,8 @@ async function handle(req, res) {
     if (Number(amount) === 0) throw httpError(400, "调整金额不能为 0")
     const customers = await getCustomers()
     const customer = customers.find(item => normalizePhone(item.phone) === promoterPhone) || {}
-    const records = await getRewardRecords()
     const now = formatDateTime(new Date())
-    records.unshift(normalizeRewardRecord({
+    const adjustment = normalizeRewardRecord({
       id: `RWA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
       orderId: "",
       productName: body.note || "后台手动调整",
@@ -9541,8 +10290,13 @@ async function handle(req, res) {
       settleNote: body.note || "",
       createdAt: now,
       updatedAt: now
-    }, records.length))
-    await saveRewardRecords(records)
+    }, 0)
+    if (pool) await insertRewardRecord(adjustment)
+    else {
+      const records = await getRewardRecords()
+      records.unshift(adjustment)
+      await saveRewardRecords(records)
+    }
     sendJson(res, 200, { ok: true })
     return
   }

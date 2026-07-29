@@ -17,13 +17,82 @@ async function markOrderPaidAndEnqueue(options = {}) {
   try {
     await connection.beginTransaction()
     const [orders] = await connection.query(
-      "SELECT id, payment_status FROM orders WHERE id = :orderId FOR UPDATE",
+      `SELECT id, status, payment_status, refund_status, after_sales_status
+       FROM orders WHERE id = :orderId FOR UPDATE`,
       { orderId }
     )
     if (!orders[0]) throw new Error("本地订单不存在，无法确认支付")
+    const order = orders[0]
+    const status = String(order.status || "").trim().toLowerCase()
+    const paymentStatus = String(order.payment_status || "").trim().toLowerCase()
+    const refundStatus = String(order.refund_status || "").trim().toLowerCase()
+    const afterSalesStatus = String(order.after_sales_status || "").trim().toLowerCase()
+    const paymentFactId = crypto.createHash("sha256")
+      .update(`${orderId}:${transactionId || "wechat-success"}`)
+      .digest("hex")
+    await connection.query(
+      `INSERT IGNORE INTO order_payment_facts
+        (id, order_id, transaction_id, payment_state, amount_verified, verified_at, created_at)
+       VALUES
+        (:id, :orderId, :transactionId, 'SUCCESS', 1, NOW(), NOW())`,
+      { id: paymentFactId, orderId, transactionId }
+    )
+
+    const refunded = ["已退款", "退款成功", "refunded", "success"].includes(status) ||
+      ["已退款", "refunded"].includes(paymentStatus) ||
+      ["退款成功", "refunded", "success"].includes(refundStatus) ||
+      ["refunded"].includes(afterSalesStatus)
+    const refunding = ["退款中", "退款处理中", "refund_processing"].includes(status) ||
+      ["退款处理中", "processing", "refund_pending"].includes(refundStatus) ||
+      ["refund_pending"].includes(afterSalesStatus)
+    const cancelled = ["已取消", "cancelled", "canceled", "已关闭", "closed", "已作废", "void"].includes(status)
+
+    if (refunded || refunding) {
+      await connection.query(
+        `INSERT INTO order_state_audit
+          (order_id, old_order_status, new_order_status, action_source, reason, operator_id, created_at)
+         VALUES
+          (:orderId, :previousStatus, :nextStatus, 'wechat_pay_notify',
+           '退款或退款处理中订单收到支付成功事实，未恢复履约', 'system', NOW())`,
+        {
+          orderId,
+          previousStatus: order.status || "",
+          nextStatus: order.status || ""
+        }
+      )
+      await connection.commit()
+      return { updated: false, queued: false, outcome: "PAYMENT_FACT_ONLY" }
+    }
+
+    if (cancelled) {
+      const [result] = await connection.query(
+        `UPDATE orders
+         SET payment_status = '异常已支付',
+             status = 'PAID_AFTER_CANCEL',
+             transaction_id = COALESCE(NULLIF(transaction_id, ''), :transactionId),
+             paid_at = COALESCE(paid_at, NOW())
+         WHERE id = :orderId
+           AND status IN ('已取消','cancelled','canceled','已关闭','closed','已作废','void')`,
+        { orderId, transactionId }
+      )
+      await connection.query(
+        `INSERT INTO order_state_audit
+          (order_id, old_order_status, new_order_status, action_source, reason, operator_id, created_at)
+         VALUES
+          (:orderId, :previousStatus, 'PAID_AFTER_CANCEL', 'wechat_pay_notify',
+           '订单取消或关闭后确认真实付款，已阻止自动履约和收益创建', 'system', NOW())`,
+        { orderId, previousStatus: order.status || "" }
+      )
+      await connection.commit()
+      return {
+        updated: Number(result.affectedRows || 0) === 1,
+        queued: false,
+        outcome: "PAID_AFTER_CANCEL"
+      }
+    }
 
     let updated = false
-    if (String(orders[0].payment_status || "") !== "已支付") {
+    if (String(order.payment_status || "") !== "已支付") {
       const [result] = await connection.query(
         `UPDATE orders
          SET payment_status = '已支付',
@@ -48,7 +117,8 @@ async function markOrderPaidAndEnqueue(options = {}) {
     await connection.commit()
     return {
       updated,
-      queued: Number(notificationResult.affectedRows || 0) === 1
+      queued: Number(notificationResult.affectedRows || 0) === 1,
+      outcome: updated ? "PAID" : "ALREADY_PAID"
     }
   } catch (error) {
     await connection.rollback().catch(() => {})

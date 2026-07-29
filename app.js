@@ -331,13 +331,17 @@ App({
     const currentStoreId = normalizeReferralCode(current.storeId || readStorage("referrerStoreId") || "")
     const currentExpireAt = Number(current.expiresAt || readStorage("referrerStoreExpireAt") || 0)
     const currentActive = !!currentStoreId && !!currentExpireAt && now <= currentExpireAt
-    const saveStoreReferral = () => {
+    const saveStoreReferral = attribution => {
+      const serverData = attribution && (attribution.data || attribution)
+      if (!serverData || !serverData.attributionToken) return false
       const nextContext = this.getReferralContext()
       nextContext.storeReferral = {
         storeId: normalizedStoreId,
-        storeCode: meta.storeCode || "",
-        boundAt: now,
-        expiresAt: expireAt,
+        storeCode: serverData.storeCode || meta.storeCode || "",
+        attributionToken: serverData.attributionToken,
+        attributionVisitorId: this.ensureLocalUserId(),
+        boundAt: Number(serverData.boundAt || now),
+        expiresAt: Number(serverData.expiresAt || expireAt),
         source: meta.source || "",
         rawScene: meta.rawScene || "",
         lastVisitAt: now
@@ -351,6 +355,22 @@ App({
       console.log("[store-referrer] saved", { source: meta.source || "", hasStoreId: true, storeCode: !!meta.storeCode })
       return true
     }
+    const requestAttribution = id => request("/api/store/source/attribution", {
+      method: "POST",
+      data: {
+        storeId: id,
+        storeCode: meta.storeCode || "",
+        visitorId: this.ensureLocalUserId(),
+        source: meta.source || "mini_program_store_code"
+      },
+      timeout: 5000
+    }).catch(error => {
+      console.warn("[store-referrer] attribution failed", {
+        source: meta.source || "",
+        message: error.message || "attribution_failed"
+      })
+      return null
+    })
     const validateStore = id => request(`/api/store/source/validate?storeId=${encodeURIComponent(id)}`, { timeout: 5000 })
       .then(data => !!(data && (data.valid === true || data.ok === true)))
       .catch(error => {
@@ -363,7 +383,8 @@ App({
       this.saveReferralContext(context)
       writeStorage("pendingReferrerStoreId", currentStoreId)
       console.log("[store-referrer] same store source kept", { source: meta.source || "", hasStoreId: true })
-      return Promise.resolve(true)
+      if (current.attributionToken) return Promise.resolve(true)
+      return requestAttribution(normalizedStoreId).then(saveStoreReferral)
     }
     if (currentActive && currentStoreId !== normalizedStoreId) {
       return validateStore(currentStoreId).then(valid => {
@@ -378,14 +399,18 @@ App({
         }
         console.log("[store-referrer] existing source invalid, accepting new source", { source: meta.source || "", skipReason: "existing_store_disabled" })
         this.clearStoreReferrer()
-        return validateStore(normalizedStoreId).then(newValid => (newValid === true ? saveStoreReferral() : false))
+        return validateStore(normalizedStoreId).then(newValid =>
+          newValid === true ? requestAttribution(normalizedStoreId).then(saveStoreReferral) : false
+        )
       })
     }
     if (currentStoreId && !currentActive) {
       console.log("[store-referrer] existing source expired, accepting new source", { source: meta.source || "", expired: true })
       this.clearStoreReferrer()
     }
-    return validateStore(normalizedStoreId).then(valid => (valid === true ? saveStoreReferral() : false))
+    return validateStore(normalizedStoreId).then(valid =>
+      valid === true ? requestAttribution(normalizedStoreId).then(saveStoreReferral) : false
+    )
   },
 
   clearStoreReferrer() {
@@ -409,6 +434,8 @@ App({
       sourceType: "store",
       sourceStoreId: storeId,
       sourceStoreCode: store.storeCode || "",
+      storeAttributionToken: store.attributionToken || "",
+      storeAttributionVisitorId: store.attributionVisitorId || this.ensureLocalUserId(),
       referrerStoreBoundAt: store.boundAt || readStorage("referrerStoreBoundAt") || "",
       referrerStoreExpireAt: store.expiresAt || readStorage("referrerStoreExpireAt") || ""
     }
