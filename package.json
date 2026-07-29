@@ -5,7 +5,10 @@
   "type": "commonjs",
   "scripts": {
     "cms": "node cms/server.js",
-    "start": "node cms/server.js"
+    "start": "node cms/server.js",
+    "test:wecom-order-notifier": "node scripts/test-wecom-order-notifier.js",
+    "test:wecom-order-notification": "node scripts/test-wecom-order-notification.js",
+    "test:wecom-order-notification-db": "node scripts/test-wecom-order-notification-db.js"
   },
   "dependencies": {
     "mysql2": "^3.11.5",
