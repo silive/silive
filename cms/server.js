@@ -773,6 +773,18 @@ async function resolveUserSession(token) {
   return session
 }
 
+async function revokeUserSession(token) {
+  const value = String(token || "").trim()
+  if (!value) return false
+  userSessions.delete(value)
+  if (!pool) return true
+  const result = await query(
+    "DELETE FROM user_sessions WHERE token_hash=:tokenHash",
+    { tokenHash: hashUserSessionToken(value) }
+  )
+  return Number(result.affectedRows || 0) > 0
+}
+
 function clientIp(req) {
   return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim()
 }
@@ -2528,7 +2540,7 @@ function orderBelongsToIdentity(order = {}, identity = {}) {
   const current = requestIdentity(identity)
   if (!hasRequestIdentity(current)) return false
   if (current.userId && order.userId === current.userId) return true
-  if (current.userToken && order.userToken === current.userToken) return true
+  if (order.userId) return false
   if (current.openid && order.openid === current.openid) return true
   if (current.phone && order.phone === current.phone) return true
   return false
@@ -2970,7 +2982,11 @@ async function resolveIdentityFromRequest(req, payload = {}) {
   ).trim()
   const session = await resolveUserSession(token)
   if (!session?.openid) return {}
-  const customer = await findCustomerForIdentity(session)
+  let customer = await findCustomerForIdentity(session)
+  if (!customer && session.phone) {
+    const ensured = await ensureInternalUserIdentity(session)
+    customer = ensured.userId ? { id: ensured.userId, phone: session.phone, openid: session.openid } : null
+  }
   return {
     userId: customer?.id || "",
     openid: session.openid,
@@ -4407,7 +4423,7 @@ async function getOrders(filters = {}) {
     if (filters.publicOnly) {
       orders = orders.filter(order => {
         if (identity.userId && order.userId === identity.userId) return true
-        if (identity.userToken && order.userToken === identity.userToken) return true
+        if (order.userId) return false
         if (identity.openid && order.openid === identity.openid) return true
         if (identity.phone && order.phone === identity.phone) return true
         return false
@@ -4428,41 +4444,38 @@ async function getOrders(filters = {}) {
   const where = []
   const params = {}
   if (filters.publicOnly && !hasIdentity) return []
-  if (filters.publicOnly && identity.phone && (identity.openid || identity.userToken)) {
+  if (filters.publicOnly && identity.userId && identity.phone) {
     await query(
       `UPDATE orders
        SET
          openid = CASE WHEN (openid IS NULL OR openid = '') THEN :openid ELSE openid END,
-         user_token = CASE WHEN (user_token IS NULL OR user_token = '') THEN :userToken ELSE user_token END
+         user_id = CASE WHEN (user_id IS NULL OR user_id = '') THEN :userId ELSE user_id END
        WHERE phone = :phone
+         AND (user_id IS NULL OR user_id = '' OR user_id = :userId)
          AND (:openid = '' OR openid IS NULL OR openid = '' OR openid = :openid)
-         AND (:userToken = '' OR user_token IS NULL OR user_token = '' OR user_token = :userToken)`,
+      `,
       {
         phone: identity.phone,
         openid: identity.openid || "",
-        userToken: identity.userToken || ""
+        userId: identity.userId
       }
     )
   }
   if (filters.publicOnly) {
-    const identityWhere = []
-    if (identity.userId) {
-      identityWhere.push("user_id = :userId")
-      params.userId = identity.userId
-    }
-    if (identity.userToken) {
-      identityWhere.push("user_token = :userToken")
-      params.userToken = identity.userToken
-    }
-    if (identity.openid) {
-      identityWhere.push("openid = :openid")
-      params.openid = identity.openid
-    }
-    if (identity.phone) {
-      identityWhere.push("phone = :phone")
-      params.phone = identity.phone
-    }
-    where.push(`(${identityWhere.join(" OR ")})`)
+    if (!identity.userId) return []
+    params.userId = identity.userId
+    params.legacyPhone = identity.phone || ""
+    params.legacyOpenid = identity.openid || ""
+    where.push(`(
+      user_id=:userId
+      OR (
+        (user_id IS NULL OR user_id='')
+        AND (
+          (:legacyPhone<>'' AND phone=:legacyPhone)
+          OR (:legacyOpenid<>'' AND openid=:legacyOpenid)
+        )
+      )
+    )`)
   }
   if (filters.status) {
     if (filters.status === "售后中") {
@@ -5995,14 +6008,14 @@ async function setOrderOpenid(orderId, openid) {
 async function backfillOrderIdentity(orderId, identity = {}) {
   if (!orderId) return
   const openid = String(identity.openid || "").trim()
-  const userToken = String(identity.userToken || identity.userSession || "").trim()
-  if (!openid && !userToken) return
+  const userId = String(identity.userId || "").trim()
+  if (!openid && !userId) return
   if (!pool) {
     const orders = readJsonFile(ordersFile, []).map(normalizeOrder)
     const index = orders.findIndex(order => order.id === orderId)
     if (index >= 0) {
       if (!orders[index].openid && openid) orders[index].openid = openid
-      if (!orders[index].userToken && userToken) orders[index].userToken = userToken
+      if (!orders[index].userId && userId) orders[index].userId = userId
       writeJsonFile(ordersFile, orders)
     }
     return
@@ -6011,9 +6024,9 @@ async function backfillOrderIdentity(orderId, identity = {}) {
     `UPDATE orders
      SET
        openid = CASE WHEN (openid IS NULL OR openid = '') THEN :openid ELSE openid END,
-       user_token = CASE WHEN (user_token IS NULL OR user_token = '') THEN :userToken ELSE user_token END
+       user_id = CASE WHEN (user_id IS NULL OR user_id = '') THEN :userId ELSE user_id END
      WHERE id = :orderId`,
-    { orderId, openid, userToken }
+    { orderId, openid, userId }
   )
 }
 
@@ -7671,12 +7684,51 @@ async function savePromotionRelations(relations) {
     writeJsonFile(promotionRelationsFile, list)
     return list
   }
-  await query("DELETE FROM promotion_relations")
+  const seenInvitees = new Set()
   for (const relation of list) {
-    await query(
-      "INSERT INTO promotion_relations (id, inviter_phone, inviter_name, inviter_code, invitee_phone, invitee_name, level, created_at) VALUES (:id, :inviterPhone, :inviterName, :inviterCode, :inviteePhone, :inviteeName, :level, :createdAt)",
-      { ...relation, createdAt: toMysqlDatetime(relation.createdAt, nowMysqlDatetime()) }
-    )
+    const invitee = normalizePhone(relation.inviteePhone)
+    if (!invitee || seenInvitees.has(invitee)) throw httpError(409, "同一用户不能存在多条推荐关系")
+    seenInvitees.add(invitee)
+  }
+  if (findCircularPromotionRelations(list).length) throw httpError(409, "推广关系存在循环，禁止保存")
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [lockRows] = await connection.query("SELECT GET_LOCK('promotion_relations_admin_write', 5) AS acquired")
+    if (Number(lockRows[0]?.acquired || 0) !== 1) throw httpError(409, "推广关系正在被其他管理员修改，请稍后重试")
+    for (const relation of list) {
+      const inviteePhone = normalizePhone(relation.inviteePhone)
+      const [claimRows] = await connection.query(
+        "SELECT relation_id FROM promotion_relation_claims WHERE invitee_phone=:inviteePhone FOR UPDATE",
+        { inviteePhone }
+      )
+      if (claimRows[0] && claimRows[0].relation_id !== relation.id) {
+        throw httpError(409, "该用户已绑定推荐关系，不能通过批量编辑覆盖")
+      }
+      await connection.query(
+        `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
+         VALUES (:inviteePhone, :id, NOW())`,
+        { id: relation.id, inviteePhone }
+      )
+      await connection.query(
+        `INSERT INTO promotion_relations
+          (id, inviter_phone, inviter_name, inviter_code, invitee_phone, invitee_name, level, created_at)
+         VALUES
+          (:id, :inviterPhone, :inviterName, :inviterCode, :inviteePhone, :inviteeName, :level, :createdAt)
+         ON DUPLICATE KEY UPDATE
+          inviter_phone=VALUES(inviter_phone), inviter_name=VALUES(inviter_name),
+          inviter_code=VALUES(inviter_code), invitee_phone=VALUES(invitee_phone),
+          invitee_name=VALUES(invitee_name), level=VALUES(level)`,
+        { ...relation, createdAt: toMysqlDatetime(relation.createdAt, nowMysqlDatetime()) }
+      )
+    }
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    await connection.query("SELECT RELEASE_LOCK('promotion_relations_admin_write')").catch(() => {})
+    connection.release()
   }
   return list
 }
@@ -7830,11 +7882,24 @@ async function bindPromotionRelation(inviterCode, inviteePhone, inviteeName = "�
   if (normalizePhone(inviter.phone) === inviteePhone) {
     return promotionBindError(strict)
   }
-  const relations = await getPromotionRelations()
-  const validation = validatePromotionBind({ inviterPhone: inviter.phone, inviteePhone, relations, strict })
-  if (!validation) return null
-  const existing = relations.find(relation => normalizePhone(relation.inviteePhone) === inviteePhone)
-  if (existing) return promotionBindError(strict)
+  if (!pool) {
+    const relations = await getPromotionRelations()
+    const validation = validatePromotionBind({ inviterPhone: inviter.phone, inviteePhone, relations, strict })
+    if (!validation) return null
+    const existing = relations.find(relation => normalizePhone(relation.inviteePhone) === inviteePhone)
+    if (existing) return promotionBindError(strict)
+    const relation = normalizePromotionRelation({
+      inviterPhone: inviter.phone,
+      inviterName: inviter.name,
+      inviterCode: inviter.inviteCode,
+      inviteePhone,
+      inviteeName,
+      level: 1
+    }, relations.length)
+    relations.unshift(relation)
+    await savePromotionRelations(relations)
+    return relation
+  }
   const relation = normalizePromotionRelation({
     inviterPhone: inviter.phone,
     inviterName: inviter.name,
@@ -7842,10 +7907,54 @@ async function bindPromotionRelation(inviterCode, inviteePhone, inviteeName = "�
     inviteePhone,
     inviteeName,
     level: 1
-  }, relations.length)
-  relations.unshift(relation)
-  await savePromotionRelations(relations)
-  return relation
+  }, 0)
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [existingRows] = await connection.query(
+      "SELECT * FROM promotion_relations WHERE invitee_phone=:inviteePhone LIMIT 1 FOR UPDATE",
+      { inviteePhone }
+    )
+    if (existingRows.length) {
+      await connection.rollback()
+      return promotionBindError(strict)
+    }
+    let cursor = normalizePhone(inviter.phone)
+    const visited = new Set()
+    for (let depth = 0; cursor && depth < 50; depth += 1) {
+      if (cursor === inviteePhone || visited.has(cursor)) {
+        await connection.rollback()
+        return promotionBindError(strict)
+      }
+      visited.add(cursor)
+      const [parentRows] = await connection.query(
+        `SELECT inviter_phone FROM promotion_relations
+         WHERE invitee_phone=:phone LIMIT 1 FOR UPDATE`,
+        { phone: cursor }
+      )
+      cursor = normalizePhone(parentRows[0]?.inviter_phone || "")
+    }
+    await connection.query(
+      `INSERT INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
+       VALUES (:inviteePhone, :id, NOW())`,
+      { inviteePhone, id: relation.id }
+    )
+    await connection.query(
+      `INSERT INTO promotion_relations
+        (id, inviter_phone, inviter_name, inviter_code, invitee_phone, invitee_name, level, created_at)
+       VALUES
+        (:id, :inviterPhone, :inviterName, :inviterCode, :inviteePhone, :inviteeName, :level, :createdAt)`,
+      { ...relation, createdAt: toMysqlDatetime(relation.createdAt, nowMysqlDatetime()) }
+    )
+    await connection.commit()
+    return relation
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    if (error?.code === "ER_DUP_ENTRY") return promotionBindError(strict)
+    throw error
+  } finally {
+    connection.release()
+  }
 }
 
 async function getRewardRules() {
@@ -8713,6 +8822,32 @@ async function initDb() {
     level INT DEFAULT 1,
     created_at DATETIME
   )`)
+  await query(`CREATE TABLE IF NOT EXISTS promotion_relation_claims (
+    invitee_phone VARCHAR(30) PRIMARY KEY,
+    relation_id VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_promotion_relation_claim (relation_id)
+  )`)
+  await query(
+    `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
+     SELECT invitee_phone, MIN(id), MIN(COALESCE(created_at,NOW()))
+     FROM promotion_relations
+     WHERE invitee_phone IS NOT NULL AND invitee_phone<>''
+     GROUP BY invitee_phone`
+  )
+  await query(`CREATE TABLE IF NOT EXISTS promotion_relation_claims (
+    invitee_phone VARCHAR(30) PRIMARY KEY,
+    relation_id VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_promotion_relation_claim (relation_id)
+  )`)
+  await query(
+    `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
+     SELECT invitee_phone, MIN(id), MIN(COALESCE(created_at,NOW()))
+     FROM promotion_relations
+     WHERE invitee_phone IS NOT NULL AND invitee_phone<>''
+     GROUP BY invitee_phone`
+  )
   await query(`CREATE TABLE IF NOT EXISTS promotion_visits (
     id VARCHAR(32) PRIMARY KEY,
     invite VARCHAR(64),
@@ -9159,7 +9294,7 @@ async function createWechatPay(orderId, openid, identity = {}) {
   if (order.paymentStatus === "待报价" || order.status === "待客服确认" || Number(order.amount || 0) <= 0) {
     throw httpError(400, "该订单正在等待客服报价，暂不能支付")
   }
-  if (order.paymentStatus === "已支付") {
+  if (["已支付", "部分退款"].includes(order.paymentStatus)) {
     throw httpError(400, "订单已支付，无需重复付款")
   }
   const blockedStatus = String(order.status || "").trim().toLowerCase()
@@ -9174,30 +9309,33 @@ async function createWechatPay(orderId, openid, identity = {}) {
     throw httpError(409, "该订单已取消、关闭或进入退款流程，不能再次支付")
   }
   const sessionOpenid = String(openid || identity.openid || "").trim()
-  const sessionUserToken = String(identity.userToken || identity.userSession || "").trim()
+  const sessionUserId = String(identity.userId || "").trim()
   const sessionPhone = String(identity.phone || "").trim()
+  const orderUserId = String(order.userId || "").trim()
   const orderOpenid = String(order.openid || "").trim()
-  const orderUserToken = String(order.userToken || "").trim()
   const orderPhone = String(order.phone || "").trim()
+  const userIdMatched = !!(sessionUserId && orderUserId && sessionUserId === orderUserId)
   const phoneMatched = !!(sessionPhone && orderPhone && sessionPhone === orderPhone)
   const openidMatched = !!(orderOpenid && sessionOpenid && orderOpenid === sessionOpenid)
-  const tokenMatched = !!(orderUserToken && sessionUserToken && orderUserToken === sessionUserToken)
-  if (!orderOpenid && !orderUserToken && !orderPhone) {
-    console.warn(`[pay] reject empty owner order=${order.id} sessionOpenid=${maskSecret(sessionOpenid)} sessionToken=${maskSecret(sessionUserToken)} sessionPhone=${maskPhone(sessionPhone)}`)
+  if (!orderUserId && !orderOpenid && !orderPhone) {
+    console.warn("[pay] reject empty owner", { orderId: order.id, hasSessionUserId: !!sessionUserId })
     throw httpError(403, "订单缺少用户身份，请联系商家处理")
   }
-  if (!openidMatched && !tokenMatched && !phoneMatched) {
-    console.warn(`[pay] reject owner mismatch order=${order.id} orderOpenid=${maskSecret(orderOpenid)} sessionOpenid=${maskSecret(sessionOpenid)} orderToken=${maskSecret(orderUserToken)} sessionToken=${maskSecret(sessionUserToken)} orderPhone=${maskPhone(orderPhone)} sessionPhone=${maskPhone(sessionPhone)}`)
+  const legacyMatched = !orderUserId && (openidMatched || phoneMatched)
+  if (!userIdMatched && !legacyMatched) {
+    console.warn("[pay] reject owner mismatch", {
+      orderId: order.id,
+      hasOrderUserId: !!orderUserId,
+      hasSessionUserId: !!sessionUserId,
+      legacyMatched: false
+    })
     throw httpError(403, "无权支付该订单")
   }
-  if (phoneMatched && (orderOpenid && sessionOpenid && orderOpenid !== sessionOpenid || orderUserToken && sessionUserToken && orderUserToken !== sessionUserToken)) {
-    console.warn(`[pay] allow phone matched historical order=${order.id} orderPhone=${maskPhone(orderPhone)} openidChanged=${!!(orderOpenid && sessionOpenid && orderOpenid !== sessionOpenid)} tokenChanged=${!!(orderUserToken && sessionUserToken && orderUserToken !== sessionUserToken)}`)
-  }
-  if ((!orderOpenid || !orderUserToken) && (phoneMatched || tokenMatched || openidMatched)) {
+  if (legacyMatched) {
     await backfillOrderIdentity(order.id, identity)
+    order.userId = sessionUserId
     if (!order.openid && sessionOpenid) order.openid = sessionOpenid
-    if (!order.userToken && sessionUserToken) order.userToken = sessionUserToken
-    console.log(`[pay] backfilled missing identity order=${order.id} openid=${maskSecret(order.openid)} token=${maskSecret(order.userToken)} phone=${maskPhone(orderPhone)}`)
+    console.log("[pay] backfilled legacy identity", { orderId: order.id, hasUserId: !!sessionUserId })
   }
   if (PAY_MOCK) {
     console.log("[pay] createWechatPay mock enabled", { orderId })
@@ -9942,6 +10080,18 @@ async function handle(req, res) {
         } : {}
       }
     })
+    return
+  }
+
+  if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+    const authorization = String(req.headers.authorization || "")
+    const token = String(
+      req.headers["x-user-session"] ||
+      req.headers["x-user-token"] ||
+      (authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7) : "")
+    ).trim()
+    if (token) await revokeUserSession(token)
+    sendJson(res, 200, { ok: true })
     return
   }
 

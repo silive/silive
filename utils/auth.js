@@ -479,7 +479,16 @@ function loginWithPhoneDetail(detail = {}) {
   })
 }
 
-function logout() {
+async function logout() {
+  try {
+    await request("/api/auth/logout", {
+      method: "POST",
+      data: {},
+      allowHostFallback: false
+    })
+  } catch (error) {
+    console.warn("[auth-expired]", { reason: "server_logout_failed" })
+  }
   wx.removeStorageSync("memberPhone")
   wx.removeStorageSync("memberName")
   wx.removeStorageSync("openid")
