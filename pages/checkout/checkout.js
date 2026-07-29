@@ -682,14 +682,10 @@ Page({
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
     const referrerStore = this.data.storeFeaturesEnabled ? getReferrerStoreMeta() : {}
-    return ensureOpenid().then(openid => request("/api/orders", {
+    return ensureOpenid().then(() => request("/api/orders", {
         method: "POST",
         data: {
           productId: this.data.product.id,
-          openid,
-          userSession: wx.getStorageSync("userSession") || "",
-          userId: wx.getStorageSync("localUserId") || "",
-          userToken: wx.getStorageSync("userToken") || wx.getStorageSync("localUserId") || "",
           inviterCode: this.data.promotionEnabled ? (wx.getStorageSync("boundInviterCode") || wx.getStorageSync("inviterCode") || "") : "",
           newcomerBenefitText: wx.getStorageSync("newcomerBenefitText") || "",
           remark: this.data.uploadedImages.length ? `上传图片：${this.data.uploadedImages.map(item => item.url).join("，")}` : "",
@@ -750,14 +746,14 @@ Page({
   },
 
   pay(orderId) {
-    return ensureOpenid().then(openid => {
+    return ensureOpenid().then(() => {
       console.log("[pay] request pay params", {
         orderId,
         url: "/api/pay/wechat"
       })
       return request("/api/pay/wechat", {
         method: "POST",
-        data: { orderId, openid, userSession: wx.getStorageSync("userSession") || "" }
+        data: { orderId }
       })
     }).then(payData => {
       if (payData.mock) return this.mockPaySuccess(orderId)

@@ -179,8 +179,6 @@ Page({
     this.loadHeaderAvatar()
     if (!this.lastHomeLoadAt || Date.now() - this.lastHomeLoadAt > 30000) {
       this.loadHomeConfig()
-    } else {
-      this.logBannerReturnDebug("onShow-cache", false)
     }
   },
 
@@ -217,33 +215,7 @@ Page({
         if (nextHome.banners.length) {
           wx.setStorageSync("homeBannersCache", nextHome.banners)
         }
-        const firstBanner = nextHome.banners && nextHome.banners[0] ? nextHome.banners[0] : {}
         const preloadBannerThumbCount = this.preloadBannerThumbs(nextHome.banners || [])
-        const oldBannerKeys = oldBanners.map(getBannerImageKey).join("|")
-        const nextBannerKeys = (nextHome.banners || []).map(getBannerImageKey).join("|")
-        const willSetDataBanners = oldBannerKeys !== nextBannerKeys || !oldBanners.length || force
-        this.logBannerReturnDebug(force ? "load-force" : "load-home", willSetDataBanners, nextHome.banners)
-        console.log("[home-banner-final]", {
-          title: firstBanner.title || "",
-          imageUrl: firstBanner.imageUrl || "",
-          optimizedUrl: firstBanner.optimizedUrl || "",
-          bannerUrl: firstBanner.bannerUrl || "",
-          finalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
-          version: firstBanner.version || firstBanner.updatedAt || ""
-        })
-        const firstProduct = nextHome.products && nextHome.products[0] ? nextHome.products[0] : {}
-        console.log("[image-debug-home]", {
-          firstBannerTitle: firstBanner.title || "",
-          firstBannerFinalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
-          firstBannerSizeHint: firstBanner.sizeHint || "",
-          secondBannerThumbUrl: nextHome.banners?.[1]?.preloadUrl || "",
-          thirdBannerThumbUrl: nextHome.banners?.[2]?.preloadUrl || "",
-          preloadBannerThumbCount,
-          productCount: (nextHome.products || []).length,
-          firstProductName: firstProduct.name || "",
-          firstProductImageUrl: firstProduct.displayImage || "",
-          firstProductImageField: firstProduct.displayImageField || ""
-        })
         this.setData({
           ...nextHome,
           cmsStatus: "online",
@@ -251,14 +223,6 @@ Page({
           bannerLoading: false,
           bannerLoaded: !!nextHome.banners.length,
           bannerError: false
-        })
-        console.log("[home-banner-init-debug]", {
-          initialBannersLength: oldBanners.length,
-          bannerLoading: false,
-          usingCacheBanner: false,
-          usingDefaultFallback: false,
-          apiBannerCount: nextHome.banners.length,
-          firstApiBannerTitle: firstBanner.title || ""
         })
         this.returnedFromHidden = false
         this.homeLoading = false
@@ -276,32 +240,8 @@ Page({
           bannerLoaded: hasCache || !!fallbackHome.banners.length,
           bannerError: true
         })
-        console.log("[home-banner-init-debug]", {
-          initialBannersLength: (this.data.banners || []).length,
-          bannerLoading: false,
-          usingCacheBanner: hasCache,
-          usingDefaultFallback: !hasCache,
-          apiBannerCount: 0,
-          firstApiBannerTitle: fallbackHome.banners?.[0]?.title || ""
-        })
         this.homeLoading = false
       })
-  },
-
-  logBannerReturnDebug(trigger, setDataBanners, banners) {
-    const list = banners || this.data.banners || []
-    const firstBanner = list[0] || {}
-    console.log("[home-banner-return-debug]", {
-      trigger,
-      onLoadCount: this.onLoadCount || 1,
-      onShowCount: this.onShowCount || 0,
-      bannerCount: list.length,
-      firstBannerFinalImageUrl: firstBanner.finalImageUrl || firstBanner.displayImage || "",
-      firstBannerLoaded: firstBanner.loaded !== false,
-      firstBannerError: !!firstBanner.failed,
-      fromProductReturn: !!this.returnedFromHidden,
-      setDataBanners: !!setDataBanners
-    })
   },
 
   preloadBannerThumbs(banners = []) {

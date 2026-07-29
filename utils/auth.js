@@ -1,7 +1,30 @@
 const { checkApiConnectivity, request, getActiveApiHost, apiUrl, authHeader } = require("./api")
 const { isStoreFeaturesEnabled } = require("./review")
 
+const AUTH_CACHE_VERSION = 2
+const AUTH_CACHE_VERSION_KEY = "authCacheVersion"
+let sessionRefreshPromise = null
+let authenticationPromise = null
+
+function migrateAuthCache() {
+  try {
+    const version = Number(wx.getStorageSync(AUTH_CACHE_VERSION_KEY) || 0)
+    if (version >= AUTH_CACHE_VERSION) return
+    const hasToken = !!(wx.getStorageSync("userSession") || wx.getStorageSync("userToken"))
+    const hasOpenid = !!wx.getStorageSync("openid")
+    const hasPhone = !!wx.getStorageSync("memberPhone")
+    if ((hasToken || hasOpenid || hasPhone) && !(hasToken && hasOpenid && hasPhone)) {
+      wx.removeStorageSync("memberPhone")
+      wx.removeStorageSync("openid")
+      wx.removeStorageSync("userSession")
+      wx.removeStorageSync("userToken")
+    }
+    wx.setStorageSync(AUTH_CACHE_VERSION_KEY, AUTH_CACHE_VERSION)
+  } catch (error) {}
+}
+
 function getLoginState() {
+  migrateAuthCache()
   const userSession = wx.getStorageSync("userSession") || ""
   const userToken = wx.getStorageSync("userToken") || ""
   const openid = wx.getStorageSync("openid") || ""
@@ -152,7 +175,8 @@ function validateServerSession() {
 }
 
 function silentRefreshSession() {
-  return new Promise((resolve, reject) => {
+  if (sessionRefreshPromise) return sessionRefreshPromise
+  sessionRefreshPromise = new Promise((resolve, reject) => {
     wx.login({
       success: loginRes => {
         if (!loginRes.code) {
@@ -176,11 +200,15 @@ function silentRefreshSession() {
       },
       fail: () => reject(new Error("登录状态已过期，请重新登录"))
     })
+  }).finally(() => {
+    sessionRefreshPromise = null
   })
+  return sessionRefreshPromise
 }
 
 function ensureAuthenticated(options = {}) {
-  return validateServerSession().catch(error => {
+  if (authenticationPromise) return authenticationPromise
+  authenticationPromise = validateServerSession().catch(error => {
     if (Number(error.statusCode || 0) !== 401 && getLoginState().hasToken) throw error
     console.log("[auth-expired]", {
       hasToken: getLoginState().hasToken,
@@ -192,9 +220,15 @@ function ensureAuthenticated(options = {}) {
     if (!state.authenticated || !state.hasPhone) throw new Error("请先完成手机号快捷登录")
     return state
   }).catch(error => {
-    clearExpiredLoginState()
+    const isAuthFailure = Number(error.statusCode || 0) === 401 ||
+      /请先.*登录|登录状态.*过期|登录已过期|授权手机号|会话已过期/.test(error.message || "") ||
+      !getLoginState().hasToken
+    if (isAuthFailure) clearExpiredLoginState()
     throw error
+  }).finally(() => {
+    authenticationPromise = null
   })
+  return authenticationPromise
 }
 
 function wxLoginCode(debugInfo = {}) {

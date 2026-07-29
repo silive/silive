@@ -140,10 +140,16 @@ async function main() {
   assert.match(server, /startWechatFulfillmentWorker\(\)/)
   assert.match(server, /startRefundSyncWorker\(\)/)
   assert.match(server, /const queryRefundNo = order\.refundNo \|\| generateRefundNo\(order\.id\)/)
+  assert.match(server, /商品已下架，请返回商品页重新选择/)
+  assert.match(server, /该订单已取消、关闭或进入退款流程，不能再次支付/)
+  assert.match(server, /Math\.min\(configuredCents, paidCents\)/)
   assert.match(checkout, /ensureAuthenticated/)
   assert.match(checkout, /pendingOrderId/)
   assert.match(checkout, /requestKey: this\.data\.submitRequestKey/)
+  assert.doesNotMatch(checkout, /userSession:\s*wx\.getStorageSync\("userSession"\)/)
   assert.match(orders, /ensureAuthenticated/)
+  assert.doesNotMatch(orders, /api\/orders\?userSession=/)
+  assert.doesNotMatch(orders, /\.\.\.getUserIdentity\(\)/)
 
   console.log("order chain tests passed")
 }

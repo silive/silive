@@ -2728,11 +2728,14 @@ function calculateStoreAmount(amount, type, value) {
 }
 
 function calculatePickupServiceFee(amount, type, value) {
-  const paid = Number(amount || 0)
-  const num = Math.max(0, Number(value || 0))
-  if (!paid || type === "none") return "0.00"
-  if (type === "percent") return money(paid * num / 100)
-  if (type === "fixed") return money(num)
+  const paidCents = Math.max(0, Math.round(Number(amount || 0) * 100))
+  const configuredValue = Math.max(0, Number(value || 0))
+  if (!paidCents || type === "none") return "0.00"
+  if (type === "percent") return money(Math.round(paidCents * configuredValue / 100) / 100)
+  if (type === "fixed") {
+    const configuredCents = Math.round(configuredValue * 100)
+    return money(Math.min(configuredCents, paidCents) / 100)
+  }
   return "0.00"
 }
 
@@ -4680,9 +4683,13 @@ async function createStoreSettlementRecordsForOrder(order) {
   const referralAmount = referrerStore && Number(order.referralCommission || 0) <= 0
     ? calculateStoreAmount(order.amount, referrerStore.referralCommissionType, referrerStore.referralCommissionValue)
     : money(order.referralCommission || 0)
-  const pickupAmount = pickupStore && Number(order.pickupServiceFee || 0) <= 0
-    ? calculatePickupServiceFee(order.amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
-    : money(order.pickupServiceFee || 0)
+  const pickupAmount = pickupStore
+    ? calculatePickupServiceFee(
+      order.amount,
+      Number(order.pickupServiceFee || 0) > 0 ? "fixed" : pickupStore.pickupFeeType,
+      Number(order.pickupServiceFee || 0) > 0 ? order.pickupServiceFee : pickupStore.pickupFeeValue
+    )
+    : "0.00"
   const sourceMeta = {
     storeOrderType: order.storeOrderType || "",
     isStoreMemberOrder: order.isStoreMemberOrder || false,
@@ -5178,6 +5185,7 @@ async function createOrder(data) {
     cartItems = data.cartItems.map(item => {
       const found = products.find(productItem => productItem.id === item.id)
       if (!found) throw new Error(`购物车商品不存在：${item.name || item.id}`)
+      if (!isPublicProduct(found)) throw httpError(409, `商品已下架：${found.name || item.name || item.id}`)
       return { product: found, quantity: Math.max(1, Number(item.quantity || 1)) }
     })
     const amount = cartItems.reduce((sum, item) => sum + Number(item.product.price || 0) * item.quantity, 0)
@@ -5200,6 +5208,9 @@ async function createOrder(data) {
     }
   }
   if (!product) throw new Error("商品不存在")
+  if (!["CART_ORDER", "CUSTOM_UPLOAD"].includes(product.id) && !isPublicProduct(product)) {
+    throw httpError(409, "商品已下架，请返回商品页重新选择")
+  }
   const productType = String(data.productType || data.orderType || product.productType || "").toLowerCase() === "normal" ? "normal" : "custom"
   const quantity = Math.max(1, Math.floor(Number(data.quantity || 1)))
   const isQuoteOrder = String(data.needQuote || product.needQuote || product.need_quote || "").toLowerCase() === "true" ||
@@ -7668,6 +7679,17 @@ async function createWechatPay(orderId, openid, identity = {}) {
   if (order.paymentStatus === "已支付") {
     throw httpError(400, "订单已支付，无需重复付款")
   }
+  const blockedStatus = String(order.status || "").trim().toLowerCase()
+  const blockedPaymentStatus = String(order.paymentStatus || "").trim().toLowerCase()
+  const blockedAfterSalesStatus = normalizeAfterSalesStatus(order.afterSalesStatus || order.after_sales_status || order.refundStatus || order.refund_status)
+  if (
+    isOrderRefunded(order) ||
+    ["已取消", "已关闭", "已退款", "退款中", "cancelled", "canceled", "closed", "void", "refunded"].includes(blockedStatus) ||
+    ["已退款", "退款中", "退款处理中", "cancelled", "canceled", "closed", "void", "refunded"].includes(blockedPaymentStatus) ||
+    ["refund_pending", "refunded"].includes(blockedAfterSalesStatus)
+  ) {
+    throw httpError(409, "该订单已取消、关闭或进入退款流程，不能再次支付")
+  }
   const sessionOpenid = String(openid || identity.openid || "").trim()
   const sessionUserToken = String(identity.userToken || identity.userSession || "").trim()
   const sessionPhone = String(identity.phone || "").trim()
@@ -8576,9 +8598,10 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/newcomer/benefits" && req.method === "GET") {
+    const identity = await resolveIdentityFromRequest(req, {})
     sendJson(res, 200, await getNewcomerBenefits({
-      phone: url.searchParams.get("phone") || "",
-      openid: url.searchParams.get("openid") || ""
+      phone: identity.phone || "",
+      openid: identity.openid || ""
     }))
     return
   }

@@ -80,21 +80,60 @@ Page({
     applyTheme(this)
     this.refreshLoginState()
     this.loadContact()
+    if (this.data.loggedIn) {
+      this.loadAuthenticatedProfile()
+      return
+    }
     this.loadPromotionSummary()
     this.loadOrderSummary()
     this.loadStoreMe()
-    this.loadUserProfile()
   },
 
   onPullDownRefresh() {
     this.refreshLoginState()
-    Promise.all([
-      Promise.resolve(this.loadContact()),
-      Promise.resolve(this.loadPromotionSummary()),
-      Promise.resolve(this.loadOrderSummary()),
-      Promise.resolve(this.loadStoreMe()),
-      Promise.resolve(this.loadUserProfile())
-    ]).finally(() => wx.stopPullDownRefresh())
+    const tasks = [Promise.resolve(this.loadContact())]
+    if (this.data.loggedIn) {
+      tasks.push(this.loadAuthenticatedProfile())
+    } else {
+      tasks.push(
+        Promise.resolve(this.loadPromotionSummary()),
+        Promise.resolve(this.loadOrderSummary()),
+        Promise.resolve(this.loadStoreMe())
+      )
+    }
+    Promise.all(tasks).finally(() => wx.stopPullDownRefresh())
+  },
+
+  loadAuthenticatedProfile() {
+    const { ensureAuthenticated, clearExpiredLoginState } = require("../../utils/auth")
+    return ensureAuthenticated({ source: "profile" }).then(() => {
+      this.refreshLoginState()
+      return Promise.all([
+        Promise.resolve(this.loadPromotionSummary()),
+        Promise.resolve(this.loadOrderSummary()),
+        Promise.resolve(this.loadStoreMe()),
+        Promise.resolve(this.loadUserProfile())
+      ])
+    }).catch(error => {
+      const isAuthFailure = Number(error.statusCode || 0) === 401 ||
+        /请先.*登录|登录状态.*过期|登录已过期|授权手机号|会话已过期/.test(error.message || "")
+      if (isAuthFailure) {
+        clearExpiredLoginState()
+        clearStoreIdentityCache()
+        this.refreshLoginState()
+        this.loadPromotionSummary()
+        this.loadOrderSummary()
+        this.loadStoreMe()
+      }
+      wx.showToast({
+        title: isAuthFailure ? "登录状态已过期，请重新登录" : "个人信息加载失败，请稍后重试",
+        icon: "none"
+      })
+      console.warn("[profile-identity-error]", {
+        statusCode: error.statusCode || 0,
+        reason: error.message || "authentication failed"
+      })
+    })
   },
 
   refreshLoginState() {
@@ -249,10 +288,7 @@ Page({
         storeStats: null
       })
       wx.showToast({ title: "登录成功", icon: "success" })
-      this.loadPromotionSummary()
-      this.loadOrderSummary()
-      this.loadStoreMe()
-      this.loadUserProfile()
+      this.loadAuthenticatedProfile()
     }).catch(error => {
       if (error.isAuthDenied) {
         wx.showToast({ title: "未授权手机号", icon: "none" })
@@ -329,15 +365,11 @@ Page({
   loadOrderSummary() {
     const { getLoginState } = require("../../utils/auth")
     const loginState = getLoginState()
-    const userId = wx.getStorageSync("localUserId") || ""
-    const userToken = wx.getStorageSync("userToken") || userId || ""
-    const openid = wx.getStorageSync("openid") || ""
-    const userSession = wx.getStorageSync("userSession") || ""
-    if (!loginState.loggedIn || (!userId && !userToken && !openid && !userSession)) {
+    if (!loginState.loggedIn) {
       this.setData({ orderCount: 0 })
       return
     }
-    request(`/api/orders?userSession=${encodeURIComponent(userSession)}&openid=${encodeURIComponent(openid)}&userId=${encodeURIComponent(userId)}&userToken=${encodeURIComponent(userToken)}`)
+    return request("/api/orders")
       .then(orders => {
         this.setData({ orderCount: Array.isArray(orders) ? orders.length : 0 })
       })
@@ -370,7 +402,7 @@ Page({
     })
     this.setData({ storeChecked: false, identityLoading: true, storeIdentityReady: false, storeConflictMessage: "" })
     const { request } = require("../../utils/api")
-    request("/api/store/me")
+    return request("/api/store/me")
       .then(data => {
         console.log("[store-identity-result]", {
           hasUserSession: !!wx.getStorageSync("userSession"),
@@ -428,7 +460,17 @@ Page({
           return
         }
         clearStoreIdentityCache()
-        this.setData({ storeChecked: true, identityLoading: false, storeIdentityReady: true, storeBound: false, isStoreManager: false, isStoreOwner: false, storeInfo: null, storeStats: null, storeConflictMessage: "" })
+        this.setData({
+          storeChecked: false,
+          identityLoading: false,
+          storeIdentityReady: false,
+          storeBound: false,
+          isStoreManager: false,
+          isStoreOwner: false,
+          storeInfo: null,
+          storeStats: null,
+          storeConflictMessage: "门店身份暂时无法确认"
+        })
       })
   },
 

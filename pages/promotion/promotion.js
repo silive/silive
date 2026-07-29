@@ -1,5 +1,5 @@
 const { apiUrl, request } = require("../../utils/api")
-const { clearExpiredLoginState, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
+const { clearExpiredLoginState, ensureAuthenticated, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { isPromotionEnabled, isReviewMode } = require("../../utils/review")
 const { saveImage } = require("../../utils/privacy")
@@ -58,7 +58,29 @@ Page({
       return
     }
     if (loginState.loggedIn) {
-      this.loadSummary(phone)
+      this.setData({ loading: true })
+      ensureAuthenticated({ source: "promotion-on-show" }).then(state => {
+        const currentPhone = state.phone || wx.getStorageSync("memberPhone") || ""
+        this.setData({ phone: currentPhone })
+        return this.loadSummary(currentPhone)
+      }).catch(error => {
+        const isAuthFailure = Number(error.statusCode || 0) === 401 ||
+          /请先.*登录|登录状态.*过期|登录已过期|授权手机号|会话已过期/.test(error.message || "")
+        if (isAuthFailure) {
+          clearExpiredLoginState()
+          this.setData({ phone: "", loginVisible: true, loading: false })
+        } else {
+          this.setData({ loading: false })
+        }
+        wx.showToast({
+          title: isAuthFailure ? "登录状态已过期，请重新登录" : "推广数据加载失败，请稍后重试",
+          icon: "none"
+        })
+        console.warn("[promotion-summary-error]", {
+          statusCode: error.statusCode || 0,
+          message: error.message || "authentication failed"
+        })
+      })
     } else {
       const localCode = wx.getStorageSync("profileInviteCode") || wx.getStorageSync("localUserId") || "U0000"
       this.setData({
@@ -200,11 +222,6 @@ Page({
         const fallback = onlineProducts.filter(item => ["hot", "best"].includes(item.badge))
         const source = selected.length ? selected : (fallback.length ? fallback : onlineProducts)
         this.setData({ hotProducts: source.slice(0, 3).map(item => ({ ...item, displayImage: productListImage(item) })) })
-        console.log("[promotion-hot-image]", {
-          firstProduct: source[0]?.name || "",
-          field: source[0] ? (source[0].cartThumbUrl ? "cartThumbUrl" : source[0].thumbUrl ? "thumbUrl" : source[0].listImage ? "listImage" : source[0].optimizedUrl ? "optimizedUrl" : "imageUrl") : "",
-          hasImage: !!productListImage(source[0] || {})
-        })
       })
       .catch(() => {})
   },

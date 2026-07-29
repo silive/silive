@@ -46,7 +46,6 @@ function isDevelopEnv() {
 
 const API_HOSTS = isDevelopEnv() ? DEV_API_HOSTS : PROD_API_HOSTS
 const BASE_URL = API_HOSTS[0]
-console.log("[api] baseURL=", BASE_URL)
 
 function getActiveApiHost() {
   try {
@@ -69,6 +68,12 @@ function apiUrl(path, host = getActiveApiHost()) {
   return /^https?:\/\//.test(path) ? path : `${host}${path}`
 }
 
+function safeApiUrl(url) {
+  const text = String(url || "")
+  const queryIndex = text.indexOf("?")
+  return queryIndex >= 0 ? text.slice(0, queryIndex) : text
+}
+
 function authHeader(extra = {}) {
   let userSession = ""
   try {
@@ -87,6 +92,8 @@ function authHeader(extra = {}) {
 
 function request(path, options = {}) {
   const hosts = uniqueHosts(options.hosts || [getActiveApiHost(), ...API_HOSTS])
+  const method = String(options.method || "GET").toUpperCase()
+  const allowHostFallback = options.allowHostFallback === true || method === "GET" || method === "HEAD"
   const tried = []
   const tryHost = index => new Promise((resolve, reject) => {
     const host = hosts[index]
@@ -95,11 +102,11 @@ function request(path, options = {}) {
       return
     }
     const url = apiUrl(path, host)
+    const safeUrl = safeApiUrl(url)
     tried.push(host)
-    console.log("[api] request url=", url)
     wx.request({
       url,
-      method: options.method || "GET",
+      method,
       data: options.data || {},
       header: authHeader(options.header || options.headers || {}),
       timeout: options.timeout || 10000,
@@ -109,23 +116,24 @@ function request(path, options = {}) {
           resolve(res.data && res.data.ok === true && res.data.data !== undefined ? res.data.data : res.data)
           return
         }
-        if (index < hosts.length - 1) {
+        const retryableStatus = [408, 425, 429, 500, 502, 503, 504].includes(Number(res.statusCode))
+        if (allowHostFallback && retryableStatus && index < hosts.length - 1) {
           tryHost(index + 1).then(resolve).catch(reject)
           return
         }
-        const error = new Error(res.data && res.data.message ? res.data.message : `接口请求失败：${res.statusCode} ${url}`)
+        const error = new Error(res.data && res.data.message ? res.data.message : `接口请求失败：${res.statusCode} ${safeUrl}`)
         error.statusCode = res.statusCode
-        error.url = url
+        error.url = safeUrl
         error.data = res.data || {}
         reject(error)
       },
       fail: error => {
-        console.error("[api] request failed:", url, error)
-        if (index < hosts.length - 1) {
+        console.error("[api] request failed:", safeUrl, error && error.errMsg || "unknown")
+        if (allowHostFallback && index < hosts.length - 1) {
           tryHost(index + 1).then(resolve).catch(reject)
           return
         }
-        reject(new Error(`${error.errMsg || "接口连接失败"}。当前API：${url}。可能原因：域名未解析/未备案拦截/HTTPS证书异常/未配置request合法域名。`))
+        reject(new Error(`${error.errMsg || "接口连接失败"}。当前API：${safeUrl}。可能原因：域名未解析/未备案拦截/HTTPS证书异常/未配置request合法域名。`))
       }
     })
   })

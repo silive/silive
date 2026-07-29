@@ -308,14 +308,6 @@ function buildStatusTabs(orders) {
   }))
 }
 
-function getUserIdentity() {
-  const userId = wx.getStorageSync("localUserId") || ""
-  const userToken = wx.getStorageSync("userToken") || userId || ""
-  const openid = wx.getStorageSync("openid") || ""
-  const userSession = wx.getStorageSync("userSession") || ""
-  return { userId, userToken, openid, userSession }
-}
-
 Page({
   data: {
     orders: [],
@@ -379,21 +371,15 @@ Page({
 
   loadPage() {
     const loginState = getLoginState()
-    const identity = getUserIdentity()
     console.log("[orders-auth-check]", {
       isLoggedIn: !!loginState.loggedIn,
       hasPhone: !!loginState.hasPhone,
       hasToken: !!loginState.hasToken,
-      hasOpenid: !!identity.openid,
-      hasUserSession: !!identity.userSession,
-      hasUserToken: !!identity.userToken
+      hasOpenid: !!loginState.openid
     })
     this.setData({ loading: true, orderLoadMessage: "" })
-    const query = loginState.loggedIn && (identity.userSession || identity.openid || identity.userId || identity.userToken)
-      ? `?userSession=${encodeURIComponent(identity.userSession)}&openid=${encodeURIComponent(identity.openid)}&userId=${encodeURIComponent(identity.userId)}&userToken=${encodeURIComponent(identity.userToken)}`
-      : ""
     Promise.all([
-      loginState.loggedIn ? request(`/api/orders${query}`) : Promise.resolve([]),
+      loginState.loggedIn ? request("/api/orders") : Promise.resolve([]),
       request("/api/products")
     ]).then(([orders, products]) => {
       console.log("[orders-load]", {
@@ -526,14 +512,9 @@ Page({
     const order = this.data.recentOrders[event.currentTarget.dataset.index]
     if (!order || isQuoteOrder(order)) return
     this.setData({ payLoadingOrderId: order.id })
-    ensureOpenid().then(openid => request("/api/pay/wechat", {
+    ensureOpenid().then(() => request("/api/pay/wechat", {
       method: "POST",
-      data: {
-        orderId: order.id,
-        openid,
-        userSession: wx.getStorageSync("userSession") || "",
-        userToken: wx.getStorageSync("userToken") || ""
-      }
+      data: { orderId: order.id }
     })).then(payData => {
       if (!payData.timeStamp || !payData.nonceStr || !payData.package || !payData.paySign) {
         throw new Error(payData.message || "支付配置暂未完成，请联系商家确认订单")
@@ -725,7 +706,6 @@ Page({
     request(`/api/orders/${encodeURIComponent(this.data.currentAfterSaleOrder.id)}/after-sales/apply`, {
       method: "POST",
       data: {
-        ...getUserIdentity(),
         ...this.data.afterSaleForm
       }
     }).then(() => {

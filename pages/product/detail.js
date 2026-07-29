@@ -176,7 +176,6 @@ Page({
         visibleDetailImages: product.visibleDetailImages || [],
         detailImagesExpanded: false
       })
-      this.logImageDebug(product)
       this.rememberShareProduct(product)
       return
     }
@@ -216,7 +215,6 @@ Page({
           visibleDetailImages: normalized.visibleDetailImages || [],
           detailImagesExpanded: false
         })
-        this.logImageDebug(normalized)
         this.rememberShareProduct(normalized)
       })
       .catch(() => {
@@ -230,7 +228,6 @@ Page({
             visibleDetailImages: normalized.visibleDetailImages || [],
             detailImagesExpanded: false
           })
-          this.logImageDebug(normalized)
           this.rememberShareProduct(normalized)
         }).catch(() => {
           request("/api/products", { timeout: 8000 }).then(products => {
@@ -244,7 +241,6 @@ Page({
               visibleDetailImages: normalized.visibleDetailImages || [],
               detailImagesExpanded: false
             })
-            this.logImageDebug(normalized)
             this.rememberShareProduct(normalized)
           }).catch(() => {
             const product = (defaultData.products || []).find(item => item.id === id)
@@ -257,7 +253,6 @@ Page({
                 visibleDetailImages: normalized.visibleDetailImages || [],
                 detailImagesExpanded: false
               })
-              this.logImageDebug(normalized)
               this.rememberShareProduct(normalized)
               return
             }
@@ -266,18 +261,6 @@ Page({
           })
         })
       })
-  },
-
-  logImageDebug(product = {}) {
-    console.log("[image-debug-detail]", {
-      productName: product.name || "",
-      mainImageUrl: product.displayImage || "",
-      mainImageField: product.mainImageField || "",
-      detailImageCount: (product.detailImages || []).length,
-      visibleDetailImageCount: (product.visibleDetailImages || []).length,
-      firstDetailImageUrl: (product.detailImages || [])[0] || "",
-      firstDetailImageField: product.firstDetailImageField || ""
-    })
   },
 
   onMainImageLoad(event) {
@@ -412,7 +395,7 @@ Page({
   ensureShareIdentity() {
     const phone = wx.getStorageSync("memberPhone")
     if (!phone || wx.getStorageSync("profileInviteCode")) return
-    request(`/api/promotion/summary?phone=${encodeURIComponent(phone)}`)
+    request("/api/promotion/summary")
       .then(data => {
         const code = data.profile && data.profile.inviteCode
         if (code) wx.setStorageSync("profileInviteCode", code)
@@ -442,10 +425,7 @@ Page({
   },
 
   loadNewcomerBenefits() {
-    ensureOpenid().then(openid => {
-      const phone = wx.getStorageSync("memberPhone") || ""
-      return request(`/api/newcomer/benefits?phone=${encodeURIComponent(phone)}&openid=${encodeURIComponent(openid || "")}`)
-    }).then(data => {
+    ensureOpenid().then(() => request("/api/newcomer/benefits")).then(data => {
       const benefits = data.eligible ? (data.benefits || []).slice(0, 3) : []
       wx.setStorageSync("newcomerBenefitText", benefits.map(item => item.text).join("、"))
       this.setData({ newcomerBenefits: benefits })

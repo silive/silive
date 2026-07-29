@@ -1,4 +1,5 @@
 const { request } = require("../../utils/api")
+const { ensureAuthenticated } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 
 function money(value) {
@@ -32,7 +33,7 @@ function fetchStoreMe() {
 
 function ensureStorePage(page, callback) {
   applyTheme(page)
-  fetchStoreMe().then(data => {
+  ensureAuthenticated({ source: "store-page" }).then(() => fetchStoreMe()).then(data => {
     if (!data.bound) {
       wx.showModal({
         title: "暂未绑定门店",
@@ -65,7 +66,13 @@ function ensureStorePage(page, callback) {
     })
     if (callback) callback(data)
   }).catch(error => {
-    wx.showToast({ title: error.message || "门店身份读取失败", icon: "none" })
+    const expired = Number(error.statusCode || 0) === 401 || /登录|授权/.test(error.message || "")
+    wx.showModal({
+      title: expired ? "登录状态已过期" : "门店身份读取失败",
+      content: expired ? "请重新登录后进入门店中心。" : (error.message || "请稍后重试"),
+      showCancel: false,
+      success: () => wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/profile/profile" }) })
+    })
   })
 }
 
