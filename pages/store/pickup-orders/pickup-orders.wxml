@@ -29,7 +29,7 @@
           <view class="order-sub">客户：{{item.phone}} · 取货码：{{item.pickupCode}}</view>
           <view class="order-sub">到店：{{item.arrivedStoreAtText || item.arrivedStoreAt || '-'}} · 自提：{{item.pickedUpAtText || item.pickedUpAt || '-'}}</view>
           <view class="order-sub">通知：{{item.notifyStatus === 'sent' ? '已通知' : item.notifyStatus === 'failed' ? '通知失败' : '未通知'}}</view>
-          <view class="amount">自提服务费 ¥{{item.pickupServiceFee || '0.00'}}</view>
+          <view class="amount">{{item.serviceFeeText}}</view>
           <view class="pickup-actions">
             <button wx:if="{{item.canNotifyPickup && !batchMode}}" class="primary-btn mini" data-id="{{item.id}}" bindtap="notifyOne" loading="{{notifyingOrderId === item.id}}">货已到店，通知客户</button>
             <view wx:elif="{{!item.canNotifyPickup}}" class="disabled-reason">{{item.notifyBlockedReason || '暂不可通知'}}</view>

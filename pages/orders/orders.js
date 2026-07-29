@@ -1,5 +1,5 @@
 const { request, uploadFileWithFallback } = require("../../utils/api")
-const { ensureOpenid, getLoginState, loginWithPhoneDetail, clearExpiredLoginState } = require("../../utils/auth")
+const { ensureOpenid, ensureAuthenticated, getLoginState, loginWithPhoneDetail, clearExpiredLoginState } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { isPaymentEnabled, isReviewMode } = require("../../utils/review")
 
@@ -101,6 +101,7 @@ function afterSalesRejectReason(order = {}) {
 }
 
 function displayStatus(order) {
+  if (order.displayStatusText) return order.displayStatusText
   const status = order.status || "待发货"
   if (isQuoteOrder(order)) return "待报价"
   const afterStatus = afterSalesStatus(order)
@@ -275,8 +276,8 @@ function statusMatches(order, key) {
     return isPaid(order) && ["待发货", "制作中"].includes(order.status || "")
   }
   if (key === "receiving") {
-    if (order.deliveryType === "pickup") return order.status === "已发货" || ["arrived_store", "ready_for_pickup", "arrived"].includes(order.pickupStatus)
-    return order.status === "已发货"
+    if (order.deliveryType === "pickup") return ["DELIVERING_TO_STORE", "READY_FOR_PICKUP"].includes(order.fulfillmentStatus)
+    return order.fulfillmentStatus === "SHIPPED" || order.status === "已发货"
   }
   return true
 }
@@ -355,7 +356,25 @@ Page({
     applyTheme(this)
     const loginState = getLoginState()
     this.setData({ loggedIn: loginState.loggedIn })
-    this.loadPage()
+    if (!loginState.loggedIn) {
+      this.loadPage()
+      return
+    }
+    this.setData({ loading: true, orderLoadMessage: "" })
+    ensureAuthenticated({ source: "orders-on-show" }).then(() => {
+      this.setData({ loggedIn: true })
+      this.loadPage()
+    }).catch(error => {
+      console.error("[orders-auth-check]", error)
+      this.setData({
+        loggedIn: false,
+        orders: [],
+        recentOrders: [],
+        loading: false,
+        orderLoadMessage: "登录状态已过期，请重新登录"
+      })
+      wx.showToast({ title: "登录状态已过期，请重新登录", icon: "none" })
+    })
   },
 
   loadPage() {

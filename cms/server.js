@@ -21,6 +21,15 @@ const {
   compensateMissingPaidNotifications,
   markOrderPaidAndEnqueue
 } = require("./wecom-order-outbox")
+const {
+  assertAdminTransition,
+  isPickupVerified,
+  lifecycleView
+} = require("./order-lifecycle")
+const {
+  claimDueFulfillment,
+  enqueueFulfillment
+} = require("./wechat-fulfillment-outbox")
 
 let mysql
 try {
@@ -97,6 +106,10 @@ const salesLoginFailures = new Map()
 let lastOrphanUploadCleanupAt = 0
 let wecomNotificationWorkerRunning = false
 let wecomNotificationWorkerTimer = null
+let wechatFulfillmentWorkerRunning = false
+let wechatFulfillmentWorkerTimer = null
+let refundSyncWorkerRunning = false
+let refundSyncWorkerTimer = null
 
 fs.mkdirSync(uploadsDir, { recursive: true })
 fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
@@ -660,18 +673,41 @@ function clearAdminLoginFailures(req) {
   adminLoginFailures.delete(clientIp(req) || "unknown")
 }
 
-function createUserSession(openid, phone = "") {
+async function createUserSession(openid, phone = "") {
   const token = crypto.randomBytes(24).toString("hex")
-  userSessions.set(token, { openid, phone, createdAt: Date.now() })
+  const session = { openid, phone, createdAt: Date.now() }
+  userSessions.set(token, session)
+  if (pool) {
+    await query(
+      `INSERT INTO user_sessions (token_hash, openid, phone, created_at, expires_at, updated_at)
+       VALUES (:tokenHash, :openid, :phone, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), NOW())`,
+      { tokenHash: hashUserSessionToken(token), openid, phone: normalizePhone(phone) }
+    )
+  }
   return token
 }
 
-function createWechatUserSession(openid, phone = "") {
+async function createWechatUserSession(openid, phone = "") {
   if (canUseMockWechatLogin() && openid === MOCK_WECHAT_OPENID) {
     userSessions.set(MOCK_WECHAT_USER_SESSION, { openid, phone: phone || MOCK_WECHAT_PHONE, createdAt: Date.now() })
     return MOCK_WECHAT_USER_SESSION
   }
-  return createUserSession(openid, phone)
+  return await createUserSession(openid, phone)
+}
+
+function hashUserSessionToken(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex")
+}
+
+async function restoreUserSessions() {
+  if (!pool) return
+  await query("DELETE FROM user_sessions WHERE expires_at <= NOW()")
+  const rows = await query(
+    "SELECT token_hash, openid, phone, created_at FROM user_sessions WHERE expires_at > NOW() ORDER BY updated_at DESC LIMIT 5000"
+  )
+  // Raw tokens are intentionally never stored, so existing in-memory tokens cannot be reconstructed.
+  // Database lookup in resolveUserSession handles sessions after a process restart.
+  console.log("[auth-state]", { persistedSessions: rows.length, restoredToMemory: 0 })
 }
 
 function isPlaceholderWechatValue(value) {
@@ -694,6 +730,29 @@ function getUserSession(token) {
     userSessions.delete(token)
     return null
   }
+  return session
+}
+
+async function resolveUserSession(token) {
+  const cached = getUserSession(token)
+  if (cached || !pool || !token) return cached
+  const rows = await query(
+    `SELECT openid, phone, created_at
+     FROM user_sessions
+     WHERE token_hash = :tokenHash AND expires_at > NOW()
+     LIMIT 1`,
+    { tokenHash: hashUserSessionToken(token) }
+  )
+  if (!rows[0]) return null
+  const session = {
+    openid: rows[0].openid || "",
+    phone: rows[0].phone || "",
+    createdAt: new Date(rows[0].created_at || Date.now()).getTime()
+  }
+  userSessions.set(token, session)
+  await query("UPDATE user_sessions SET updated_at=NOW() WHERE token_hash=:tokenHash", {
+    tokenHash: hashUserSessionToken(token)
+  }).catch(() => {})
   return session
 }
 
@@ -739,9 +798,9 @@ function checkOrderRecommendationEventRateLimit(req) {
   return checkRateLimit(orderRecommendationEventHits, clientIp(req) || "unknown", 60 * 1000, 60)
 }
 
-function userSessionFromRequest(req) {
+async function userSessionFromRequest(req) {
   const token = String(req.headers["x-user-session"] || req.headers["x-user-token"] || "").trim()
-  return getUserSession(token)
+  return await resolveUserSession(token)
 }
 
 function blockedUploadScriptExts() {
@@ -2184,6 +2243,7 @@ function normalizeAfterSalesStatus(value, fallback = "none") {
     approved: "requested",
     rejected: "rejected",
     refund_pending: "refund_pending",
+    refund_failed: "refund_failed",
     refunded: "refunded",
     remake: "remake",
     reship: "reship",
@@ -2191,6 +2251,7 @@ function normalizeAfterSalesStatus(value, fallback = "none") {
     "待审核": "requested",
     "售后处理中": "requested",
     "退款处理中": "refund_pending",
+    "退款失败": "refund_failed",
     "已拒绝": "rejected",
     "售后已拒绝": "rejected",
     "已退款": "refunded",
@@ -2206,6 +2267,7 @@ function afterSalesStatusText(value) {
     requested: "售后处理中",
     rejected: "售后已拒绝",
     refund_pending: "退款处理中",
+    refund_failed: "退款失败",
     refunded: "已退款",
     remake: "重新制作中",
     reship: "补发处理中",
@@ -2314,6 +2376,12 @@ function normalizeOrder(order, index) {
     pickupVerifiedAt: order.pickupVerifiedAt || order.pickup_verified_at || null,
     pickupVerifiedAtText: order.pickupVerifiedAtText || formatChinaDatetime(order.pickupVerifiedAt || order.pickup_verified_at),
     pickupVerifiedBy: order.pickupVerifiedBy || order.pickup_verified_by || "",
+    forcePickupVerifiedAt: order.forcePickupVerifiedAt || order.force_pickup_verified_at || null,
+    forcePickupVerifiedBy: order.forcePickupVerifiedBy || order.force_pickup_verified_by || "",
+    forcePickupReason: order.forcePickupReason || order.force_pickup_reason || "",
+    persistedFulfillmentStatus: order.persistedFulfillmentStatus || order.fulfillment_status || "",
+    wechatFulfillmentStatus: order.wechatFulfillmentStatus || order.wechat_fulfillment_status || "",
+    wechatFulfillmentSyncedAt: order.wechatFulfillmentSyncedAt || order.wechat_fulfillment_synced_at || null,
     userLatitude: order.userLatitude == null || order.userLatitude === "" ? "" : String(order.userLatitude),
     userLongitude: order.userLongitude == null || order.userLongitude === "" ? "" : String(order.userLongitude),
     pickupDistance: order.pickupDistance == null || order.pickupDistance === "" ? "" : String(order.pickupDistance),
@@ -2339,6 +2407,7 @@ function normalizeOrder(order, index) {
     supplierSettlementAmount: order.supplierSettlementAmount == null || order.supplierSettlementAmount === "" ? "0.00" : String(order.supplierSettlementAmount),
     customCommissionAmount: order.customCommissionAmount == null || order.customCommissionAmount === "" ? "0.00" : String(order.customCommissionAmount),
     storeSettlementStatus: order.storeSettlementStatus || "pending_confirm",
+    ...lifecycleView(order),
     ...orderProductImageFields(order, {})
   }
 }
@@ -2385,9 +2454,10 @@ function canStoreVerifyOrder(order = {}) {
 }
 
 function publicOrderView(order = {}) {
-  if (canShowPickupCodeForOrder(order)) return order
+  const decorated = { ...order, ...lifecycleView(order) }
+  if (canShowPickupCodeForOrder(order)) return decorated
   return {
-    ...order,
+    ...decorated,
     pickupCode: "",
     pickup_code: "",
     pickupQrCodeUrl: "",
@@ -2411,6 +2481,7 @@ function mysqlOrderParams(order) {
     arrivedStoreAt: toMysqlDatetime(order.arrivedStoreAt),
     pickedUpAt: toMysqlDatetime(order.pickedUpAt),
     pickupVerifiedAt: toMysqlDatetime(order.pickupVerifiedAt),
+    forcePickupVerifiedAt: toMysqlDatetime(order.forcePickupVerifiedAt),
     notifiedAt: toMysqlDatetime(order.notifiedAt)
   }
 }
@@ -2860,6 +2931,20 @@ function identityFromRequest(req, payload = {}) {
   return {}
 }
 
+async function resolveIdentityFromRequest(req, payload = {}) {
+  const token = String(
+    req.headers["x-user-session"] ||
+    req.headers["x-user-token"] ||
+    payload.userSession ||
+    payload.userToken ||
+    payload.token ||
+    ""
+  ).trim()
+  const session = await resolveUserSession(token)
+  if (!session?.openid) return {}
+  return { openid: session.openid, phone: session.phone || "", userSession: token, userToken: token }
+}
+
 function inferAiPreviewType(product = {}) {
   const text = `${product.name || ""} ${(Array.isArray(product.categories) ? product.categories.join(" ") : "")} ${product.intro || ""}`
   if (/叶雕|天然叶/.test(text)) return "leaf"
@@ -3112,12 +3197,13 @@ function isOrderRewardConfirmed(order = {}) {
   if (!order) return false
   const status = String(order.status || "").trim().toLowerCase()
   const pickupStatus = String(order.pickupStatus || order.pickup_status || "").trim().toLowerCase()
+  if (isPickupOrder(order)) {
+    return ["picked_up", "pickedup", "已自提"].includes(pickupStatus) &&
+      !!(order.pickupVerifiedAt || order.pickup_verified_at || order.forcePickupVerifiedAt || order.force_pickup_verified_at)
+  }
   return ["已完成", "completed", "complete", "done"].includes(status) ||
-    ["picked_up", "pickedup", "已自提"].includes(pickupStatus) ||
     !!order.completedAt ||
-    !!order.completed_at ||
-    !!order.pickedUpAt ||
-    !!order.picked_up_at
+    !!order.completed_at
 }
 
 function buildOrderLookup(orders = []) {
@@ -4273,6 +4359,12 @@ async function getOrders(filters = {}) {
     pickupVerifiedAt: formatChinaDatetime(row.pickup_verified_at),
     pickupVerifiedAtText: formatChinaDatetime(row.pickup_verified_at),
     pickupVerifiedBy: row.pickup_verified_by || "",
+    forcePickupVerifiedAt: formatChinaDatetime(row.force_pickup_verified_at),
+    forcePickupVerifiedBy: row.force_pickup_verified_by || "",
+    forcePickupReason: row.force_pickup_reason || "",
+    persistedFulfillmentStatus: row.fulfillment_status || "",
+    wechatFulfillmentStatus: row.wechat_fulfillment_status || "",
+    wechatFulfillmentSyncedAt: formatChinaDatetime(row.wechat_fulfillment_synced_at),
     userLatitude: row.user_latitude,
     userLongitude: row.user_longitude,
     pickupDistance: row.pickup_distance,
@@ -4348,8 +4440,8 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, force_pickup_verified_at, force_pickup_verified_by, force_pickup_reason, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :forcePickupVerifiedAt, :forcePickupVerifiedBy, :forcePickupReason, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
@@ -4404,6 +4496,9 @@ async function saveOrders(orders) {
        picked_up_at = VALUES(picked_up_at),
        pickup_verified_at = VALUES(pickup_verified_at),
        pickup_verified_by = VALUES(pickup_verified_by),
+       force_pickup_verified_at = VALUES(force_pickup_verified_at),
+       force_pickup_verified_by = VALUES(force_pickup_verified_by),
+       force_pickup_reason = VALUES(force_pickup_reason),
        user_latitude = VALUES(user_latitude),
        user_longitude = VALUES(user_longitude),
        pickup_distance = VALUES(pickup_distance),
@@ -4825,7 +4920,7 @@ async function getStoreSettlementSummary(filters = {}) {
 
 async function getStoreSession(req) {
   const token = String(req.headers["x-user-session"] || req.headers["x-user-token"] || "").trim()
-  const session = getUserSession(token)
+  const session = await resolveUserSession(token)
   if (!session?.phone) {
     console.log("[store-me]", {
       hasSession: !!session,
@@ -4920,10 +5015,11 @@ async function requireStorePermission(req, res, permission) {
   return storeSession
 }
 
-function storeOrderView(order, mode = "referral") {
+function storeOrderView(order, mode = "referral", settlementRecord = null) {
   const showPickupCode = canShowPickupCodeForOrder(order)
   const notifyBlockedReason = pickupArrivedBlockedReason(order, order.pickupStoreId)
   return {
+    ...lifecycleView(order, settlementRecord),
     id: order.id,
     createdAt: order.createdAt,
     createdAtText: order.createdAtText || formatChinaDatetime(order.createdAt),
@@ -5002,6 +5098,7 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
   if (isOrderBlockedForStoreVerify(order)) throw httpError(400, "订单售后或退款处理中，暂不能核销")
   if (order.pickupStatus === "picked_up") throw httpError(400, "该订单已核销")
   if (!pickupCode || normalizePickupCode(order.pickupCode) !== normalizePickupCode(pickupCode)) throw httpError(400, "取货码不正确")
+  const previous = { ...order }
   const verifiedAt = formatDateTime(new Date())
   order.pickupStatus = "picked_up"
   order.status = "已完成"
@@ -5011,6 +5108,13 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
   order.completedAt = order.completedAt || order.pickedUpAt
   await saveOrders([order])
   await createStoreSettlementRecordsForOrder(order)
+  await recordOrderStateAudit(previous, order, {
+    source: "store_pickup_code",
+    operatorId: store.id,
+    reason: "取货码核销",
+    serviceFeeImpact: "自提服务费由预计转为待结算"
+  })
+  await enqueueWechatFulfillment(order, "PICKUP_READY")
   return storeOrderView(order, "pickup")
 }
 
@@ -5035,6 +5139,7 @@ async function verifyStorePickupByCode(store, pickupCode) {
       verifiedBy: order.pickupVerifiedBy || store.id
     }
   }
+  const previous = { ...order }
   const verifiedAt = formatDateTime(new Date())
   order.pickupStatus = "picked_up"
   order.status = "已完成"
@@ -5044,6 +5149,13 @@ async function verifyStorePickupByCode(store, pickupCode) {
   order.completedAt = order.completedAt || verifiedAt
   await saveOrders([order])
   await createStoreSettlementRecordsForOrder(order)
+  await recordOrderStateAudit(previous, order, {
+    source: "store_pickup_code",
+    operatorId: store.id,
+    reason: "取货码核销",
+    serviceFeeImpact: "自提服务费由预计转为待结算"
+  })
+  await enqueueWechatFulfillment(order, "PICKUP_READY")
   return {
     ok: true,
     alreadyVerified: false,
@@ -5109,8 +5221,33 @@ async function createOrder(data) {
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
   const pickupCode = deliveryType === "pickup" ? await generateUniquePickupCode() : ""
   const pickupQrCodeUrl = pickupCode ? await generatePickupQrCode(pickupCode) : ""
+  const requestKey = String(data.requestKey || data.idempotencyKey || "").trim().slice(0, 100)
+  const reservedOrderId = `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
+  if (pool && requestKey) {
+    const result = await query(
+      "INSERT IGNORE INTO order_request_keys (request_key, order_id, created_at) VALUES (:requestKey, :orderId, NOW())",
+      { requestKey, orderId: reservedOrderId }
+    )
+    if (Number(result.affectedRows || 0) !== 1) {
+      const existing = await query("SELECT order_id, created_at FROM order_request_keys WHERE request_key=:requestKey LIMIT 1", { requestKey })
+      const existingOrderId = existing[0]?.order_id || ""
+      for (let attempt = 0; attempt < 10 && existingOrderId; attempt += 1) {
+        const found = (await getOrders({ keyword: existingOrderId })).find(item => item.id === existingOrderId)
+        if (found) return found
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      const reservedAt = existing[0]?.created_at ? new Date(String(existing[0].created_at).replace(" ", "T")).getTime() : Date.now()
+      if (Date.now() - reservedAt > 2 * 60 * 1000) {
+        await query("DELETE FROM order_request_keys WHERE request_key=:requestKey AND order_id=:orderId", {
+          requestKey,
+          orderId: existingOrderId
+        })
+      }
+      throw httpError(409, "订单正在创建，请稍后重试")
+    }
+  }
   const order = normalizeOrder({
-    id: `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    id: reservedOrderId,
     productId: product.id,
     customerName: data.customerName,
     phone: data.phone,
@@ -5409,6 +5546,158 @@ async function compensateMissingWecomOrderNotifications() {
   console.log("[wecom-order-notification] compensation", result)
 }
 
+function wechatExpressCompanyCode(value) {
+  const text = String(value || "").trim().toLowerCase()
+  const map = {
+    "顺丰": "SF", "顺丰速运": "SF", sf: "SF",
+    "中通": "ZTO", "中通快递": "ZTO", zto: "ZTO",
+    "圆通": "YTO", "圆通速递": "YTO", yto: "YTO",
+    "申通": "STO", "申通快递": "STO", sto: "STO",
+    "韵达": "YD", "韵达快递": "YD", yd: "YD",
+    "京东": "JD", "京东物流": "JD", jd: "JD",
+    "邮政": "EMS", "中国邮政": "EMS", ems: "EMS"
+  }
+  return map[text] || (/^[A-Z0-9_-]{2,20}$/.test(String(value || "")) ? String(value) : "")
+}
+
+function chinaIsoTime(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(String(value || "").replace(" ", "T"))
+  const safe = Number.isNaN(date.getTime()) ? new Date() : date
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false
+  }).formatToParts(safe).reduce((result, item) => ({ ...result, [item.type]: item.value }), {})
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+08:00`
+}
+
+function maskedShippingContact(value) {
+  const digits = normalizePhone(value)
+  if (digits.length < 7) return ""
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`
+}
+
+function buildWechatFulfillmentPayload(order, node) {
+  if (!order.transactionId) throw new Error("订单缺少微信支付交易号，暂不能同步履约")
+  if (!order.openid) throw new Error("订单缺少付款人 OpenID，暂不能同步履约")
+  const pickup = isPickupOrder(order)
+  if (!pickup && node !== "SHIPPED") throw new Error("普通配送订单仅在真实发货后同步")
+  const item = {
+    item_desc: String(order.productName || "定制商品").replace(/\s+/g, " ").slice(0, 120)
+  }
+  const contact = maskedShippingContact(order.phone)
+  if (contact) item.contact = { receiver_contact: contact }
+  if (!pickup) {
+    const expressCompany = wechatExpressCompanyCode(order.shippingCompany)
+    if (!order.trackingNumber || !expressCompany) throw new Error("真实快递单号或微信支持的快递公司编码不完整")
+    item.tracking_no = String(order.trackingNumber).trim()
+    item.express_company = expressCompany
+  }
+  return {
+    order_key: { order_number_type: 2, transaction_id: order.transactionId },
+    logistics_type: pickup ? 4 : 1,
+    delivery_mode: 1,
+    is_all_delivered: true,
+    shipping_list: [item],
+    upload_time: chinaIsoTime(order.pickedUpAt || order.arrivedStoreAt || order.shippedAt || new Date()),
+    payer: { openid: order.openid }
+  }
+}
+
+async function enqueueWechatFulfillment(order, node) {
+  if (!pool || !order?.id || !node || isOrderRefunded(order)) return false
+  const queued = await enqueueFulfillment(pool, order.id, node)
+  if (queued) setImmediate(() => runWechatFulfillmentWorkerSafe())
+  return queued
+}
+
+async function sendWechatFulfillmentRecord(record) {
+  const order = (await getOrders({ keyword: record.order_id })).find(item => item.id === record.order_id)
+  if (!order) throw new Error("本地订单不存在")
+  if (isOrderRefunded(order)) throw new Error("订单已退款，停止同步履约")
+  const accessToken = await getAccessToken()
+  const payload = buildWechatFulfillmentPayload(order, record.business_node)
+  const result = await requestJson(
+    `https://api.weixin.qq.com/wxa/sec/order/upload_shipping_info?access_token=${accessToken}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, timeout: 8000 },
+    JSON.stringify(payload)
+  )
+  const errcode = Number(result.data?.errcode || 0)
+  if (Number(result.statusCode) < 200 || Number(result.statusCode) >= 300 || errcode !== 0) {
+    const error = new Error(`微信履约同步失败：${errcode || result.statusCode} ${String(result.data?.errmsg || "").slice(0, 160)}`)
+    error.wechatErrcode = String(errcode || result.statusCode || "")
+    throw error
+  }
+  await query(
+    `UPDATE wechat_fulfillment_records
+     SET status='SENT', last_error=NULL, wechat_error_code=NULL, sent_at=NOW(),
+         next_retry_at=NULL, claim_token=NULL, processing_started_at=NULL, updated_at=NOW()
+     WHERE id=:id AND claim_token=:claimToken`,
+    { id: record.id, claimToken: record.claim_token }
+  )
+  await query(
+    "UPDATE orders SET wechat_fulfillment_status='SENT', wechat_fulfillment_synced_at=NOW() WHERE id=:orderId",
+    { orderId: order.id }
+  )
+}
+
+async function failWechatFulfillmentRecord(record, error) {
+  const attempts = Number(record.attempt_count || 0)
+  const terminal = attempts >= 4
+  const delays = [1, 5, 15]
+  const delay = delays[Math.max(0, attempts - 1)] || 15
+  await query(
+    `UPDATE wechat_fulfillment_records
+     SET status=:status, last_error=:lastError, wechat_error_code=:errorCode,
+         next_retry_at=${terminal ? "NULL" : `DATE_ADD(NOW(), INTERVAL ${delay} MINUTE)`},
+         claim_token=NULL, processing_started_at=NULL, updated_at=NOW()
+     WHERE id=:id AND claim_token=:claimToken`,
+    {
+      id: record.id,
+      claimToken: record.claim_token,
+      status: terminal ? "FAILED" : "RETRY",
+      lastError: String(error.message || "微信履约同步失败").replace(/access_token=[^&\s]+/g, "access_token=***").slice(0, 500),
+      errorCode: String(error.wechatErrcode || "").slice(0, 40)
+    }
+  )
+}
+
+async function runWechatFulfillmentWorker() {
+  if (!pool || wechatFulfillmentWorkerRunning) return
+  wechatFulfillmentWorkerRunning = true
+  try {
+    const records = await claimDueFulfillment(pool, { limit: 5, maxAttempts: 4, lockMinutes: 3 })
+    for (const record of records) {
+      try {
+        await sendWechatFulfillmentRecord(record)
+      } catch (error) {
+        await failWechatFulfillmentRecord(record, error)
+        console.error("[wechat-fulfillment]", {
+          orderId: record.order_id,
+          node: record.business_node,
+          error: String(error.message || "").replace(/access_token=[^&\s]+/g, "access_token=***").slice(0, 180)
+        })
+      }
+    }
+  } finally {
+    wechatFulfillmentWorkerRunning = false
+  }
+}
+
+function runWechatFulfillmentWorkerSafe() {
+  return runWechatFulfillmentWorker().catch(error => {
+    console.error("[wechat-fulfillment] worker error", { error: String(error.message || "").slice(0, 180) })
+  })
+}
+
+function startWechatFulfillmentWorker() {
+  if (wechatFulfillmentWorkerTimer) return
+  runWechatFulfillmentWorkerSafe()
+  wechatFulfillmentWorkerTimer = setInterval(runWechatFulfillmentWorkerSafe, 30000)
+  wechatFulfillmentWorkerTimer.unref?.()
+}
+
 async function applyShipment(data) {
   const orders = await getOrders()
   const index = orders.findIndex(order => order.id === data.orderId)
@@ -5427,7 +5716,49 @@ async function applyShipment(data) {
     shippedAt: formatDateTime(new Date())
   }
   await saveOrders([orders[index]])
+  await recordOrderStateAudit(order, orders[index], {
+    source: "admin_ship",
+    operatorId: "admin",
+    reason: data.reason || "后台发货",
+    requestKey: data.requestKey || ""
+  })
+  await enqueueWechatFulfillment(orders[index], "SHIPPED")
   return orders[index]
+}
+
+async function recordOrderStateAudit(previous = {}, next = {}, context = {}) {
+  if (!pool || !next.id) return
+  const oldLifecycle = lifecycleView(previous)
+  const nextLifecycle = lifecycleView(next)
+  await query(
+    "UPDATE orders SET fulfillment_status=:fulfillmentStatus WHERE id=:orderId",
+    { orderId: next.id, fulfillmentStatus: nextLifecycle.fulfillmentStatus || "" }
+  )
+  await query(
+    `INSERT INTO order_state_audit
+      (order_id, old_order_status, new_order_status, old_fulfillment_status, new_fulfillment_status,
+       old_refund_status, new_refund_status, action_source, operator_id, reason, request_key,
+       wechat_sync_result, service_fee_impact, created_at)
+     VALUES
+      (:orderId, :oldOrderStatus, :newOrderStatus, :oldFulfillmentStatus, :newFulfillmentStatus,
+       :oldRefundStatus, :newRefundStatus, :actionSource, :operatorId, :reason, :requestKey,
+       :wechatSyncResult, :serviceFeeImpact, NOW())`,
+    {
+      orderId: next.id,
+      oldOrderStatus: previous.status || "",
+      newOrderStatus: next.status || "",
+      oldFulfillmentStatus: oldLifecycle.fulfillmentStatus || "",
+      newFulfillmentStatus: nextLifecycle.fulfillmentStatus || "",
+      oldRefundStatus: previous.refundStatus || previous.afterSalesStatus || "",
+      newRefundStatus: next.refundStatus || next.afterSalesStatus || "",
+      actionSource: context.source || "system",
+      operatorId: context.operatorId || "",
+      reason: String(context.reason || "").slice(0, 255),
+      requestKey: String(context.requestKey || "").slice(0, 100),
+      wechatSyncResult: String(context.wechatSyncResult || "").slice(0, 100),
+      serviceFeeImpact: String(context.serviceFeeImpact || "").slice(0, 100)
+    }
+  )
 }
 
 async function markOrderArrivedStore(orderId) {
@@ -5451,27 +5782,51 @@ async function markOrderArrivedStore(orderId) {
     notifyStatus: "failed"
   }
   await saveOrders([orders[index]])
+  await recordOrderStateAudit(order, orders[index], {
+    source: "admin_arrived_store",
+    operatorId: "admin",
+    reason: "货已到店"
+  })
+  await enqueueWechatFulfillment(orders[index], "PICKUP_READY")
   const notice = await sendPickupArrivedNotice(orderId)
   orders[index].notifyStatus = notice.ok && !notice.skipped ? "sent" : "failed"
   await saveOrders([orders[index]])
   return orders[index]
 }
 
-async function markOrderPickedUp(orderId) {
+async function markOrderPickedUp(orderId, options = {}) {
   const orders = await getOrders()
   const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
   if (orders[index].deliveryType !== "pickup") throw new Error("该订单不是到店自提订单")
   if (!isOrderPaidForPickupCredential(orders[index])) throw new Error("订单未支付，暂不能标记已自提")
+  if (!options.force) throw httpError(400, "该订单尚未完成自提核销，不能直接设为已完成。")
+  const reason = String(options.reason || "").trim()
+  if (!reason) throw httpError(400, "管理员强制核销必须填写原因")
+  const previous = { ...orders[index] }
+  const now = formatDateTime(new Date())
   orders[index] = {
     ...orders[index],
     status: "已完成",
     pickupStatus: "picked_up",
-    pickedUpAt: formatDateTime(new Date()),
-    completedAt: orders[index].completedAt || formatDateTime(new Date())
+    pickedUpAt: now,
+    pickupVerifiedAt: now,
+    pickupVerifiedBy: options.operatorId || "admin",
+    forcePickupVerifiedAt: now,
+    forcePickupVerifiedBy: options.operatorId || "admin",
+    forcePickupReason: reason,
+    completedAt: orders[index].completedAt || now
   }
   await saveOrders([orders[index]])
   await createStoreSettlementRecordsForOrder(orders[index])
+  await recordOrderStateAudit(previous, orders[index], {
+    source: "admin_force_pickup",
+    operatorId: options.operatorId || "admin",
+    reason,
+    requestKey: options.requestKey || "",
+    serviceFeeImpact: "自提服务费由预计转为待结算"
+  })
+  await enqueueWechatFulfillment(orders[index], "PICKUP_READY")
   return orders[index]
 }
 
@@ -5616,6 +5971,8 @@ async function markRefundSuccess(order, refundData = {}) {
   const orders = await getOrders()
   const index = orders.findIndex(item => item.id === order.id)
   if (index < 0) throw new Error("订单不存在")
+  const previous = { ...orders[index] }
+  const verifiedPickup = isPickupVerified(previous)
   const now = formatDateTime(new Date())
   orders[index] = {
     ...orders[index],
@@ -5623,6 +5980,8 @@ async function markRefundSuccess(order, refundData = {}) {
     paymentStatus: "已退款",
     refundStatus: "退款成功",
     afterSalesStatus: "refunded",
+    pickupStatus: isPickupOrder(previous) && !verifiedPickup ? "cancelled" : previous.pickupStatus,
+    refundNo: refundData.out_refund_no || refundData.refundNo || orders[index].refundNo || "",
     refundId: refundData.refund_id || refundData.refundId || orders[index].refundId || "",
     refundSuccessAt: now,
     refundAt: now,
@@ -5632,6 +5991,12 @@ async function markRefundSuccess(order, refundData = {}) {
   await rollbackRewardsForOrder(order.id)
   await invalidateStoreSettlementRecordsForOrder(order.id)
   await rollbackSalesAgentCommissionsForOrder(order.id)
+  await recordOrderStateAudit(previous, orders[index], {
+    source: "wechat_refund_confirmed",
+    operatorId: "system",
+    reason: "微信退款最终状态确认成功",
+    serviceFeeImpact: verifiedPickup ? "已核销服务费默认保留" : "未核销预计服务费取消"
+  })
   return orders[index]
 }
 
@@ -5806,8 +6171,10 @@ async function rollbackRewardsForOrder(orderId) {
   return records
 }
 
-async function invalidateStoreSettlementRecordsForOrder(orderId) {
+async function invalidateStoreSettlementRecordsForOrder(orderId, options = {}) {
   const records = await getStoreSettlementRecords()
+  const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  const retainVerifiedPickupFee = !!order && isPickupVerified(order) && !options.chargebackVerifiedPickupFee
   let changed = false
   const now = formatDateTime(new Date())
   const hasChargebackFor = record => records.some(item =>
@@ -5818,6 +6185,12 @@ async function invalidateStoreSettlementRecordsForOrder(orderId) {
   )
   for (const record of records) {
     if (record.orderId !== orderId || isChargebackRecord(record)) continue
+    if (retainVerifiedPickupFee && isPickupServiceSettlement(record.type)) {
+      record.description = `${String(record.description || "").replace(/；退款后保留/g, "")}；退款后保留（已完成真实自提服务）`
+      record.updatedAt = now
+      changed = true
+      continue
+    }
     if (record.status === "settled") {
       if (!hasChargebackFor(record)) {
         records.unshift(normalizeSettlementRecord({
@@ -6680,6 +7053,65 @@ async function initDb() {
   await ensureColumn("orders", "supplier_settlement_amount", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "custom_commission_amount", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("orders", "store_settlement_status", "VARCHAR(30) DEFAULT 'pending_confirm'")
+  await ensureColumn("orders", "fulfillment_status", "VARCHAR(40)")
+  await ensureColumn("orders", "wechat_fulfillment_status", "VARCHAR(30)")
+  await ensureColumn("orders", "wechat_fulfillment_synced_at", "DATETIME")
+  await ensureColumn("orders", "force_pickup_verified_at", "DATETIME")
+  await ensureColumn("orders", "force_pickup_verified_by", "VARCHAR(80)")
+  await ensureColumn("orders", "force_pickup_reason", "VARCHAR(255)")
+  await query(`CREATE TABLE IF NOT EXISTS user_sessions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL,
+    openid VARCHAR(80) NOT NULL,
+    phone VARCHAR(30),
+    created_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    UNIQUE KEY uniq_user_session_token (token_hash),
+    INDEX idx_user_session_openid (openid),
+    INDEX idx_user_session_expiry (expires_at)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_request_keys (
+    request_key VARCHAR(100) PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order_request_order (order_id)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_state_audit (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    old_order_status VARCHAR(40),
+    new_order_status VARCHAR(40),
+    old_fulfillment_status VARCHAR(40),
+    new_fulfillment_status VARCHAR(40),
+    old_refund_status VARCHAR(40),
+    new_refund_status VARCHAR(40),
+    action_source VARCHAR(40),
+    operator_id VARCHAR(80),
+    reason VARCHAR(255),
+    request_key VARCHAR(100),
+    wechat_sync_result VARCHAR(100),
+    service_fee_impact VARCHAR(100),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order_state_audit_order (order_id, created_at)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS wechat_fulfillment_records (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    business_node VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    attempt_count INT NOT NULL DEFAULT 0,
+    last_error VARCHAR(500),
+    wechat_error_code VARCHAR(40),
+    claim_token VARCHAR(64),
+    processing_started_at DATETIME,
+    sent_at DATETIME,
+    next_retry_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_wechat_fulfillment_node (order_id, business_node),
+    INDEX idx_wechat_fulfillment_due (status, next_retry_at)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS order_notification_records (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     order_id VARCHAR(32) NOT NULL,
@@ -7349,11 +7781,32 @@ async function queryWechatRefundByNo(refundNo) {
   return result.data
 }
 
+async function queryWechatRefundById(refundId) {
+  if (!refundId) throw httpError(400, "缺少微信退款 ID")
+  if (PAY_MOCK || !IS_PRODUCTION) {
+    return { refund_id: refundId, status: "SUCCESS" }
+  }
+  const urlPath = `/v3/refund/domestic/refunds/refund-id/${encodeURIComponent(refundId)}`
+  const result = await requestJson(`https://api.mch.weixin.qq.com${urlPath}`, {
+    method: "GET",
+    headers: {
+      Authorization: wechatAuthorization("GET", urlPath, ""),
+      Accept: "application/json"
+    }
+  })
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw httpError(400, result.data.message || "微信退款查询失败")
+  }
+  return result.data
+}
+
 async function syncRefundStatus(orderId) {
   const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
   if (!order) throw httpError(404, "订单不存在")
-  if (!order.refundNo) return { order, refund: null }
-  const refund = await queryWechatRefundByNo(order.refundNo)
+  if (!order.refundNo && !order.refundId) return { order, refund: null }
+  const refund = order.refundNo
+    ? await queryWechatRefundByNo(order.refundNo)
+    : await queryWechatRefundById(order.refundId)
   const status = refund.status || refund.refund_status || ""
   if (status === "SUCCESS") {
     return { order: await markRefundSuccess(order, refund), refund }
@@ -7362,12 +7815,56 @@ async function syncRefundStatus(orderId) {
     const orders = await getOrders()
     const index = orders.findIndex(item => item.id === order.id)
     if (index >= 0) {
-      orders[index] = { ...orders[index], refundStatus: "退款失败", afterSalesStatus: "approved" }
+      const previous = { ...orders[index] }
+      orders[index] = {
+        ...orders[index],
+        refundStatus: "退款失败",
+        afterSalesStatus: "refund_failed",
+        afterSalesHandledAt: formatDateTime(new Date())
+      }
       await saveOrders([orders[index]])
+      await recordOrderStateAudit(previous, orders[index], {
+        source: "wechat_refund_query",
+        operatorId: "system",
+        reason: `微信退款查询终态：${status}`
+      })
       return { order: orders[index], refund }
     }
   }
   return { order, refund }
+}
+
+async function runRefundSyncWorker() {
+  if (!pool || refundSyncWorkerRunning || PAY_MOCK) return
+  refundSyncWorkerRunning = true
+  try {
+    const rows = await query(
+      `SELECT id FROM orders
+       WHERE (after_sales_status='refund_pending' OR refund_status IN ('退款处理中','PROCESSING','processing'))
+         AND (refund_no IS NOT NULL AND refund_no<>'' OR refund_id IS NOT NULL AND refund_id<>'')
+         AND COALESCE(refund_reviewed_at, after_sales_handled_at, created_at) <= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+       ORDER BY COALESCE(refund_reviewed_at, after_sales_handled_at, created_at)
+       LIMIT 20`
+    )
+    for (const row of rows) {
+      try {
+        await syncRefundStatus(row.id)
+      } catch (error) {
+        console.error("[refund-sync]", { orderId: row.id, error: String(error.message || "").slice(0, 180) })
+      }
+    }
+  } finally {
+    refundSyncWorkerRunning = false
+  }
+}
+
+function startRefundSyncWorker() {
+  if (refundSyncWorkerTimer) return
+  runRefundSyncWorker().catch(error => console.error("[refund-sync] worker error", { error: String(error.message || "").slice(0, 180) }))
+  refundSyncWorkerTimer = setInterval(() => {
+    runRefundSyncWorker().catch(error => console.error("[refund-sync] worker error", { error: String(error.message || "").slice(0, 180) }))
+  }, 60 * 1000)
+  refundSyncWorkerTimer.unref?.()
 }
 
 async function assertConfirmedPaymentMatchesOrder(confirmed) {
@@ -7697,7 +8194,15 @@ async function handle(req, res) {
     const storeSession = await requireStorePermission(req, res, "pickup.view")
     if (!storeSession) return
     const orders = (await getOrders()).filter(order => order.pickupStoreId === storeSession.store.id && isPickupOrder(order) && isOrderPaidForPickupCredential(order))
-    sendJson(res, 200, { storeInfo: storePrivateView(storeSession.store), orders: orders.map(order => storeOrderView(order, "pickup")) })
+    const records = await getStoreSettlementRecords({ storeId: storeSession.store.id, type: "pickup_service_fee" })
+    sendJson(res, 200, {
+      storeInfo: storePrivateView(storeSession.store),
+      orders: orders.map(order => storeOrderView(
+        order,
+        "pickup",
+        records.find(record => record.orderId === order.id && isPickupServiceSettlement(record.type)) || null
+      ))
+    })
     return
   }
 
@@ -7792,7 +8297,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = identityFromRequest(req, body)
+    const identity = await resolveIdentityFromRequest(req, body)
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7810,7 +8315,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/orders" && req.method === "GET") {
-    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7828,7 +8333,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+$/) && req.method === "GET") {
-    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7845,7 +8350,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/orders/refund" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = identityFromRequest(req, body)
+    const identity = await resolveIdentityFromRequest(req, body)
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7856,7 +8361,7 @@ async function handle(req, res) {
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/after-sales\/apply$/) && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = identityFromRequest(req, body)
+    const identity = await resolveIdentityFromRequest(req, body)
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7884,7 +8389,8 @@ async function handle(req, res) {
   if (url.pathname === "/api/wechat/openid" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const openid = await getOpenid(body.code)
-    const userSession = createWechatUserSession(openid)
+    const existingCustomer = (await getCustomers()).find(item => item.openid === openid && normalizePhone(item.phone))
+    const userSession = await createWechatUserSession(openid, existingCustomer?.phone || "")
     sendJson(res, 200, { ok: true, openid, userSession, userToken: userSession, token: userSession })
     return
   }
@@ -7901,7 +8407,7 @@ async function handle(req, res) {
     }
     const openid = await getOpenid(body.loginCode)
     const phoneNumber = await getWechatPhoneNumber(body.code)
-    const userSession = openid ? createWechatUserSession(openid, phoneNumber) : ""
+    const userSession = openid ? await createWechatUserSession(openid, phoneNumber) : ""
     sendJson(res, 200, {
       ok: true,
       phoneNumber,
@@ -7913,8 +8419,33 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/auth/session" && req.method === "GET") {
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    if (!identity.openid || !identity.phone) {
+      sendJson(res, 401, { ok: false, message: "登录状态已过期，请重新登录" })
+      return
+    }
+    const customer = (await getCustomers()).find(item =>
+      (identity.openid && item.openid === identity.openid) ||
+      (identity.phone && normalizePhone(item.phone) === normalizePhone(identity.phone))
+    )
+    sendJson(res, 200, {
+      ok: true,
+      data: {
+        authenticated: true,
+        hasPhone: true,
+        phone: identity.phone,
+        userInfo: customer ? {
+          name: customer.name || customer.nickname || "",
+          avatarUrl: customer.avatarUrl || ""
+        } : {}
+      }
+    })
+    return
+  }
+
   if (url.pathname === "/api/user/profile" && req.method === "GET") {
-    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7925,7 +8456,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/user/profile" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = identityFromRequest(req, body)
+    const identity = await resolveIdentityFromRequest(req, body)
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -7936,7 +8467,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/pay/wechat" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = identityFromRequest(req, body)
+    const identity = await resolveIdentityFromRequest(req, body)
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
@@ -8007,7 +8538,11 @@ async function handle(req, res) {
       hasRefundId: !!resource.refund_id
     })
     const refundNo = resource.out_refund_no || ""
-    const order = (await getOrders()).find(item => item.refundNo === refundNo)
+    const refundId = resource.refund_id || ""
+    const order = (await getOrders()).find(item =>
+      (refundNo && item.refundNo === refundNo) ||
+      (refundId && item.refundId === refundId)
+    )
     if (order && (resource.refund_status === "SUCCESS" || resource.status === "SUCCESS")) {
       await markRefundSuccess(order, resource)
     }
@@ -8016,14 +8551,14 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/promotion/summary" && req.method === "GET") {
-    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
     if (!identity.phone) throw httpError(401, "请先完成手机号快捷登录")
     sendJson(res, 200, await getPromotionSummary(identity.phone))
     return
   }
 
   if (url.pathname === "/api/promotion/stats" && req.method === "GET") {
-    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
     if (!identity.phone) throw httpError(401, "请先完成手机号快捷登录")
     const summary = await getPromotionSummary(identity.phone)
     sendJson(res, 200, { ok: true, data: summary.profile, profile: summary.profile })
@@ -8031,7 +8566,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/promotion/orders" && req.method === "GET") {
-    const identity = identityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
+    const identity = await resolveIdentityFromRequest(req, Object.fromEntries(url.searchParams.entries()))
     if (!identity.phone) throw httpError(401, "请先完成手机号快捷登录")
     const summary = await getPromotionSummary(identity.phone)
     sendJson(res, 200, { ok: true, data: summary.orders || [], orders: summary.orders || [] })
@@ -8075,7 +8610,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/promotion/bind" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = identityFromRequest(req, body)
+    const identity = await resolveIdentityFromRequest(req, body)
     if (!identity.phone) {
       sendJson(res, 401, { ok: false, message: "请先完成微信手机号登录" })
       return
@@ -8242,7 +8777,7 @@ async function handle(req, res) {
     }
     const isPublicUpload = url.pathname === "/api/upload/public"
     const isProductImageUpload = url.pathname === "/api/upload" && url.searchParams.get("purpose") === "product-image"
-    const userSession = isPublicUpload ? userSessionFromRequest(req) : null
+    const userSession = isPublicUpload ? await userSessionFromRequest(req) : null
     const loggedInPublicUpload = !!userSession?.openid
     if (isPublicUpload && !loggedInPublicUpload && !checkPublicUploadRateLimit(req)) {
       sendJson(res, 429, { ok: false, message: "临时上传过于频繁，请登录后继续上传或稍后再试" })
@@ -8430,7 +8965,26 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/admin/orders" && req.method === "PUT") {
-    sendJson(res, 200, { ok: true, data: await saveOrders(JSON.parse((await readBody(req)).toString())) })
+    const incoming = JSON.parse((await readBody(req)).toString() || "[]")
+    if (!Array.isArray(incoming)) throw httpError(400, "订单数据格式不正确")
+    const previousOrders = await getOrders()
+    for (const next of incoming) {
+      const previous = previousOrders.find(item => item.id === next.id)
+      if (previous) assertAdminTransition(previous, next)
+    }
+    const saved = await saveOrders(incoming)
+    for (const next of incoming) {
+      const previous = previousOrders.find(item => item.id === next.id)
+      if (!previous) continue
+      if (previous.status !== next.status || previous.pickupStatus !== next.pickupStatus || previous.refundStatus !== next.refundStatus) {
+        await recordOrderStateAudit(previous, next, {
+          source: "admin_order_edit",
+          operatorId: "admin",
+          reason: "后台编辑订单"
+        })
+      }
+    }
+    sendJson(res, 200, { ok: true, data: saved })
     return
   }
 
@@ -8447,7 +9001,52 @@ async function handle(req, res) {
 
   if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/picked-up$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[4])
-    sendJson(res, 200, { ok: true, data: await markOrderPickedUp(orderId) })
+    throw httpError(400, "该订单尚未完成自提核销，不能直接设为已完成。请使用取货码核销或管理员强制核销。")
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/force-pickup$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, {
+      ok: true,
+      data: await markOrderPickedUp(orderId, {
+        force: true,
+        reason: body.reason,
+        operatorId: "admin",
+        requestKey: body.requestKey || ""
+      })
+    })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/wechat-fulfillment\/retry$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+    if (!order) throw httpError(404, "订单不存在")
+    const node = isPickupOrder(order)
+      ? (["PICKED_UP", "READY_FOR_PICKUP"].includes(lifecycleView(order).fulfillmentStatus) ? "PICKUP_READY" : "")
+      : (order.status === "已发货" ? "SHIPPED" : "")
+    if (!node) throw httpError(400, "订单尚未到达可同步的真实履约节点")
+    await query(
+      `INSERT INTO wechat_fulfillment_records
+        (order_id, business_node, status, attempt_count, next_retry_at, created_at, updated_at)
+       VALUES (:orderId, :node, 'PENDING', 0, NOW(), NOW(), NOW())
+       ON DUPLICATE KEY UPDATE
+         status=IF(status='SENT','SENT','PENDING'),
+         attempt_count=IF(status='SENT',attempt_count,0),
+         next_retry_at=IF(status='SENT',next_retry_at,NOW()),
+         last_error=IF(status='SENT',last_error,NULL),
+         updated_at=NOW()`,
+      { orderId, node }
+    )
+    setImmediate(runWechatFulfillmentWorkerSafe)
+    await recordOrderStateAudit(order, order, {
+      source: "admin_wechat_fulfillment_retry",
+      operatorId: "admin",
+      reason: "后台重新同步微信履约状态",
+      wechatSyncResult: "已进入重试队列"
+    })
+    sendJson(res, 200, { ok: true, message: "已进入微信履约同步队列" })
     return
   }
 
@@ -8956,6 +9555,7 @@ assertProductionRuntimeConfig()
 ensureUploadDirectoryGuards()
 
 initDb().then(async () => {
+  await restoreUserSessions().catch(error => console.warn("[auth-state] session restore check failed", { message: error.message }))
   await ensureLegacyStoreMembers().catch(error => console.warn("门店成员兼容迁移失败：", error.message))
   await ensureReferralRewardRecords().catch(error => console.warn("推广收益补偿检查失败：", error.message))
   cleanupOrphanTempUploads(true).catch(error => console.warn("临时图片清理失败：", error.message))
@@ -8963,6 +9563,8 @@ initDb().then(async () => {
     console.error("[wecom-order-notification] compensation error", { error: safeWecomError(error) })
   })
   startWecomOrderNotificationWorker()
+  startWechatFulfillmentWorker()
+  startRefundSyncWorker()
   const serverHandler = (req, res) => {
     handle(req, res).catch(error => {
       console.error(error)

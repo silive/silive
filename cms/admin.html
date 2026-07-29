@@ -2267,6 +2267,8 @@
           <label>商品名称<input data-order-key="productName" value="${escapeHtml(order.productName)}"></label>
           <label>金额<input data-order-key="amount" value="${escapeHtml(order.amount)}"></label>
           <label>支付状态<input data-order-key="paymentStatus" value="${escapeHtml(order.paymentStatus || "待支付")}"></label>
+          <label>统一履约状态<input value="${escapeHtml(order.displayStatusText || order.status || "处理中")}" disabled></label>
+          <label>微信履约同步<input value="${escapeHtml(order.wechatFulfillmentStatus || "未同步")}" disabled></label>
           <label>发货状态<select data-order-key="status">
             ${["待支付", "待发货", "制作中", "已发货", "已完成", "退款中", "已退款"].map(status => `<option ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}
           </select></label>
@@ -2317,6 +2319,14 @@
           <label>门店操作人<input value="${escapeHtml(order.isStoreMemberOrder ? `${order.storeOperatorRoleText || ""} ${order.storeOperatorPhoneTail || "未知"}` : "-")}" disabled></label>
           <label>推广佣金<input data-order-key="referralCommission" value="${escapeHtml(order.referralCommission || "0.00")}"></label>
           <label>自提服务费<input data-order-key="pickupServiceFee" value="${escapeHtml(order.pickupServiceFee || "0.00")}"></label>
+          <label>服务费状态<input value="${escapeHtml(({
+            ESTIMATED: "预计服务费",
+            PAYABLE: "待结算服务费",
+            SETTLED: "已结算服务费",
+            CANCELLED: "服务费已取消",
+            CHARGEBACK: "服务费已扣回",
+            NONE: "无服务费"
+          })[order.serviceFeeStatus] || "待确认")}" disabled></label>
           <label>结算状态<select data-order-key="storeSettlementStatus">
             <option value="pending_confirm" ${!order.storeSettlementStatus || order.storeSettlementStatus === "pending_confirm" ? "selected" : ""}>待确认</option>
             <option value="unsettled" ${order.storeSettlementStatus === "unsettled" ? "selected" : ""}>未结算</option>
@@ -2326,7 +2336,8 @@
         <p class="muted">自提门店：${escapeHtml(order.pickupStore?.name || "-")} ${order.pickupStore?.address ? `· ${escapeHtml(order.pickupStore.address)}` : ""}</p>
         <div class="toolbar" style="margin-top:12px">
           <button class="secondary" data-action="order-arrived-store" data-index="${index}">标记已到店 / 待自提</button>
-          <button class="secondary" data-action="order-picked-up" data-index="${index}">标记已自提 / 完成</button>
+          <button class="secondary" data-action="order-picked-up" data-index="${index}">管理员强制核销</button>
+          <button class="secondary" data-action="wechat-fulfillment-retry" data-index="${index}">重新同步微信履约</button>
         </div></div>
         <div class="drawer-section"><h4>物流信息</h4><div class="form-grid">
           <label>快递公司<input data-order-key="shippingCompany" value="${escapeHtml(order.shippingCompany)}" placeholder="例如：顺丰速运"></label>
@@ -2345,7 +2356,7 @@
           <label>拒绝原因<textarea data-order-key="refundRejectReason">${escapeHtml(order.refundRejectReason || order.afterSalesRejectReason || "")}</textarea></label>
           <label>退款单号<input data-order-key="refundNo" value="${escapeHtml(order.refundNo || "")}"></label>
         </div>
-        <p class="muted">支付状态：${escapeHtml(order.paymentStatus || "-")} · 发货状态：${escapeHtml(order.status || "-")} · 自提状态：${escapeHtml(order.pickupStatus || "-")} · 佣金状态：${escapeHtml(settlementStatusText(order.storeSettlementStatus || "pending_confirm"))}</p>
+        <p class="muted">统一状态：${escapeHtml(order.displayStatusText || "-")} · 原订单状态：${escapeHtml(order.status || "-")} · 自提状态：${escapeHtml(order.pickupStatus || "-")} · 佣金状态：${escapeHtml(settlementStatusText(order.storeSettlementStatus || "pending_confirm"))}</p>
         ${afterSalesImages.length ? `<div class="media-list" style="margin-top:12px">${afterSalesImages.map((url, imageIndex) => `<div class="media-row"><img class="media-thumb" src="${escapeHtml(url)}" alt=""><div><strong>售后凭证 ${imageIndex + 1}</strong><div class="muted">${escapeHtml(url)}</div></div></div>`).join("")}</div>` : ""}
         <div class="toolbar" style="margin-top:12px">
           <button class="secondary" data-action="refund-approve" data-index="${index}">同意退款</button>
@@ -2418,7 +2429,7 @@
           <td><strong>${formatMoney(order.amount)}</strong></td>
           <td><span class="pill">${order.deliveryType === "pickup" ? "到店自提" : "配送/快递"}</span><div class="muted">${escapeHtml(order.pickupStore?.name || "")}</div><div class="muted">${canShowPickupCode(order) ? `取货码：${escapeHtml(order.pickupCode)}` : order.deliveryType === "pickup" ? "未支付，取货码暂不可用" : ""}</div></td>
           <td><span class="pill">${escapeHtml(order.paymentStatus || "待支付")}</span></td>
-          <td><span class="pill">${escapeHtml(order.status || "待发货")}</span></td>
+          <td><span class="pill">${escapeHtml(order.displayStatusText || order.status || "处理中")}</span></td>
           <td><span class="pill">${escapeHtml(afterSalesText(order))}</span></td>
           <td>${escapeHtml(order.createdAtText || order.createdAt || "")}</td>
           <td><div class="table-actions"><button class="secondary" data-action="view-order" data-index="${index}">查看详情</button></div></td>
@@ -3623,13 +3634,33 @@
       if (event.target.dataset.action === "order-picked-up") {
         const order = orders[Number(event.target.dataset.index)]
         if (!order) return
-        if (!confirm("确认标记该订单已自提/完成？")) return
-        withButtonLoading(event.target, "标记中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/picked-up`, "POST", {})
+        const reason = prompt("管理员强制核销会绕过取货码校验，请填写原因：", "")
+        if (!reason || !reason.trim()) {
+          setStatus("已取消：强制核销必须填写原因")
+          return
+        }
+        if (!confirm("确认强制核销该订单并记录审计日志？")) return
+        withButtonLoading(event.target, "核销中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/force-pickup`, "POST", {
+          reason: reason.trim(),
+          requestKey: `admin-force-pickup-${order.id}`
+        })
           .then(() => loadAll())
-          .then(() => setStatus("已标记自提完成"))
+          .then(() => setStatus("已强制核销并记录原因"))
           .catch(error => {
             console.error(error)
-            setStatus(error.message || "标记自提失败")
+            setStatus(error.message || "强制核销失败")
+          }))
+      }
+      if (event.target.dataset.action === "wechat-fulfillment-retry") {
+        const order = orders[Number(event.target.dataset.index)]
+        if (!order) return
+        if (!confirm("确认按当前真实履约状态重新同步微信订单发货管理？")) return
+        withButtonLoading(event.target, "同步中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/wechat-fulfillment/retry`, "POST", {})
+          .then(() => loadAll())
+          .then(() => setStatus("已进入微信履约同步队列"))
+          .catch(error => {
+            console.error(error)
+            setStatus(error.message || "微信履约同步失败")
           }))
       }
       if (event.target.dataset.action === "refund-approve") {

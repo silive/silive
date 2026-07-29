@@ -141,6 +141,62 @@ function ensureOpenid() {
   })
 }
 
+function validateServerSession() {
+  const local = getLoginState()
+  if (!local.hasToken) return Promise.resolve({ ...local, authenticated: false })
+  return request("/api/auth/session", { method: "GET" }).then(result => ({
+    ...getLoginState(),
+    authenticated: result.authenticated === true,
+    serverUserInfo: result.userInfo || {}
+  }))
+}
+
+function silentRefreshSession() {
+  return new Promise((resolve, reject) => {
+    wx.login({
+      success: loginRes => {
+        if (!loginRes.code) {
+          reject(new Error("登录状态已过期，请重新登录"))
+          return
+        }
+        request("/api/wechat/openid", {
+          method: "POST",
+          data: { code: loginRes.code }
+        }).then(result => {
+          if (result.userSession) {
+            wx.setStorageSync("userSession", result.userSession)
+            wx.setStorageSync("userToken", result.userToken || result.userSession)
+          }
+          if (result.openid) wx.setStorageSync("openid", result.openid)
+          return validateServerSession()
+        }).then(state => {
+          if (!state.authenticated || !state.hasPhone) throw new Error("请先完成手机号快捷登录")
+          resolve(state)
+        }).catch(reject)
+      },
+      fail: () => reject(new Error("登录状态已过期，请重新登录"))
+    })
+  })
+}
+
+function ensureAuthenticated(options = {}) {
+  return validateServerSession().catch(error => {
+    if (Number(error.statusCode || 0) !== 401 && getLoginState().hasToken) throw error
+    console.log("[auth-expired]", {
+      hasToken: getLoginState().hasToken,
+      hasPhone: getLoginState().hasPhone,
+      source: options.source || ""
+    })
+    return silentRefreshSession()
+  }).then(state => {
+    if (!state.authenticated || !state.hasPhone) throw new Error("请先完成手机号快捷登录")
+    return state
+  }).catch(error => {
+    clearExpiredLoginState()
+    throw error
+  })
+}
+
 function wxLoginCode(debugInfo = {}) {
   return new Promise((resolve, reject) => {
     wx.login({
@@ -402,6 +458,9 @@ function logout() {
 module.exports = {
   getLoginState,
   ensureOpenid,
+  ensureAuthenticated,
+  silentRefreshSession,
+  validateServerSession,
   loginWithPhoneDetail,
   clearIncompleteLoginState,
   clearExpiredLoginState,

@@ -5,6 +5,17 @@ function pickupText(status) {
   return ({ preparing: "配送到门店中", arrived_store: "待自提", ready_for_pickup: "待自提", arrived: "待自提", picked_up: "已自提", none: "无" })[status] || status || "-"
 }
 
+function serviceFeeText(order = {}) {
+  const amount = order.pickupServiceFee || "0.00"
+  return ({
+    ESTIMATED: `预计服务费 ¥${amount}`,
+    PAYABLE: `待结算服务费 ¥${amount}`,
+    SETTLED: `已结算服务费 ¥${amount}`,
+    CANCELLED: "服务费已取消",
+    CHARGEBACK: "服务费已扣回"
+  })[order.serviceFeeStatus] || `预计服务费 ¥${amount}`
+}
+
 Page({
   data: {
     active: "preparing",
@@ -41,7 +52,8 @@ Page({
     const reason = order.notifyBlockedReason || (order.canNotifyPickup ? "" : this.localBlockedReason(order))
     return {
       ...order,
-      pickupText: pickupText(order.pickupStatus),
+      pickupText: order.displayStatusText || pickupText(order.pickupStatus),
+      serviceFeeText: serviceFeeText(order),
       canNotifyPickup: !!order.canNotifyPickup && !reason,
       notifyBlockedReason: reason,
       selected: (this.data.selectedOrderIds || []).includes(order.id)
@@ -66,8 +78,10 @@ Page({
     const selected = new Set(this.data.selectedOrderIds || [])
     const matches = order => {
       if (active === "all") return true
-      if (active === "arrived_store") return ["arrived_store", "ready_for_pickup", "arrived"].includes(order.pickupStatus)
-      return order.pickupStatus === active
+      if (active === "arrived_store") return order.fulfillmentStatus === "READY_FOR_PICKUP"
+      if (active === "picked_up") return order.fulfillmentStatus === "PICKED_UP"
+      if (active === "preparing") return ["PREPARING", "DELIVERING_TO_STORE"].includes(order.fulfillmentStatus)
+      return false
     }
     this.setData({
       visibleOrders: this.data.orders

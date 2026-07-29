@@ -80,7 +80,9 @@ function authHeader(extra = {}) {
     Accept: "application/json",
     "Content-Type": "application/json"
   }
-  return userSession ? { ...base, "X-User-Session": userSession, ...extra } : { ...base, ...extra }
+  return userSession
+    ? { ...base, "X-User-Session": userSession, "X-User-Token": userSession, Authorization: `Bearer ${userSession}`, ...extra }
+    : { ...base, ...extra }
 }
 
 function request(path, options = {}) {

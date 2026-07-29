@@ -1,5 +1,5 @@
 const { authHeader, request, uploadFileWithFallback } = require("../../utils/api")
-const { ensureOpenid, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
+const { ensureOpenid, ensureAuthenticated, getLoginState, loginWithPhoneDetail } = require("../../utils/auth")
 const { applyTheme } = require("../../utils/theme")
 const { isPaymentEnabled, isPromotionEnabled, isReviewMode, isStoreFeaturesEnabled } = require("../../utils/review")
 const { getLocation } = require("../../utils/privacy")
@@ -103,6 +103,8 @@ Page({
     themeStyle: "",
     themeClass: "theme-skin01",
     paying: false,
+    submitRequestKey: "",
+    pendingOrderId: "",
     quoteMode: false,
     normalMode: false,
     cartMode: false,
@@ -112,6 +114,7 @@ Page({
     totalPrice: "0.00",
     loginVisible: false,
     loginLoading: false,
+    authChecking: true,
     reviewMode: isReviewMode(),
     paymentEnabled: isPaymentEnabled(),
     promotionEnabled: isPromotionEnabled(),
@@ -151,7 +154,7 @@ Page({
   onShow() {
     applyTheme(this)
     this.applyPendingPickupSelection()
-    if (this.data.product && !getLoginState().loggedIn && !this.data.loginVisible) this.promptLogin()
+    if (this.data.product) this.verifyCheckoutAuth()
   },
 
   initCheckout(product, mode, category, options = {}) {
@@ -181,6 +184,7 @@ Page({
       quantity,
       unitPrice: unitPrice.toFixed(2),
       totalPrice: totalPrice.toFixed(2),
+      submitRequestKey: this.data.submitRequestKey || `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       mode,
       category: category || (Array.isArray(product.categories) ? product.categories[0] : "") || product.name || "",
       source: options.source || "",
@@ -197,7 +201,20 @@ Page({
         "form.customRequest": "我已上传照片，请根据照片沟通定制方案。"
       })
     }
-    if (!getLoginState().loggedIn) setTimeout(() => this.promptLogin(), 120)
+    setTimeout(() => this.verifyCheckoutAuth(), 120)
+  },
+
+  verifyCheckoutAuth(showPrompt = true) {
+    this.setData({ authChecking: true })
+    return ensureAuthenticated({ source: "checkout" }).then(state => {
+      this.setData({ authChecking: false })
+      return state
+    }).catch(error => {
+      console.warn("[checkout-auth]", { message: error.message || "auth_failed" })
+      this.setData({ authChecking: false })
+      if (showPrompt && !this.data.loginVisible) this.promptLogin()
+      throw error
+    })
   },
 
   promptLogin() {
@@ -646,16 +663,26 @@ Page({
 
   submitOrder() {
     if (this.data.paying) return
-    if (!getLoginState().loggedIn) {
-      this.promptLogin()
-      return
-    }
-    if (!this.validate()) return
     this.setData({ paying: true })
+    this.verifyCheckoutAuth(false).then(() => {
+      if (!this.validate()) throw Object.assign(new Error("请检查订单信息"), { validationOnly: true })
+      return this.createAndPayOrder()
+    }).catch(error => {
+      if (!error.validationOnly) {
+        if (/登录|授权/.test(error.message || "")) this.promptLogin()
+        wx.showToast({ title: error.message || "下单失败", icon: "none" })
+      }
+    }).finally(() => {
+      this.setData({ paying: false })
+    })
+  },
+
+  createAndPayOrder() {
+    if (this.data.pendingOrderId) return this.pay(this.data.pendingOrderId)
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
     const referrerStore = this.data.storeFeaturesEnabled ? getReferrerStoreMeta() : {}
-    ensureOpenid().then(openid => request("/api/orders", {
+    return ensureOpenid().then(openid => request("/api/orders", {
         method: "POST",
         data: {
           productId: this.data.product.id,
@@ -685,6 +712,7 @@ Page({
           quantity: this.data.cartMode ? 1 : this.data.quantity,
           priceMode: this.isQuoteOrder() ? "quote" : "fixed",
           needQuote: this.isQuoteOrder() ? "true" : "false",
+          requestKey: this.data.submitRequestKey,
           ...this.data.form
         }
       })).then(order => {
@@ -695,6 +723,7 @@ Page({
         message: order.message || ""
       })
       if (!orderId) throw new Error(order.message || "订单创建失败")
+      this.setData({ pendingOrderId: orderId })
       if (!this.data.paymentEnabled) {
         wx.showModal({
           title: "订单已提交",
@@ -713,11 +742,10 @@ Page({
         })
         return null
       }
-      return this.pay(orderId)
-    }).catch(error => {
-      wx.showToast({ title: error.message || "下单失败", icon: "none" })
-    }).finally(() => {
-      this.setData({ paying: false })
+      return this.pay(orderId).then(result => {
+        this.setData({ pendingOrderId: "" })
+        return result
+      })
     })
   },
 
