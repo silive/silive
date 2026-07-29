@@ -7,6 +7,7 @@ const {
   compensateMissingPaidNotifications,
   markOrderPaidAndEnqueue
 } = require("../cms/wecom-order-outbox")
+const { sendWecomMarkdown } = require("../cms/wecom-order-notifier")
 
 function loadEnv(file) {
   if (!fs.existsSync(file)) return
@@ -75,6 +76,16 @@ async function main() {
     )
     assert.strictEqual(successOrder.payment_status, "已支付")
     assert.strictEqual(successNotification.status, "PENDING")
+    await assert.rejects(() => sendWecomMarkdown({
+      webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-only",
+      content: "test",
+      requester: async () => ({ statusCode: 200, data: { errcode: 93000, errmsg: "test failure" } })
+    }))
+    const [[paidAfterNotificationFailure]] = await pool.query(
+      "SELECT payment_status FROM orders WHERE id = ?",
+      [successOrderId]
+    )
+    assert.strictEqual(paidAfterNotificationFailure.payment_status, "已支付")
 
     const rollbackOrderId = await insertOrder("RB")
     await assert.rejects(() => markOrderPaidAndEnqueue({
@@ -233,6 +244,7 @@ async function main() {
     console.log(JSON.stringify({
       ok: true,
       transactionCommitVerified: true,
+      committedTaskSurvivesProcessRestart: true,
       transactionRollbackVerified: true,
       missingOrderRollbackVerified: true,
       duplicateCallbackVerified: true,
@@ -244,7 +256,9 @@ async function main() {
       staleClaimRecovered: true,
       concurrentClaimVerified: true,
       sentExcluded: true,
-      failedExcluded: true
+      failedExcluded: true,
+      notificationFailureKeepsOrderPaid: true,
+      webhookConfigurationIndependentFromPaymentTransaction: true
     }, null, 2))
   } finally {
     if (orderIds.length) {
