@@ -13,7 +13,9 @@
     "test:security-p0": "node scripts/test-security-p0.js",
     "test:order-domain": "node scripts/test-order-domain.js",
     "test:security-session-promotion": "node scripts/test-security-session-promotion.js",
-    "test:security-boundaries": "node scripts/test-security-boundaries.js"
+    "test:security-boundaries": "node scripts/test-security-boundaries.js",
+    "test:security-ledgers": "node scripts/test-security-ledgers.js",
+    "test:security-mysql": "node scripts/test-security-mysql.js"
   },
   "dependencies": {
     "mysql2": "^3.11.5",

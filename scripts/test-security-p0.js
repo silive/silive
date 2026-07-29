@@ -98,6 +98,23 @@ async function main() {
   assert.strictEqual(refunded.state.order.status, "已退款")
   assert.strictEqual(refunded.state.notifications, 0)
 
+  const refunding = fakePool({
+    id: "ORDER-REFUNDING",
+    status: "退款中",
+    payment_status: "已支付",
+    refund_status: "processing",
+    after_sales_status: "refund_pending"
+  })
+  const refundingResult = await markOrderPaidAndEnqueue({
+    pool: refunding.pool,
+    orderId: "ORDER-REFUNDING",
+    transactionId: "TX-REFUNDING",
+    notificationType: "WECOM_ORDER_PAID"
+  })
+  assert.strictEqual(refundingResult.outcome, "PAYMENT_FACT_ONLY")
+  assert.strictEqual(refunding.state.order.status, "退款中")
+  assert.strictEqual(refunding.state.notifications, 0)
+
   const cancelled = fakePool({
     id: "ORDER-CANCELLED",
     status: "已取消",

@@ -15,7 +15,6 @@ assert.strictEqual(strictPositiveInteger("3"), 3)
 for (const invalid of [0, -1, 1.5, "1.5", "1e2", "Infinity", NaN, Infinity, 100]) {
   assert.throws(() => strictPositiveInteger(invalid))
 }
-
 assert.strictEqual(yuanToCents("39.80"), 3980)
 assert.throws(() => yuanToCents("1.005"))
 assert.throws(() => yuanToCents("-1"))
@@ -35,12 +34,25 @@ const second = orderItemSnapshot({ id: "P2", name: "B", price: "20.00", productT
 assert.strictEqual(first.paidAmountCents, 3000)
 assert.strictEqual(second.inventoryMode, "MADE_TO_ORDER")
 assert.strictEqual(validateOrderItems([first, second]).length, 2)
+assert.throws(() => validateOrderItems([
+  { ...first, quantity: 99 },
+  { ...second, quantity: 99 },
+  { ...second, id: "OI3", quantity: 3 }
+]))
 
 const refund = validateRefundItems([first, second], [], [
   { orderItemId: "OI1", quantity: 1 },
   { orderItemId: "OI2", quantity: 1, refundAmountCents: 1500 }
 ])
 assert.deepStrictEqual(refund.map(item => item.productRefundCents), [1000, 1500])
+const secondPartialRefund = validateRefundItems([first], [
+  { orderItemId: "OI1", refundQuantity: 1, status: "SUCCESS" }
+], [{ orderItemId: "OI1", quantity: 2 }])
+assert.strictEqual(secondPartialRefund[0].refundQuantity, 2)
+assert.strictEqual(secondPartialRefund[0].productRefundCents, 2000)
+assert.throws(() => validateRefundItems([first], [
+  { orderItemId: "OI1", refundQuantity: 1, status: "SUCCESS" }
+], [{ orderItemId: "OI1", quantity: 3 }]))
 assert.throws(() => validateRefundItems([first], [
   { orderItemId: "OI1", refundQuantity: 2, status: "SUCCESS" }
 ], [{ orderItemId: "OI1", quantity: 2 }]))

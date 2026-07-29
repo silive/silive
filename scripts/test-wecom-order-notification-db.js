@@ -20,12 +20,16 @@ function loadEnv(file) {
 
 async function main() {
   loadEnv(path.join(__dirname, "..", ".env"))
+  const database = process.env.MYSQL_TEST_DATABASE || ""
+  if (!/^vsc_security_test_[a-z0-9_]+$/i.test(database)) {
+    throw new Error("拒绝运行：MYSQL_TEST_DATABASE 必须使用 vsc_security_test_ 前缀的隔离测试库")
+  }
   const pool = mysql.createPool({
     host: process.env.MYSQL_HOST || "127.0.0.1",
     port: Number(process.env.MYSQL_PORT || 3306),
     user: process.env.MYSQL_USER,
     password: process.env.MYSQL_PASSWORD,
-    database: process.env.MYSQL_DATABASE || "very_simple_custom",
+    database,
     namedPlaceholders: true,
     connectionLimit: 8,
     dateStrings: true
@@ -68,7 +72,7 @@ async function main() {
       transactionId: `TX${suffix}`,
       notificationType: notificationTypes[0]
     })
-    assert.deepStrictEqual(success, { updated: true, queued: true })
+    assert.deepStrictEqual(success, { updated: true, queued: true, outcome: "PAID" })
     const [[successOrder]] = await pool.query("SELECT payment_status FROM orders WHERE id = ?", [successOrderId])
     const [[successNotification]] = await pool.query(
       "SELECT status FROM order_notification_records WHERE order_id = ? AND notification_type = ?",

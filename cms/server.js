@@ -47,6 +47,14 @@ const {
   validateRefundItems,
   yuanToCents
 } = require("./order-domain")
+const {
+  canReleaseOrderInventory,
+  releaseOrderInventory
+} = require("./inventory-ledger")
+const {
+  claimPickupCode,
+  generatePickupCodeCandidate
+} = require("./pickup-security")
 
 let mysql
 try {
@@ -1758,6 +1766,7 @@ function publicProductView(product = {}) {
     modelAuthorName,
     modelAuthorizationStatus,
     modelAuthorizationNote,
+    inventoryVersion,
     ...publicProduct
   } = product
   return publicProduct
@@ -2303,6 +2312,7 @@ function normalizeProduct(product, index) {
     status: normalizeProductStatus(product.status),
     stock: String(product.stock || "0"),
     stockMode: normalizeInventoryMode(product),
+    inventoryVersion: Number(product.inventoryVersion ?? product.inventory_version ?? 0),
     isHot,
     isPromotionHot: promotionHot,
     promotionHot,
@@ -2911,15 +2921,6 @@ function normalizePickupCode(value) {
   return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)
 }
 
-function generatePickupCodeCandidate() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-  let code = ""
-  for (let index = 0; index < 6; index += 1) {
-    code += alphabet[crypto.randomInt(alphabet.length)]
-  }
-  return code
-}
-
 async function generateUniquePickupCode() {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const code = generatePickupCodeCandidate()
@@ -2929,28 +2930,6 @@ async function generateUniquePickupCode() {
     } else {
       const rows = await query("SELECT id FROM orders WHERE pickup_code = :code LIMIT 1", { code })
       if (!rows.length) return code
-    }
-  }
-  throw new Error("暂时无法生成唯一取货码，请稍后重试")
-}
-
-async function claimPickupCode(connection, order) {
-  if (!connection || !isPickupOrder(order)) return ""
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const code = attempt === 0
-      ? normalizePickupCode(order.pickupCode)
-      : generatePickupCodeCandidate()
-    if (!code) continue
-    try {
-      await connection.query(
-        `INSERT INTO pickup_code_claims (code, order_id, created_at)
-         VALUES (:code, :orderId, NOW())`,
-        { code, orderId: order.id }
-      )
-      order.pickupCode = code
-      return code
-    } catch (error) {
-      if (error?.code !== "ER_DUP_ENTRY") throw error
     }
   }
   throw new Error("暂时无法生成唯一取货码，请稍后重试")
@@ -3652,6 +3631,7 @@ async function getProducts() {
     status: row.status || "on",
     stock: String(row.stock || "0"),
     stockMode: normalizeInventoryMode({ ...row, stockMode: row.stock_mode }),
+    inventoryVersion: Number(row.inventory_version || 0),
     isHot: normalizeBooleanText(row.is_hot, false),
     promotionHot: normalizeBooleanText(row.promotion_hot, false),
     aiPreviewEnabled: normalizeBooleanText(row.ai_preview_enabled, false),
@@ -4615,6 +4595,70 @@ async function confirmSalesAgentCommissions(orderId) {
   return { changed }
 }
 
+async function settleSalesAgentCommissionRecords(ids, options = {}) {
+  const recordIds = [...new Set((ids || []).map(String).filter(Boolean))]
+  if (!recordIds.length) return { count: 0 }
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const placeholders = recordIds.map((_, index) => `:id${index}`).join(",")
+    const params = Object.fromEntries(recordIds.map((id, index) => [`id${index}`, id]))
+    const [locked] = await connection.query(
+      `SELECT id FROM sales_agent_commissions
+       WHERE id IN (${placeholders})
+         AND status IN ('unsettled','chargeback')
+       FOR UPDATE`,
+      params
+    )
+    const claimIds = locked.map(row => row.id)
+    if (!claimIds.length) {
+      await connection.commit()
+      return { count: 0 }
+    }
+    const claimPlaceholders = claimIds.map((_, index) => `:claim${index}`).join(",")
+    const updateParams = {
+      ...Object.fromEntries(claimIds.map((id, index) => [`claim${index}`, id])),
+      note: String(options.note || "").slice(0, 500),
+      batchId: String(options.batchId || "").slice(0, 80)
+    }
+    const [result] = await connection.query(
+      `UPDATE sales_agent_commissions
+       SET status='settled', settled_at=NOW(), settled_by='admin',
+           settle_note=:note, batch_id=:batchId
+       WHERE id IN (${claimPlaceholders})
+         AND status IN ('unsettled','chargeback')`,
+      updateParams
+    )
+    await connection.commit()
+    return { count: Number(result.affectedRows || 0) }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+async function insertSalesAgentCommission(record) {
+  const normalized = normalizeSalesAgentCommission(record, 0)
+  const result = await query(
+    `INSERT IGNORE INTO sales_agent_commissions
+      (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
+       commission_amount, amount, type, status, created_at, settled_at, settled_by,
+       settle_note, cancel_reason, batch_id, related_record_id, remark)
+     VALUES
+      (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
+       :commissionAmount, :amount, :type, :status, :createdAt, :settledAt, :settledBy,
+       :settleNote, :cancelReason, :batchId, :relatedRecordId, :remark)`,
+    {
+      ...normalized,
+      createdAt: toMysqlDatetime(normalized.createdAt, nowMysqlDatetime()),
+      settledAt: toMysqlDatetime(normalized.settledAt)
+    }
+  )
+  return Number(result.affectedRows || 0) === 1
+}
+
 async function getSalesAgentSummary(filters = {}) {
   const [agents, stores, orders, records] = await Promise.all([
     getSalesAgents(),
@@ -4659,22 +4703,38 @@ async function saveProducts(products) {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
-    await connection.query("SELECT id FROM products FOR UPDATE")
+    const [currentRows] = await connection.query(
+      "SELECT id, stock, stock_mode, inventory_version FROM products FOR UPDATE"
+    )
+    const currentById = new Map(currentRows.map(row => [String(row.id), row]))
     for (let index = 0; index < list.length; index += 1) {
       const product = list[index]
+      const current = currentById.get(String(product.id))
+      if (current) {
+        const stockChanged = Number(product.stock || 0) !== Number(current.stock || 0) ||
+          normalizeInventoryMode(product) !== normalizeInventoryMode({ stockMode: current.stock_mode })
+        if (stockChanged && Number(product.inventoryVersion) !== Number(current.inventory_version || 0)) {
+          const conflict = new Error(`商品“${product.name}”库存已发生变化，请刷新后重试`)
+          conflict.statusCode = 409
+          throw conflict
+        }
+        product.inventoryVersion = Number(current.inventory_version || 0) + (stockChanged ? 1 : 0)
+      } else {
+        product.inventoryVersion = 0
+      }
       await connection.query(
         `INSERT INTO products
           (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url,
            detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot,
            promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward,
            second_reward, sort_order, model_candidate_id, model_source_url, model_author_name,
-           model_authorization_status, model_authorization_note)
+           model_authorization_status, model_authorization_note, inventory_version)
          VALUES
           (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson,
            :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock,
            :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled,
            :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl,
-           :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote)
+           :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote, :inventoryVersion)
          ON DUPLICATE KEY UPDATE
            name=VALUES(name), intro=VALUES(intro), price=VALUES(price), cost_price=VALUES(cost_price),
            badge=VALUES(badge), cover=VALUES(cover), image_url=VALUES(image_url),
@@ -4688,7 +4748,8 @@ async function saveProducts(products) {
            sort_order=VALUES(sort_order), model_candidate_id=VALUES(model_candidate_id),
            model_source_url=VALUES(model_source_url), model_author_name=VALUES(model_author_name),
            model_authorization_status=VALUES(model_authorization_status),
-           model_authorization_note=VALUES(model_authorization_note)`,
+           model_authorization_note=VALUES(model_authorization_note),
+           inventory_version=VALUES(inventory_version)`,
         {
           ...product,
           galleryImagesJson: JSON.stringify(product.galleryImages || []),
@@ -6375,7 +6436,9 @@ async function createOrder(data) {
         if (inventoryMode === "FINITE") {
           const [stockResult] = await connection.query(
             `UPDATE products
-             SET stock_mode='FINITE', stock=stock-:quantity
+             SET stock_mode='FINITE',
+                 stock=stock-:quantity,
+                 inventory_version=inventory_version+1
              WHERE id=:productId AND stock>=:quantity`,
             { productId: item.productId, quantity: item.quantity }
           )
@@ -7018,66 +7081,6 @@ function shouldInvalidateStoreSettlementForOrderChange(previous = {}, next = {})
   return isOrderPaidForPickupCredential(previous) &&
     !isOrderCancelledClosedOrRefunded(previous) &&
     isOrderCancelledClosedOrRefunded(next)
-}
-
-function isTerminalInventoryReleaseStatus(order = {}) {
-  const values = [
-    order.status,
-    order.paymentStatus || order.payment_status,
-    order.refundStatus || order.refund_status,
-    order.afterSalesStatus || order.after_sales_status
-  ].map(value => String(value || "").trim().toLowerCase())
-  return values.some(value => [
-    "已取消", "已关闭", "已退款", "取消", "关闭", "作废",
-    "cancelled", "canceled", "closed", "void", "refunded"
-  ].includes(value))
-}
-
-function canReleaseOrderInventory(order = {}) {
-  if (!isTerminalInventoryReleaseStatus(order)) return false
-  if (isPickupVerified(order)) return false
-  const status = String(order.status || "").trim().toLowerCase()
-  if (["制作中", "已发货", "已完成", "shipped", "completed", "fulfilled"].includes(status)) return false
-  return !(order.shippedAt || order.shipped_at || order.completedAt || order.completed_at)
-}
-
-async function releaseOrderInventory(connection, orderId, reason) {
-  if (!connection || !orderId) return { releasedItems: 0, releasedQuantity: 0 }
-  const [items] = await connection.query(
-    `SELECT id, product_id, quantity, inventory_mode
-     FROM order_items
-     WHERE order_id=:orderId
-     FOR UPDATE`,
-    { orderId }
-  )
-  let releasedItems = 0
-  let releasedQuantity = 0
-  for (const item of items) {
-    if (String(item.inventory_mode || "").toUpperCase() !== "FINITE") continue
-    const quantity = Number(item.quantity || 0)
-    if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
-    const [claim] = await connection.query(
-      `INSERT IGNORE INTO order_inventory_releases
-        (order_item_id, order_id, product_id, quantity, reason, created_at)
-       VALUES
-        (:orderItemId, :orderId, :productId, :quantity, :reason, NOW())`,
-      {
-        orderItemId: item.id,
-        orderId,
-        productId: item.product_id,
-        quantity,
-        reason: String(reason || "订单关闭").slice(0, 120)
-      }
-    )
-    if (Number(claim.affectedRows || 0) !== 1) continue
-    await connection.query(
-      "UPDATE products SET stock=stock+:quantity WHERE id=:productId AND stock_mode='FINITE'",
-      { productId: item.product_id, quantity }
-    )
-    releasedItems += 1
-    releasedQuantity += quantity
-  }
-  return { releasedItems, releasedQuantity }
 }
 
 function canApplyAfterSales(order = {}) {
@@ -8913,6 +8916,7 @@ async function initDb() {
   await ensureColumn("products", "status", "VARCHAR(20) DEFAULT 'on'")
   await ensureColumn("products", "stock", "INT DEFAULT 0")
   await ensureColumn("products", "stock_mode", "VARCHAR(30)")
+  await ensureColumn("products", "inventory_version", "INT NOT NULL DEFAULT 0")
   await ensureColumn("products", "cost_price", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("products", "is_hot", "VARCHAR(10) DEFAULT 'false'")
   await ensureColumn("products", "promotion_hot", "VARCHAR(10) DEFAULT 'false'")
@@ -11416,25 +11420,53 @@ async function handle(req, res) {
   if (salesCommissionActionMatch && req.method === "POST") {
     const [, id, action] = salesCommissionActionMatch
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const records = await getSalesAgentCommissions()
-    const record = records.find(item => item.id === decodeURIComponent(id))
+    const recordId = decodeURIComponent(id)
+    const records = pool
+      ? await query("SELECT * FROM sales_agent_commissions WHERE id=:id LIMIT 1", { id: recordId })
+      : await getSalesAgentCommissions()
+    const record = pool
+      ? (records[0] ? normalizeSalesAgentCommission(records[0], 0) : null)
+      : records.find(item => item.id === recordId)
     if (!record) throw httpError(404, "业务员佣金记录不存在")
     if (action === "settle") {
       if (record.status === "settled") throw httpError(400, "该记录已结算，请勿重复操作。")
       if (record.status === "cancelled") throw httpError(400, "该记录已取消，不能结算。")
       const orderLookup = buildOrderLookup(await getOrders())
       if (!isFinancialRecordReadyToSettle(record, orderLookup)) throw httpError(400, "该记录仍为待确认，订单完成后才能结算。")
-      record.status = "settled"
-      record.settledAt = formatDateTime(new Date())
-      record.settledBy = "admin"
-      record.settleNote = body.note || body.settleNote || ""
+      if (pool) {
+        const result = await settleSalesAgentCommissionRecords([record.id], {
+          note: body.note || body.settleNote || "",
+          batchId: `SAS${Date.now()}`
+        })
+        if (result.count !== 1) throw httpError(409, "该记录已被处理或尚不可结算")
+      } else {
+        record.status = "settled"
+        record.settledAt = formatDateTime(new Date())
+        record.settledBy = "admin"
+        record.settleNote = body.note || body.settleNote || ""
+      }
     } else {
       if (record.status === "cancelled") throw httpError(400, "该记录已取消。")
-      record.status = "cancelled"
-      record.cancelReason = body.reason || body.cancelReason || "后台取消业务员佣金"
+      if (record.status === "settled") throw httpError(409, "已结算历史记录不可取消")
+      if (pool) {
+        const result = await query(
+          `UPDATE sales_agent_commissions
+           SET status='cancelled', cancel_reason=:reason
+           WHERE id=:id AND status IN ('pending_confirm','unsettled')`,
+          {
+            id: record.id,
+            reason: body.reason || body.cancelReason || "后台取消业务员佣金"
+          }
+        )
+        if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "该记录已被其他操作处理")
+      } else {
+        record.status = "cancelled"
+        record.cancelReason = body.reason || body.cancelReason || "后台取消业务员佣金"
+      }
     }
-    await saveSalesAgentCommissions(records)
-    sendJson(res, 200, { ok: true, data: record })
+    if (!pool) await saveSalesAgentCommissions(records)
+    const refreshed = (await getSalesAgentCommissions()).find(item => item.id === record.id)
+    sendJson(res, 200, { ok: true, data: refreshed || record })
     return
   }
 
@@ -11443,9 +11475,8 @@ async function handle(req, res) {
     const amount = money(body.amount)
     if (!body.salesAgentId) throw httpError(400, "请选择业务员")
     if (Number(amount) === 0) throw httpError(400, "调整金额不能为 0")
-    const records = await getSalesAgentCommissions()
     const now = formatDateTime(new Date())
-    records.unshift(normalizeSalesAgentCommission({
+    const adjustment = normalizeSalesAgentCommission({
       id: `SAA${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
       salesAgentId: body.salesAgentId,
       storeId: body.storeId || "",
@@ -11458,8 +11489,14 @@ async function handle(req, res) {
       settleNote: body.note || "",
       remark: body.note || "后台手动调整",
       createdAt: now
-    }, records.length))
-    await saveSalesAgentCommissions(records)
+    }, 0)
+    if (pool) {
+      await insertSalesAgentCommission(adjustment)
+    } else {
+      const records = await getSalesAgentCommissions()
+      records.unshift(adjustment)
+      await saveSalesAgentCommissions(records)
+    }
     sendJson(res, 200, { ok: true })
     return
   }
@@ -11475,20 +11512,27 @@ async function handle(req, res) {
     })
     const orderLookup = buildOrderLookup(await getOrders())
     const ids = new Set(target.filter(record => isFinancialRecordReadyToSettle(record, orderLookup)).map(record => record.id))
-    const records = await getSalesAgentCommissions()
     const batchId = `SAB${Date.now()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
-    const now = formatDateTime(new Date())
     let count = 0
-    records.forEach(record => {
-      if (!ids.has(record.id) || !isFinancialRecordReadyToSettle(record, orderLookup)) return
-      record.status = "settled"
-      record.settledAt = now
-      record.settledBy = "admin"
-      record.settleNote = body.note || "后台批量结算"
-      record.batchId = batchId
-      count += 1
-    })
-    await saveSalesAgentCommissions(records)
+    if (pool) {
+      count = (await settleSalesAgentCommissionRecords([...ids], {
+        note: body.note || "后台批量结算",
+        batchId
+      })).count
+    } else {
+      const records = await getSalesAgentCommissions()
+      const now = formatDateTime(new Date())
+      records.forEach(record => {
+        if (!ids.has(record.id) || !isFinancialRecordReadyToSettle(record, orderLookup)) return
+        record.status = "settled"
+        record.settledAt = now
+        record.settledBy = "admin"
+        record.settleNote = body.note || "后台批量结算"
+        record.batchId = batchId
+        count += 1
+      })
+      await saveSalesAgentCommissions(records)
+    }
     sendJson(res, 200, { ok: true, batchId, recordCount: count })
     return
   }

@@ -19,18 +19,17 @@ for (const field of [
   "modelSourceUrl",
   "modelAuthorName",
   "modelAuthorizationStatus",
-  "modelAuthorizationNote"
+  "modelAuthorizationNote",
+  "inventoryVersion"
 ]) {
   assert.match(publicProduct, new RegExp(`\\b${field}\\b`))
 }
 assert.match(server, /filter\(isPublicProduct\)\.map\(publicProductView\)/)
 assert.match(server, /!product \|\| !isPublicProduct\(product\)/)
 
-const pickupCandidateStart = server.indexOf("function generatePickupCodeCandidate")
-const pickupCandidateEnd = server.indexOf("async function generateUniquePickupCode", pickupCandidateStart)
-const pickupCandidate = server.slice(pickupCandidateStart, pickupCandidateEnd)
-assert.match(pickupCandidate, /crypto\.randomInt/)
-assert.doesNotMatch(pickupCandidate, /Math\.random/)
+const pickupSecurity = fs.readFileSync(path.join(root, "cms/pickup-security.js"), "utf8")
+assert.match(pickupSecurity, /crypto\.randomInt/)
+assert.doesNotMatch(pickupSecurity, /Math\.random/)
 assert.match(server, /CREATE TABLE IF NOT EXISTS pickup_code_claims/)
 assert.match(server, /LIMIT 1 FOR UPDATE/)
 assert.match(server, /checkPickupVerificationRateLimit/)
@@ -43,8 +42,7 @@ assert.match(server, /content-length/)
 assert.match(server, /res\.once\("finish", releaseUpload\)/)
 
 assert.match(server, /CREATE TABLE IF NOT EXISTS order_inventory_releases/)
-assert.match(server, /INSERT IGNORE INTO order_inventory_releases/)
-assert.match(server, /UPDATE products SET stock=stock\+:quantity/)
+assert.match(server, /releaseOrderInventory/)
 
 assert.match(server, /STORAGE_MODE !== "mysql"/)
 assert.match(server, /生产环境缺少必要依赖 mysql2，服务拒绝启动/)
@@ -57,6 +55,8 @@ const saveProductsEnd = server.indexOf("async function migrateProductCategoriesT
 const saveProducts = server.slice(saveProductsStart, saveProductsEnd)
 assert.match(saveProducts, /beginTransaction/)
 assert.match(saveProducts, /ON DUPLICATE KEY UPDATE/)
+assert.match(saveProducts, /inventory_version/)
+assert.match(saveProducts, /库存已发生变化/)
 assert.doesNotMatch(saveProducts, /await query\("DELETE FROM products"\)/)
 
 const salesCreateStart = server.indexOf("async function createSalesAgentCommissionForOrder")
