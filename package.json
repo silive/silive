@@ -9,7 +9,11 @@
     "test:wecom-order-notifier": "node scripts/test-wecom-order-notifier.js",
     "test:wecom-order-notification": "node scripts/test-wecom-order-notification.js",
     "test:wecom-order-notification-db": "node scripts/test-wecom-order-notification-db.js",
-    "test:order-chain": "node scripts/test-order-chain.js"
+    "test:order-chain": "node scripts/test-order-chain.js",
+    "test:security-p0": "node scripts/test-security-p0.js",
+    "test:order-domain": "node scripts/test-order-domain.js",
+    "test:security-session-promotion": "node scripts/test-security-session-promotion.js",
+    "test:security-boundaries": "node scripts/test-security-boundaries.js"
   },
   "dependencies": {
     "mysql2": "^3.11.5",

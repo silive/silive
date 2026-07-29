@@ -13,5 +13,4 @@ cms/uploads/
 uploads/
 .idea/
 .vscode/
-package-lock.json
 DEPLOY.md

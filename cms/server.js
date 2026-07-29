@@ -71,6 +71,7 @@ const ROOT = path.join(__dirname, "..")
 loadEnv(path.join(ROOT, ".env"))
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"
+const STORAGE_MODE = String(process.env.STORAGE_MODE || "mysql").trim().toLowerCase()
 const PORT = Number(process.env.PORT || 3000)
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443)
 const ENABLE_HTTPS = process.env.ENABLE_HTTPS !== "false"
@@ -120,6 +121,9 @@ const orderRecommendationEventHits = new Map()
 const productImportPreviews = new Map()
 const adminLoginFailures = new Map()
 const salesLoginFailures = new Map()
+const pickupVerificationHits = new Map()
+let activeUploadRequests = 0
+let reservedUploadBytes = 0
 let lastOrphanUploadCleanupAt = 0
 let wecomNotificationWorkerRunning = false
 let wecomNotificationWorkerTimer = null
@@ -423,12 +427,22 @@ function addDays(value, days) {
   return formatDateTime(date)
 }
 
+function baseSecurityHeaders() {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    ...(IS_PRODUCTION ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {})
+  }
+}
+
 function sendJson(res, status, data, headers = {}) {
   res.writeHead(status, {
+    ...baseSecurityHeaders(),
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,X-User-Session,X-User-Token",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-User-Session,X-User-Token,X-Idempotency-Key,X-Request-Key",
     "Cache-Control": "no-store",
     ...headers
   })
@@ -546,7 +560,15 @@ function requestBuffer(url, options = {}, body = "") {
 }
 
 function sendText(res, status, text, type = "text/plain; charset=utf-8", headers = {}) {
+  const htmlHeaders = String(type).toLowerCase().startsWith("text/html")
+    ? {
+        "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.feichangjiandan.xyz; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        "Permissions-Policy": "camera=(self), geolocation=(self), microphone=()"
+      }
+    : {}
   res.writeHead(status, {
+    ...baseSecurityHeaders(),
+    ...htmlHeaders,
     "Content-Type": type,
     "Cache-Control": "no-store",
     ...headers
@@ -555,8 +577,21 @@ function sendText(res, status, text, type = "text/plain; charset=utf-8", headers
 }
 
 function redirect(res, location) {
-  res.writeHead(302, { Location: location })
+  res.writeHead(302, { ...baseSecurityHeaders(), Location: location })
   res.end()
+}
+
+function isAllowedSameOriginRequest(req) {
+  const origin = String(req.headers.origin || "").trim()
+  if (!origin) return true
+  try {
+    const originUrl = new URL(origin)
+    const expected = new URL(PUBLIC_BASE_URL)
+    const requestHost = String(req.headers.host || "").toLowerCase()
+    return originUrl.origin === expected.origin || originUrl.host.toLowerCase() === requestHost
+  } catch (error) {
+    return false
+  }
 }
 
 function parseCookies(req) {
@@ -785,8 +820,29 @@ async function revokeUserSession(token) {
   return Number(result.affectedRows || 0) > 0
 }
 
+function normalizeIp(value) {
+  return String(value || "").trim().replace(/^::ffff:/, "")
+}
+
+function trustedProxyIps() {
+  return new Set(
+    String(process.env.TRUSTED_PROXY_IPS || "127.0.0.1,::1")
+      .split(",")
+      .map(normalizeIp)
+      .filter(Boolean)
+  )
+}
+
 function clientIp(req) {
-  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim()
+  const remote = normalizeIp(req.socket.remoteAddress)
+  if (!trustedProxyIps().has(remote)) return remote
+  const realIp = normalizeIp(req.headers["x-real-ip"])
+  if (realIp) return realIp
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")
+    .map(normalizeIp)
+    .filter(Boolean)
+  return forwarded[0] || remote
 }
 
 function isLocalhostIp(ip) {
@@ -794,9 +850,7 @@ function isLocalhostIp(ip) {
 }
 
 function isLocalhostRequest(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()
-  if (forwarded) return isLocalhostIp(forwarded)
-  return isLocalhostIp(req.socket.remoteAddress)
+  return isLocalhostIp(normalizeIp(req.socket.remoteAddress))
 }
 
 function checkRateLimit(store, key, windowMs, maxHits) {
@@ -818,13 +872,34 @@ function checkAuthenticatedUploadRateLimit(req) {
   const ip = clientIp(req) || "unknown"
   const windowMs = 10 * 60 * 1000
   const maxHits = 100
-  const sessionOk = token ? checkRateLimit(authenticatedUploadHits, `session:${token}`, windowMs, maxHits) : true
+  const sessionOk = token
+    ? checkRateLimit(authenticatedUploadHits, `session:${hashUserSessionToken(token)}`, windowMs, maxHits)
+    : true
   const ipOk = checkRateLimit(authenticatedUploadHits, `ip:${ip}`, windowMs, maxHits)
   return sessionOk && ipOk
 }
 
 function checkOrderRecommendationEventRateLimit(req) {
   return checkRateLimit(orderRecommendationEventHits, clientIp(req) || "unknown", 60 * 1000, 60)
+}
+
+function pickupVerificationRateKey(value) {
+  return crypto.createHash("sha256").update(String(value || "unknown")).digest("hex").slice(0, 24)
+}
+
+function checkPickupVerificationRateLimit(req, storeSession) {
+  const windowMs = 60 * 1000
+  const storeId = storeSession?.store?.id || "unknown"
+  const memberId = storeSession?.member?.id || storeSession?.member?.userId || "unknown"
+  const deviceId = String(req.headers["x-device-id"] || req.headers["x-client-id"] || "unknown").slice(0, 160)
+  const ip = clientIp(req) || "unknown"
+  const checks = [
+    [`store:${pickupVerificationRateKey(storeId)}`, 80],
+    [`member:${pickupVerificationRateKey(memberId)}`, 30],
+    [`device:${pickupVerificationRateKey(deviceId)}`, 30],
+    [`ip:${pickupVerificationRateKey(ip)}`, 60]
+  ]
+  return checks.every(([key, maxHits]) => checkRateLimit(pickupVerificationHits, key, windowMs, maxHits))
 }
 
 async function userSessionFromRequest(req) {
@@ -921,6 +996,11 @@ function requireAuth(req, res) {
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024
 const MAX_TEMP_IMAGE_SIZE = 5 * 1024 * 1024
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024
+const MAX_UPLOAD_CONCURRENT = Math.max(1, Number(process.env.MAX_UPLOAD_CONCURRENT || 3))
+const MAX_UPLOAD_MEMORY_BYTES = Math.max(
+  MAX_VIDEO_SIZE + 1024 * 1024,
+  Number(process.env.MAX_UPLOAD_MEMORY_MB || 160) * 1024 * 1024
+)
 const MAX_IMPORT_EXCEL_SIZE = 5 * 1024 * 1024
 const MAX_IMPORT_ZIP_SIZE = 50 * 1024 * 1024
 const IMPORT_PREVIEW_TTL = 30 * 60 * 1000
@@ -1069,6 +1149,31 @@ function readBody(req, maxSize = MAX_IMAGE_SIZE + 1024 * 1024, maxSizeMessage = 
     })
     req.on("error", reject)
   })
+}
+
+function reserveUploadRequest(req, maxSize, maxSizeMessage = "上传内容过大") {
+  const contentLengthText = String(req.headers["content-length"] || "").trim()
+  const contentLength = contentLengthText ? Number(contentLengthText) : 0
+  if (contentLengthText && (!Number.isSafeInteger(contentLength) || contentLength < 0)) {
+    throw uploadInputError(400, "上传请求长度无效")
+  }
+  if (contentLength > maxSize) throw uploadInputError(413, maxSizeMessage)
+  const reservation = contentLength || maxSize
+  if (
+    activeUploadRequests >= MAX_UPLOAD_CONCURRENT ||
+    reservedUploadBytes + reservation > MAX_UPLOAD_MEMORY_BYTES
+  ) {
+    throw uploadInputError(429, "当前上传任务较多，请稍后重试")
+  }
+  activeUploadRequests += 1
+  reservedUploadBytes += reservation
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    activeUploadRequests = Math.max(0, activeUploadRequests - 1)
+    reservedUploadBytes = Math.max(0, reservedUploadBytes - reservation)
+  }
 }
 
 function safeName(filename) {
@@ -1642,9 +1747,29 @@ function isPublicProduct(product = {}) {
   return normalizeProductStatus(product.status) === "on"
 }
 
+function publicProductView(product = {}) {
+  const {
+    costPrice,
+    rewardEnabled,
+    firstReward,
+    secondReward,
+    modelCandidateId,
+    modelSourceUrl,
+    modelAuthorName,
+    modelAuthorizationStatus,
+    modelAuthorizationNote,
+    ...publicProduct
+  } = product
+  return publicProduct
+}
+
 function homepageRecommendedProducts(products = []) {
   const online = products.filter(isPublicProduct)
-  return online.filter(product => String(product.isHot) === "true").sort(homepageProductSort).slice(0, 6)
+  return online
+    .filter(product => String(product.isHot) === "true")
+    .sort(homepageProductSort)
+    .slice(0, 6)
+    .map(publicProductView)
 }
 
 function homepageBurstProducts(products = []) {
@@ -1652,6 +1777,7 @@ function homepageBurstProducts(products = []) {
     .filter(product => isPublicProduct(product) && product.badge === "best" && String(product.isHot) !== "true")
     .sort(homepageProductSort)
     .slice(0, 4)
+    .map(publicProductView)
 }
 
 function normalizeAds(value) {
@@ -2063,7 +2189,12 @@ function pickBanner(banners, index) {
 }
 
 function assertProductionRuntimeConfig() {
+  if (!["mysql", "json"].includes(STORAGE_MODE)) throw new Error("STORAGE_MODE 仅支持 mysql 或 json")
   if (!IS_PRODUCTION) return
+  if (STORAGE_MODE !== "mysql") throw new Error("生产环境必须使用 MySQL，禁止 JSON 存储")
+  if (!mysql) throw new Error("生产环境缺少必要依赖 mysql2，服务拒绝启动")
+  if (!sharp) throw new Error("生产环境缺少必要依赖 sharp，服务拒绝启动")
+  if (!QRCode) throw new Error("生产环境缺少必要依赖 qrcode，服务拒绝启动")
   if (PAY_MOCK_ENV === "true") throw new Error("生产环境禁止 PAY_MOCK=true")
   const adminPasswordHash = String(process.env.ADMIN_PASSWORD_HASH || "")
   const legacyAdminPassword = String(process.env.ADMIN_PASSWORD || "")
@@ -2784,7 +2915,7 @@ function generatePickupCodeCandidate() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   let code = ""
   for (let index = 0; index < 6; index += 1) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)]
+    code += alphabet[crypto.randomInt(alphabet.length)]
   }
   return code
 }
@@ -2800,7 +2931,56 @@ async function generateUniquePickupCode() {
       if (!rows.length) return code
     }
   }
-  return `${Date.now().toString(36).toUpperCase().slice(-6)}`
+  throw new Error("暂时无法生成唯一取货码，请稍后重试")
+}
+
+async function claimPickupCode(connection, order) {
+  if (!connection || !isPickupOrder(order)) return ""
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const code = attempt === 0
+      ? normalizePickupCode(order.pickupCode)
+      : generatePickupCodeCandidate()
+    if (!code) continue
+    try {
+      await connection.query(
+        `INSERT INTO pickup_code_claims (code, order_id, created_at)
+         VALUES (:code, :orderId, NOW())`,
+        { code, orderId: order.id }
+      )
+      order.pickupCode = code
+      return code
+    } catch (error) {
+      if (error?.code !== "ER_DUP_ENTRY") throw error
+    }
+  }
+  throw new Error("暂时无法生成唯一取货码，请稍后重试")
+}
+
+async function ensurePickupCodeClaim(order) {
+  if (!pool || !isPickupOrder(order) || !normalizePickupCode(order.pickupCode)) return
+  const connection = await pool.getConnection()
+  const previousCode = normalizePickupCode(order.pickupCode)
+  try {
+    await connection.beginTransaction()
+    const [existing] = await connection.query(
+      "SELECT code FROM pickup_code_claims WHERE order_id=:orderId LIMIT 1 FOR UPDATE",
+      { orderId: order.id }
+    )
+    if (existing[0]) {
+      order.pickupCode = normalizePickupCode(existing[0].code)
+    } else {
+      await claimPickupCode(connection, order)
+    }
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+  if (normalizePickupCode(order.pickupCode) !== previousCode || !order.pickupQrCodeUrl) {
+    order.pickupQrCodeUrl = await generatePickupQrCode(order.pickupCode)
+  }
 }
 
 async function generatePickupQrCode(pickupCode) {
@@ -4161,6 +4341,7 @@ async function getSalesAgentCommissions(filters = {}) {
     let records = readJsonFile(salesAgentCommissionsFile, []).map(normalizeSalesAgentCommission)
     if (filters.salesAgentId) records = records.filter(record => record.salesAgentId === filters.salesAgentId)
     if (filters.storeId) records = records.filter(record => record.storeId === filters.storeId)
+    if (filters.orderId) records = records.filter(record => record.orderId === filters.orderId)
     if (filters.status) records = records.filter(record => filters.status === "chargeback" ? record.type === "chargeback" || Number(record.amount || 0) < 0 : record.status === filters.status)
     if (filters.type) records = records.filter(record => record.type === filters.type)
     if (filters.startAt) records = records.filter(record => String(record.createdAt || "") >= filters.startAt)
@@ -4176,6 +4357,10 @@ async function getSalesAgentCommissions(filters = {}) {
   if (filters.storeId) {
     where.push("store_id = :storeId")
     params.storeId = filters.storeId
+  }
+  if (filters.orderId) {
+    where.push("order_id = :orderId")
+    params.orderId = filters.orderId
   }
   if (filters.status) {
     if (filters.status === "chargeback") where.push("(type = 'chargeback' OR amount < 0)")
@@ -4241,14 +4426,6 @@ async function createSalesAgentCommissionForOrder(order) {
   if (!agent || agent.status !== "active") return null
   const rate = salesAgentCommissionRate(store, agent)
   if (!(rate > 0)) return null
-  const records = await getSalesAgentCommissions()
-  const exists = records.find(record =>
-    record.orderId === order.id &&
-    record.salesAgentId === agent.id &&
-    record.storeId === store.id &&
-    record.type === "sales_agent_commission"
-  )
-  if (exists) return exists
   const now = formatDateTime(new Date())
   const amount = money(Number(order.amount || 0) * rate / 100)
   if (!(Number(amount) > 0)) return null
@@ -4266,13 +4443,106 @@ async function createSalesAgentCommissionForOrder(order) {
     status: order.storeSettlementStatus || "pending_confirm",
     remark: `业务员佣金：${store.name || store.id}`,
     createdAt: now
-  }, records.length)
+  }, 0)
+  if (pool) {
+    await query(
+      `INSERT IGNORE INTO sales_agent_commissions
+        (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
+         commission_amount, amount, type, status, created_at, remark)
+       VALUES
+        (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
+         :commissionAmount, :amount, :type, :status, :createdAt, :remark)`,
+      { ...record, createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()) }
+    )
+    const rows = await query(
+      `SELECT * FROM sales_agent_commissions
+       WHERE sales_agent_id=:salesAgentId AND store_id=:storeId
+         AND order_id=:orderId AND type='sales_agent_commission'
+       LIMIT 1`,
+      { salesAgentId: agent.id, storeId: store.id, orderId: order.id }
+    )
+    return rows[0] ? normalizeSalesAgentCommission({
+      ...rows[0],
+      salesAgentId: rows[0].sales_agent_id,
+      storeId: rows[0].store_id,
+      orderId: rows[0].order_id,
+      orderNo: rows[0].order_no,
+      orderAmount: rows[0].order_amount,
+      commissionRate: rows[0].commission_rate,
+      commissionAmount: rows[0].commission_amount,
+      createdAt: rows[0].created_at
+    }, 0) : record
+  }
+  const records = await getSalesAgentCommissions()
+  const exists = records.find(item =>
+    item.orderId === order.id &&
+    item.salesAgentId === agent.id &&
+    item.storeId === store.id &&
+    item.type === "sales_agent_commission"
+  )
+  if (exists) return exists
   records.unshift(record)
   await saveSalesAgentCommissions(records)
   return record
 }
 
 async function rollbackSalesAgentCommissionsForOrder(orderId) {
+  if (pool) {
+    const connection = await pool.getConnection()
+    try {
+      await connection.beginTransaction()
+      const [records] = await connection.query(
+        `SELECT * FROM sales_agent_commissions
+         WHERE order_id=:orderId AND type='sales_agent_commission'
+         FOR UPDATE`,
+        { orderId }
+      )
+      for (const record of records) {
+        if (record.status === "settled") {
+          const chargebackId = `SAC${orderId}CHARGEBACK${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 10)}`
+          await connection.query(
+            `INSERT IGNORE INTO sales_agent_commissions
+              (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
+               commission_amount, amount, type, status, created_at, batch_id,
+               related_record_id, remark)
+             VALUES
+              (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount,
+               :commissionRate, :amount, :amount, 'chargeback', 'unsettled', NOW(),
+               :batchId, :relatedRecordId, :remark)`,
+            {
+              id: chargebackId,
+              salesAgentId: record.sales_agent_id,
+              storeId: record.store_id,
+              orderId,
+              orderNo: record.order_no || orderId,
+              orderAmount: record.order_amount,
+              commissionRate: record.commission_rate,
+              amount: money(-Math.abs(Number(record.amount || 0))),
+              batchId: `refund-chargeback:${record.id}`,
+              relatedRecordId: record.id,
+              remark: `订单退款冲正，关联原订单号：${record.order_no || orderId}`
+            }
+          )
+        } else {
+          await connection.query(
+            `UPDATE sales_agent_commissions
+             SET status='cancelled',
+                 cancel_reason=COALESCE(NULLIF(cancel_reason,''),'订单退款成功，业务员佣金失效'),
+                 remark=CONCAT(COALESCE(remark,''),'；订单退款成功，佣金失效')
+             WHERE id=:id AND status IN ('pending_confirm','unsettled')`,
+            { id: record.id }
+          )
+        }
+      }
+      await connection.commit()
+      return await getSalesAgentCommissions({ orderId })
+    } catch (error) {
+      await connection.rollback().catch(() => {})
+      throw error
+    } finally {
+      connection.release()
+    }
+  }
   const records = await getSalesAgentCommissions()
   let changed = false
   const now = formatDateTime(new Date())
@@ -4319,6 +4589,16 @@ async function rollbackSalesAgentCommissionsForOrder(orderId) {
 async function confirmSalesAgentCommissions(orderId) {
   const order = (await getOrders()).find(item => item.id === orderId)
   if (!order || !isOrderRewardConfirmed(order) || isOrderRefunded(order)) return { changed: false }
+  if (pool) {
+    const result = await query(
+      `UPDATE sales_agent_commissions
+       SET status='unsettled',
+           remark=COALESCE(NULLIF(remark,''),'订单已完成，业务员佣金可结算')
+       WHERE order_id=:orderId AND type='sales_agent_commission' AND status='pending_confirm'`,
+      { orderId }
+    )
+    return { changed: Number(result.affectedRows || 0) > 0 }
+  }
   const records = await getSalesAgentCommissions()
   let changed = false
   const now = formatDateTime(new Date())
@@ -4376,13 +4656,60 @@ async function saveProducts(products) {
     writeJsonFile(rewardRulesFile, rewardList.map(normalizeRewardRule))
     return list
   }
-  await query("DELETE FROM products")
-  for (let index = 0; index < list.length; index += 1) {
-    const product = list[index]
-    await query(
-      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order, model_candidate_id, model_source_url, model_author_name, model_authorization_status, model_authorization_note) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock, :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl, :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote)",
-      { ...product, galleryImagesJson: JSON.stringify(product.galleryImages || []), detailImagesJson: JSON.stringify(product.detailImages || []), categoriesJson: JSON.stringify(product.categories || []), sortOrder: Number(product.sortOrder || index) }
-    )
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    await connection.query("SELECT id FROM products FOR UPDATE")
+    for (let index = 0; index < list.length; index += 1) {
+      const product = list[index]
+      await connection.query(
+        `INSERT INTO products
+          (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url,
+           detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot,
+           promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward,
+           second_reward, sort_order, model_candidate_id, model_source_url, model_author_name,
+           model_authorization_status, model_authorization_note)
+         VALUES
+          (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson,
+           :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock,
+           :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled,
+           :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl,
+           :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote)
+         ON DUPLICATE KEY UPDATE
+           name=VALUES(name), intro=VALUES(intro), price=VALUES(price), cost_price=VALUES(cost_price),
+           badge=VALUES(badge), cover=VALUES(cover), image_url=VALUES(image_url),
+           gallery_images=VALUES(gallery_images), video_url=VALUES(video_url),
+           detail_images=VALUES(detail_images), detail_text=VALUES(detail_text),
+           product_type=VALUES(product_type), categories=VALUES(categories), status=VALUES(status),
+           stock=VALUES(stock), stock_mode=VALUES(stock_mode), is_hot=VALUES(is_hot),
+           promotion_hot=VALUES(promotion_hot), ai_preview_enabled=VALUES(ai_preview_enabled),
+           ai_preview_type=VALUES(ai_preview_type), reward_enabled=VALUES(reward_enabled),
+           first_reward=VALUES(first_reward), second_reward=VALUES(second_reward),
+           sort_order=VALUES(sort_order), model_candidate_id=VALUES(model_candidate_id),
+           model_source_url=VALUES(model_source_url), model_author_name=VALUES(model_author_name),
+           model_authorization_status=VALUES(model_authorization_status),
+           model_authorization_note=VALUES(model_authorization_note)`,
+        {
+          ...product,
+          galleryImagesJson: JSON.stringify(product.galleryImages || []),
+          detailImagesJson: JSON.stringify(product.detailImages || []),
+          categoriesJson: JSON.stringify(product.categories || []),
+          sortOrder: Number(product.sortOrder || index)
+        }
+      )
+    }
+    const retainedIds = list.map(product => product.id)
+    if (retainedIds.length) {
+      await connection.query("DELETE FROM products WHERE id NOT IN (?)", [retainedIds])
+    } else {
+      await connection.query("DELETE FROM products")
+    }
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
   }
   const home = await getHome()
   home.products = list
@@ -4707,9 +5034,14 @@ async function saveOrders(orders) {
   const previousOrders = await getOrders()
   const invalidateOrderIds = []
   const confirmOrderIds = []
+  const releaseInventoryOrderIds = []
   for (const order of list) {
+    if (isPickupOrder(order) && order.pickupCode) await ensurePickupCodeClaim(order)
     const previousOrder = previousOrders.find(item => item.id === order.id)
     if (previousOrder && shouldInvalidateStoreSettlementForOrderChange(previousOrder, order)) invalidateOrderIds.push(order.id)
+    if (previousOrder && !canReleaseOrderInventory(previousOrder) && canReleaseOrderInventory(order)) {
+      releaseInventoryOrderIds.push(order.id)
+    }
     if (isOrderRewardConfirmed(order)) confirmOrderIds.push(order.id)
     const orderParams = {
       ...mysqlOrderParams(order),
@@ -4810,6 +5142,19 @@ async function saveOrders(orders) {
   }
   for (const orderId of [...new Set(confirmOrderIds)]) {
     await confirmOrderRewards(orderId)
+  }
+  for (const orderId of [...new Set(releaseInventoryOrderIds)]) {
+    const connection = await pool.getConnection()
+    try {
+      await connection.beginTransaction()
+      await releaseOrderInventory(connection, orderId, "订单取消、关闭或退款")
+      await connection.commit()
+    } catch (error) {
+      await connection.rollback().catch(() => {})
+      throw error
+    } finally {
+      connection.release()
+    }
   }
   return list
 }
@@ -5633,7 +5978,81 @@ function storeCenterStats(store, orders, records) {
   }
 }
 
+async function verifyStorePickupMysql(store, selector = {}) {
+  const code = normalizePickupCode(selector.pickupCode)
+  const connection = await pool.getConnection()
+  let row
+  try {
+    await connection.beginTransaction()
+    const params = selector.orderId ? { orderId: selector.orderId } : { pickupCode: code }
+    const where = selector.orderId ? "id=:orderId" : "UPPER(pickup_code)=:pickupCode"
+    const [rows] = await connection.query(
+      `SELECT * FROM orders WHERE ${where} LIMIT 1 FOR UPDATE`,
+      params
+    )
+    row = rows[0]
+    if (!row) throw httpError(400, "not_found")
+    if (String(row.pickup_store_id || "") !== String(store.id)) throw httpError(400, "wrong_store")
+    if (!isOrderPaidForPickupCredential(row)) throw httpError(400, "unpaid")
+    if (!isPickupOrder(row)) throw httpError(400, "not_pickup")
+    if (isOrderBlockedForStoreVerify(row)) throw httpError(400, "blocked")
+    if (selector.orderId && (!code || normalizePickupCode(row.pickup_code) !== code)) {
+      throw httpError(400, "code_mismatch")
+    }
+    if (row.pickup_status === "picked_up") {
+      await connection.commit()
+      return { alreadyVerified: true, orderId: row.id }
+    }
+    const [result] = await connection.query(
+      `UPDATE orders
+       SET pickup_status='picked_up',
+           status='已完成',
+           picked_up_at=NOW(),
+           pickup_verified_at=NOW(),
+           pickup_verified_by=:storeId,
+           completed_at=COALESCE(completed_at, NOW())
+       WHERE id=:orderId
+         AND pickup_store_id=:storeId
+         AND (pickup_status IS NULL OR pickup_status<>'picked_up')`,
+      { orderId: row.id, storeId: store.id }
+    )
+    if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "concurrent_verify")
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+  const order = (await getOrders()).find(item => item.id === row.id)
+  if (!order) throw new Error("verified_order_missing")
+  await createStoreSettlementRecordsForOrder(order)
+  await recordOrderStateAudit(
+    {
+      ...order,
+      status: row.status,
+      pickupStatus: row.pickup_status,
+      pickedUpAt: row.picked_up_at,
+      pickupVerifiedAt: row.pickup_verified_at
+    },
+    order,
+    {
+      source: "store_pickup_code",
+      operatorId: store.id,
+      reason: "取货码核销",
+      serviceFeeImpact: "自提服务费由预计转为待结算"
+    }
+  )
+  await enqueueWechatFulfillment(order, "PICKUP_READY")
+  return { alreadyVerified: false, order }
+}
+
 async function verifyStorePickupOrder(store, orderId, pickupCode) {
+  if (pool) {
+    const result = await verifyStorePickupMysql(store, { orderId, pickupCode })
+    if (result.alreadyVerified) throw httpError(400, "already_verified")
+    return storeOrderView(result.order, "pickup")
+  }
   const orders = await getOrders()
   const order = orders.find(item => item.id === orderId)
   if (!order) throw httpError(404, "订单不存在")
@@ -5666,6 +6085,34 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
 async function verifyStorePickupByCode(store, pickupCode) {
   const code = normalizePickupCode(pickupCode)
   if (!code || code.length !== 6) throw httpError(400, "请输入6位取货码")
+  if (pool) {
+    const result = await verifyStorePickupMysql(store, { pickupCode: code })
+    if (result.alreadyVerified) {
+      const order = (await getOrders()).find(item => item.id === result.orderId)
+      return {
+        ok: false,
+        alreadyVerified: true,
+        message: "订单已核销",
+        order: storeOrderView(order, "pickup"),
+        verifiedAt: order?.pickupVerifiedAtText || order?.pickedUpAtText || order?.pickedUpAt || "",
+        verifiedStore: order?.pickupStore?.name || store.name,
+        verifiedBy: order?.pickupVerifiedBy || store.id
+      }
+    }
+    const order = result.order
+    return {
+      ok: true,
+      alreadyVerified: false,
+      message: "核销成功",
+      order: storeOrderView(order, "pickup"),
+      product: order.productName,
+      customer: maskName(order.customerName) || maskPhone(order.phone),
+      quantity: extractOrderQuantity(order),
+      verifiedAt: formatChinaDatetime(order.pickupVerifiedAt || order.pickedUpAt),
+      verifiedStore: store.name,
+      verifiedBy: store.id
+    }
+  }
   const orders = await getOrders()
   const order = orders.find(item => normalizePickupCode(item.pickupCode) === code)
   if (!order) throw httpError(404, "取货码不存在")
@@ -5801,7 +6248,7 @@ async function createOrder(data) {
   if (referrerStoreId) console.log("[promotion-reward] skipped for store source order", { storeId: referrerStoreId, orderSource: storeOrderSource.storeOrderType })
   const income = await calculateOrderStoreIncome({ ...data, deliveryType, referrerStoreId, pickupStoreId: pickupStore?.id || "" }, orderAmount)
   const pickupCode = deliveryType === "pickup" ? await generateUniquePickupCode() : ""
-  const pickupQrCodeUrl = pickupCode ? await generatePickupQrCode(pickupCode) : ""
+  const pickupQrCodeUrl = ""
   const requestKey = String(data.requestKey || data.idempotencyKey || "").trim().slice(0, 100)
   const requestHash = canonicalRequestHash({
     ...data,
@@ -5866,6 +6313,7 @@ async function createOrder(data) {
   }, 0)
   if (!pool) {
     const orders = readJsonFile(ordersFile, [])
+    if (order.pickupCode) order.pickupQrCodeUrl = await generatePickupQrCode(order.pickupCode)
     order.items = orderItemSnapshots
     orders.push(order)
     writeJsonFile(ordersFile, orders)
@@ -5906,6 +6354,7 @@ async function createOrder(data) {
       }
     }
     if (!existingOrderId) {
+      if (isPickupOrder(order)) await claimPickupCode(connection, order)
       for (const item of orderItemSnapshots) {
         if (["CART_ORDER", "CUSTOM_UPLOAD"].includes(item.productId)) continue
         const [rows] = await connection.query(
@@ -5982,6 +6431,13 @@ async function createOrder(data) {
     const existing = (await getOrders()).find(item => item.id === existingOrderId)
     if (!existing) throw httpError(409, "原订单正在处理中，请稍后查询订单")
     return existing
+  }
+  if (order.pickupCode) {
+    order.pickupQrCodeUrl = await generatePickupQrCode(order.pickupCode)
+    await query(
+      "UPDATE orders SET pickup_qrcode_url=:pickupQrCodeUrl WHERE id=:orderId AND pickup_code=:pickupCode",
+      { pickupQrCodeUrl: order.pickupQrCodeUrl, orderId: order.id, pickupCode: order.pickupCode }
+    )
   }
   await ensureCustomerFromOrder(order)
   if (!order.referrerStoreId) await bindPromotionFromOrder(order)
@@ -6564,6 +7020,66 @@ function shouldInvalidateStoreSettlementForOrderChange(previous = {}, next = {})
     isOrderCancelledClosedOrRefunded(next)
 }
 
+function isTerminalInventoryReleaseStatus(order = {}) {
+  const values = [
+    order.status,
+    order.paymentStatus || order.payment_status,
+    order.refundStatus || order.refund_status,
+    order.afterSalesStatus || order.after_sales_status
+  ].map(value => String(value || "").trim().toLowerCase())
+  return values.some(value => [
+    "已取消", "已关闭", "已退款", "取消", "关闭", "作废",
+    "cancelled", "canceled", "closed", "void", "refunded"
+  ].includes(value))
+}
+
+function canReleaseOrderInventory(order = {}) {
+  if (!isTerminalInventoryReleaseStatus(order)) return false
+  if (isPickupVerified(order)) return false
+  const status = String(order.status || "").trim().toLowerCase()
+  if (["制作中", "已发货", "已完成", "shipped", "completed", "fulfilled"].includes(status)) return false
+  return !(order.shippedAt || order.shipped_at || order.completedAt || order.completed_at)
+}
+
+async function releaseOrderInventory(connection, orderId, reason) {
+  if (!connection || !orderId) return { releasedItems: 0, releasedQuantity: 0 }
+  const [items] = await connection.query(
+    `SELECT id, product_id, quantity, inventory_mode
+     FROM order_items
+     WHERE order_id=:orderId
+     FOR UPDATE`,
+    { orderId }
+  )
+  let releasedItems = 0
+  let releasedQuantity = 0
+  for (const item of items) {
+    if (String(item.inventory_mode || "").toUpperCase() !== "FINITE") continue
+    const quantity = Number(item.quantity || 0)
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+    const [claim] = await connection.query(
+      `INSERT IGNORE INTO order_inventory_releases
+        (order_item_id, order_id, product_id, quantity, reason, created_at)
+       VALUES
+        (:orderItemId, :orderId, :productId, :quantity, :reason, NOW())`,
+      {
+        orderItemId: item.id,
+        orderId,
+        productId: item.product_id,
+        quantity,
+        reason: String(reason || "订单关闭").slice(0, 120)
+      }
+    )
+    if (Number(claim.affectedRows || 0) !== 1) continue
+    await connection.query(
+      "UPDATE products SET stock=stock+:quantity WHERE id=:productId AND stock_mode='FINITE'",
+      { productId: item.product_id, quantity }
+    )
+    releasedItems += 1
+    releasedQuantity += quantity
+  }
+  return { releasedItems, releasedQuantity }
+}
+
 function canApplyAfterSales(order = {}) {
   if (!isOrderPaidForAfterSales(order)) return false
   if (isOrderRefunded(order)) return false
@@ -6928,6 +7444,15 @@ async function markRefundSuccess(order, refundData = {}) {
           refundAmount: centsToYuan(refundedCents)
         }
       )
+      if (fullRefund && canReleaseOrderInventory({
+        ...currentRow,
+        status: nextStatus,
+        paymentStatus: nextPaymentStatus,
+        refundStatus: nextRefundStatus,
+        afterSalesStatus: nextAfterSalesStatus
+      })) {
+        await releaseOrderInventory(connection, order.id, "订单全额退款")
+      }
       await connection.commit()
       resultOrder = (await getOrders({ keyword: order.id })).find(item => item.id === order.id)
     } catch (error) {
@@ -8342,10 +8867,12 @@ async function getNewcomerBenefits(query = {}) {
 
 async function initDb() {
   assertProductionPaymentConfig()
-  if (!mysql) {
-    console.log("本地开发模式：未安装 mysql2，已启用 JSON 数据存储。")
+  if (STORAGE_MODE === "json") {
+    if (IS_PRODUCTION) throw new Error("生产环境禁止 JSON 数据存储")
+    console.log("本地开发模式：已显式启用 JSON 数据存储。")
     return
   }
+  if (!mysql) throw new Error("缺少 mysql2；如需本地 JSON 模式，请显式设置 STORAGE_MODE=json")
   const rootPool = mysql.createPool({ ...dbConfig, database: undefined })
   await rootPool.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`)
   await rootPool.end()
@@ -8508,6 +9035,20 @@ async function initDb() {
   await ensureColumn("orders", "user_longitude", "DECIMAL(10,6)")
   await ensureColumn("orders", "pickup_distance", "DECIMAL(10,2)")
   await ensureColumn("orders", "referrer_store_id", "VARCHAR(40)")
+  await query(`CREATE TABLE IF NOT EXISTS pickup_code_claims (
+    code VARCHAR(20) PRIMARY KEY,
+    order_id VARCHAR(40) NOT NULL,
+    created_at DATETIME NOT NULL,
+    UNIQUE KEY uniq_pickup_code_order (order_id)
+  )`)
+  await query(
+    `INSERT IGNORE INTO pickup_code_claims (code, order_id, created_at)
+     SELECT UPPER(pickup_code), id, COALESCE(created_at, NOW())
+     FROM orders
+     WHERE pickup_code IS NOT NULL
+       AND pickup_code <> ''
+       AND CHAR_LENGTH(pickup_code) = 6`
+  )
   await ensureColumn("orders", "source_type", "VARCHAR(30)")
   await ensureColumn("orders", "source_store_id", "VARCHAR(40)")
   await ensureColumn("orders", "source_store_code", "VARCHAR(80)")
@@ -8611,6 +9152,16 @@ async function initDb() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_order_item_order (order_id),
     INDEX idx_order_item_product (product_id, sku_id)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_inventory_releases (
+    order_item_id VARCHAR(60) PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    product_id VARCHAR(32) NOT NULL,
+    quantity INT UNSIGNED NOT NULL,
+    reason VARCHAR(120),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_inventory_release_order (order_id),
+    INDEX idx_inventory_release_product (product_id)
   )`)
   await query(`CREATE TABLE IF NOT EXISTS refund_records (
     id VARCHAR(60) PRIMARY KEY,
@@ -9574,6 +10125,15 @@ async function handle(req, res) {
     return
   }
 
+  if (
+    !["GET", "HEAD"].includes(req.method) &&
+    (url.pathname.startsWith("/api/admin") || url.pathname === "/api/auth/logout") &&
+    !isAllowedSameOriginRequest(req)
+  ) {
+    sendJson(res, 403, { ok: false, message: "请求来源无效" })
+    return
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     if (pool) await query("SELECT 1 AS ok")
     sendJson(res, 200, { ok: true, service: "very-simple-admin", storage: pool ? "mysql" : "json" })
@@ -9619,6 +10179,10 @@ async function handle(req, res) {
   }
 
   if (req.method === "GET" && url.pathname === "/test") {
+    if (IS_PRODUCTION) {
+      sendJson(res, 404, { ok: false, message: "Not found" })
+      return
+    }
     sendText(res, 200, fs.readFileSync(testFile, "utf8"), "text/html; charset=utf-8")
     return
   }
@@ -9717,7 +10281,7 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/products" && req.method === "GET") {
-    sendJson(res, 200, (await getProducts()).filter(isPublicProduct))
+    sendJson(res, 200, (await getProducts()).filter(isPublicProduct).map(publicProductView))
     return
   }
 
@@ -9898,38 +10462,64 @@ async function handle(req, res) {
   if (url.pathname.match(/^\/api\/store\/orders\/[^/]+\/verify-pickup$/) && req.method === "POST") {
     const storeSession = await requireStorePermission(req, res, "pickup.verify")
     if (!storeSession) return
+    if (!checkPickupVerificationRateLimit(req, storeSession)) {
+      sendJson(res, 429, { ok: false, message: "操作频繁，请稍后再试" })
+      return
+    }
     const orderId = decodeURIComponent(url.pathname.split("/")[4])
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    sendJson(res, 200, { ok: true, data: await verifyStorePickupOrder(storeSession.store, orderId, body.pickupCode) })
+    try {
+      sendJson(res, 200, { ok: true, data: await verifyStorePickupOrder(storeSession.store, orderId, body.pickupCode) })
+    } catch (error) {
+      console.warn("[pickup-verify]", {
+        storeId: storeSession.store.id,
+        memberId: storeSession.member?.id || "",
+        reason: String(error?.message || "unknown").slice(0, 80)
+      })
+      sendJson(res, 400, { ok: false, message: "取货码无效或当前不可核销" })
+    }
     return
   }
 
   if (url.pathname === "/api/store/verify" && req.method === "POST") {
     const storeSession = await requireStorePermission(req, res, "pickup.verify")
     if (!storeSession) return
+    if (!checkPickupVerificationRateLimit(req, storeSession)) {
+      sendJson(res, 429, { ok: false, message: "操作频繁，请稍后再试" })
+      return
+    }
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    sendJson(res, 200, await verifyStorePickupByCode(storeSession.store, body.pickupCode || body.code))
+    try {
+      sendJson(res, 200, await verifyStorePickupByCode(storeSession.store, body.pickupCode || body.code))
+    } catch (error) {
+      console.warn("[pickup-verify]", {
+        storeId: storeSession.store.id,
+        memberId: storeSession.member?.id || "",
+        reason: String(error?.message || "unknown").slice(0, 80)
+      })
+      sendJson(res, 400, { ok: false, message: "取货码无效或当前不可核销" })
+    }
     return
   }
 
   if (url.pathname === "/api/product/detail" && req.method === "GET") {
     const id = url.searchParams.get("id") || url.searchParams.get("productId")
     const product = id ? await getProduct(decodeURIComponent(id)) : null
-    if (!product) {
+    if (!product || !isPublicProduct(product)) {
       sendJson(res, 404, { ok: false, message: "商品不存在" })
       return
     }
-    sendJson(res, 200, product)
+    sendJson(res, 200, publicProductView(product))
     return
   }
 
   if (url.pathname.startsWith("/api/products/") && req.method === "GET") {
     const product = await getProduct(decodeURIComponent(url.pathname.replace("/api/products/", "")))
-    if (!product) {
+    if (!product || !isPublicProduct(product)) {
       sendJson(res, 404, { ok: false, message: "商品不存在" })
       return
     }
-    sendJson(res, 200, product)
+    sendJson(res, 200, publicProductView(product))
     return
   }
 
@@ -10314,39 +10904,45 @@ async function handle(req, res) {
         sendJson(res, 400, { ok: false, message: "请使用 multipart/form-data 上传图片" })
         return
       }
-      const body = await readBody(req, MAX_TEMP_IMAGE_SIZE * 3 + 1024 * 1024, "图片超过5MB，请压缩后上传")
-      const files = parseMultipart(body, req.headers["content-type"])
-      if (!files.length) {
-        sendJson(res, 400, { ok: false, message: "请选择图片" })
-        return
-      }
-      if (files.length > 3) {
-        sendJson(res, 400, { ok: false, message: "门店照片最多上传3张" })
-        return
-      }
-      fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
-      const uploaded = []
-      for (const file of files) {
-        const ext = validateImageFile(file, {
-          allowedExts: ["jpg", "jpeg", "png", "webp"],
-          allowedMimes: ["image/jpeg", "image/png", "image/webp"],
-          maxSize: MAX_TEMP_IMAGE_SIZE,
-          tooLargeMessage: "单张图片不能超过5MB"
+      const maxBodySize = MAX_TEMP_IMAGE_SIZE * 3 + 1024 * 1024
+      const releaseUpload = reserveUploadRequest(req, maxBodySize, "图片超过5MB，请压缩后上传")
+      try {
+        const body = await readBody(req, maxBodySize, "图片超过5MB，请压缩后上传")
+        const files = parseMultipart(body, req.headers["content-type"])
+        if (!files.length) {
+          sendJson(res, 400, { ok: false, message: "请选择图片" })
+          return
+        }
+        if (files.length > 3) {
+          sendJson(res, 400, { ok: false, message: "门店照片最多上传3张" })
+          return
+        }
+        fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
+        const uploaded = []
+        for (const file of files) {
+          const ext = validateImageFile(file, {
+            allowedExts: ["jpg", "jpeg", "png", "webp"],
+            allowedMimes: ["image/jpeg", "image/png", "image/webp"],
+            maxSize: MAX_TEMP_IMAGE_SIZE,
+            tooLargeMessage: "单张图片不能超过5MB"
+          })
+          const cleanExt = ext === "jpeg" ? "jpg" : ext
+          const filename = `sales-lead-${salesSession.agent.id}-${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${cleanExt}`
+          const relativeName = `sales-leads/${filename}`
+          const targetFile = path.join(salesLeadUploadsDir, filename)
+          fs.writeFileSync(targetFile, file.body)
+          const optimized = await optimizeUploadedImage(targetFile, relativeName, "image")
+          uploaded.push({ ...optimized, url: optimized.url || uploadPublicUrl(relativeName), type: "image" })
+        }
+        sendJson(res, 200, {
+          ok: true,
+          urls: uploaded.map(item => item.url),
+          thumbUrls: uploaded.map(item => item.thumbUrl || item.url),
+          data: uploaded
         })
-        const cleanExt = ext === "jpeg" ? "jpg" : ext
-        const filename = `sales-lead-${salesSession.agent.id}-${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${cleanExt}`
-        const relativeName = `sales-leads/${filename}`
-        const targetFile = path.join(salesLeadUploadsDir, filename)
-        fs.writeFileSync(targetFile, file.body)
-        const optimized = await optimizeUploadedImage(targetFile, relativeName, "image")
-        uploaded.push({ ...optimized, url: optimized.url || uploadPublicUrl(relativeName), type: "image" })
+      } finally {
+        releaseUpload()
       }
-      sendJson(res, 200, {
-        ok: true,
-        urls: uploaded.map(item => item.url),
-        thumbUrls: uploaded.map(item => item.thumbUrl || item.url),
-        data: uploaded
-      })
       return
     }
     if (url.pathname === "/api/sales/store-leads" && req.method === "GET") {
@@ -10442,6 +11038,13 @@ async function handle(req, res) {
     await cleanupOrphanTempUploads()
     const publicLimit = loggedInPublicUpload ? MAX_IMAGE_SIZE : MAX_TEMP_IMAGE_SIZE
     const maxBodySize = isPublicUpload ? publicLimit * 9 + 1024 * 1024 : MAX_VIDEO_SIZE + 1024 * 1024
+    const releaseUpload = reserveUploadRequest(
+      req,
+      maxBodySize,
+      loggedInPublicUpload ? "图片超过10MB，请压缩后上传" : "上传内容超过限制"
+    )
+    res.once("finish", releaseUpload)
+    res.once("close", releaseUpload)
     const body = await readBody(req, maxBodySize, loggedInPublicUpload ? "图片超过10MB，请压缩后上传" : "临时上传图片超过5MB，请登录后上传或压缩图片")
     const files = parseMultipart(body, req.headers["content-type"])
     if (!files.length) {
