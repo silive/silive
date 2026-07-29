@@ -4081,24 +4081,35 @@ async function saveStoreMembers(list = []) {
     writeJsonFile(storeMembersFile, deduped)
     return deduped
   }
-  await query("DELETE FROM store_members")
   for (const member of deduped) {
-    await query(
-      `INSERT INTO store_members (id, store_id, user_id, phone, openid, role, status, created_at, updated_at)
-       VALUES (:id, :storeId, :userId, :phone, :openid, :role, :status, :createdAt, :updatedAt)`,
-      {
-        ...member,
-        createdAt: toMysqlDatetime(member.createdAt, nowMysqlDatetime()),
-        updatedAt: toMysqlDatetime(member.updatedAt, nowMysqlDatetime())
-      }
-    )
+    await upsertStoreMember(member)
   }
   return deduped
 }
 
+async function upsertStoreMember(member, connection = null) {
+  const normalized = normalizeStoreMember(member)
+  const params = {
+    ...normalized,
+    createdAt: toMysqlDatetime(normalized.createdAt, nowMysqlDatetime()),
+    updatedAt: toMysqlDatetime(normalized.updatedAt, nowMysqlDatetime())
+  }
+  const sql =
+    `INSERT INTO store_members
+      (id, store_id, user_id, phone, openid, role, status, created_at, updated_at)
+     VALUES
+      (:id, :storeId, :userId, :phone, :openid, :role, :status, :createdAt, :updatedAt)
+     ON DUPLICATE KEY UPDATE
+       user_id=VALUES(user_id),
+       openid=VALUES(openid),
+       role=VALUES(role),
+       status=VALUES(status),
+       updated_at=VALUES(updated_at)`
+  if (connection) return (await connection.query(sql, params))[0]
+  return await query(sql, params)
+}
+
 async function saveStoreMembersForStore(storeId, members = []) {
-  const all = await getStoreMembers()
-  const other = all.filter(member => member.storeId !== storeId)
   const now = formatDateTime(new Date())
   const next = (Array.isArray(members) ? members : [])
     .map((member, index) => normalizeStoreMember({
@@ -4113,7 +4124,46 @@ async function saveStoreMembersForStore(storeId, members = []) {
     if (phones.has(member.phone)) throw httpError(400, "同一门店不能重复添加相同手机号成员")
     phones.add(member.phone)
   }
-  return saveStoreMembers([...other, ...next])
+  if (!pool) {
+    const all = await getStoreMembers()
+    return saveStoreMembers([
+      ...all.filter(member => member.storeId !== storeId),
+      ...next
+    ])
+  }
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    await connection.query(
+      "SELECT id FROM store_members WHERE store_id=:storeId FOR UPDATE",
+      { storeId }
+    )
+    if (next.length) {
+      const params = { storeId }
+      const placeholders = next.map((member, index) => {
+        params[`id${index}`] = member.id
+        return `:id${index}`
+      }).join(",")
+      await connection.query(
+        `DELETE FROM store_members
+         WHERE store_id=:storeId AND id NOT IN (${placeholders})`,
+        params
+      )
+    } else {
+      await connection.query(
+        "DELETE FROM store_members WHERE store_id=:storeId",
+        { storeId }
+      )
+    }
+    for (const member of next) await upsertStoreMember(member, connection)
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+  return await getStoreMembers({ storeId })
 }
 
 async function ensureLegacyStoreMembersForStore(store) {
@@ -4124,7 +4174,6 @@ async function ensureLegacyStoreMembersForStore(store) {
   const existing = members.find(member => member.phone === phone)
   if (existing) return
   await saveStoreMembers([
-    ...(await getStoreMembers()),
     normalizeStoreMember({
       id: `SM${store.id}${phone.slice(-4)}`,
       storeId: store.id,
@@ -5995,12 +6044,11 @@ async function getStoreSession(req) {
   if (!matched) return null
   const { store, member } = matched
   if (session.openid && !member.openid) {
-    const allMembers = await getStoreMembers()
-    const index = allMembers.findIndex(item => item.id === member.id)
-    if (index >= 0) {
-      allMembers[index] = { ...allMembers[index], openid: session.openid, updatedAt: formatDateTime(new Date()) }
-      await saveStoreMembers(allMembers)
-    }
+    await saveStoreMembers([{
+      ...member,
+      openid: session.openid,
+      updatedAt: formatDateTime(new Date())
+    }])
   }
   if (session.openid && !store.managerOpenid && normalizePhone(store.managerPhone) === sessionPhone) {
     await upsertPartnerStore({ ...store, managerOpenid: session.openid })
@@ -8677,12 +8725,29 @@ async function saveRewardRecords(records) {
     writeJsonFile(rewardRecordsFile, list)
     return list
   }
-  await query("DELETE FROM reward_records")
   for (const record of list) {
     await query(
-      "INSERT INTO reward_records (id, order_id, product_name, buyer_phone, promoter_phone, promoter_name, level, amount, type, status, release_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, created_at, updated_at) VALUES (:id, :orderId, :productName, :buyerPhone, :promoterPhone, :promoterName, :level, :amount, :type, :status, :releaseAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :createdAt, :updatedAt)",
+      `INSERT INTO reward_records
+        (id, business_key, related_record_id, order_id, product_name, buyer_phone,
+         promoter_phone, promoter_name, level, amount, type, status, release_at,
+         settled_at, settled_by, settle_note, cancel_reason, batch_id, created_at, updated_at)
+       VALUES
+        (:id, :businessKey, :relatedRecordId, :orderId, :productName, :buyerPhone,
+         :promoterPhone, :promoterName, :level, :amount, :type, :status, :releaseAt,
+         :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :createdAt, :updatedAt)
+       ON DUPLICATE KEY UPDATE
+         status=VALUES(status),
+         release_at=VALUES(release_at),
+         settled_at=VALUES(settled_at),
+         settled_by=VALUES(settled_by),
+         settle_note=VALUES(settle_note),
+         cancel_reason=VALUES(cancel_reason),
+         batch_id=VALUES(batch_id),
+         updated_at=VALUES(updated_at)`,
       {
         ...record,
+        businessKey: rewardBusinessKey(record),
+        relatedRecordId: record.relatedRecordId || "",
         releaseAt: toMysqlDatetime(record.releaseAt),
         settledAt: toMysqlDatetime(record.settledAt),
         createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
