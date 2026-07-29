@@ -42,6 +42,14 @@
         "value": ".env.example"
       },
       {
+        "type": "file",
+        "value": "assets/logo.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/logo-orange.png"
+      },
+      {
         "type": "folder",
         "value": "cms/data"
       },
@@ -56,6 +64,10 @@
       {
         "type": "folder",
         "value": "node_modules"
+      },
+      {
+        "type": "folder",
+        "value": "artifacts"
       }
     ]
   },
