@@ -2866,11 +2866,12 @@ function leadStatusText(status) {
 }
 
 function normalizeSalesAgentCommission(record = {}, index = 0) {
-  const type = ["sales_agent_commission", "chargeback", "adjustment"].includes(record.type) ? record.type : "sales_agent_commission"
+  const type = ["sales_agent_commission", "chargeback", "refund_adjustment", "adjustment"].includes(record.type) ? record.type : "sales_agent_commission"
   const status = normalizeSettlementStatus(record.status)
   const amount = record.amount == null || record.amount === "" ? record.commissionAmount : record.amount
   return {
     id: String(record.id || `SAC${Date.now()}${index}`),
+    businessKey: record.businessKey || record.business_key || "",
     salesAgentId: record.salesAgentId || record.sales_agent_id || "",
     storeId: record.storeId || record.store_id || "",
     orderId: record.orderId || record.order_id || "",
@@ -2893,7 +2894,12 @@ function normalizeSalesAgentCommission(record = {}, index = 0) {
 }
 
 function salesCommissionTypeText(type) {
-  return { sales_agent_commission: "业务员佣金", chargeback: "退款冲正", adjustment: "手动调整" }[type] || type
+  return {
+    sales_agent_commission: "业务员佣金",
+    chargeback: "退款冲正",
+    refund_adjustment: "退款冲减",
+    adjustment: "手动调整"
+  }[type] || type
 }
 
 function calculateStoreAmount(amount, type, value) {
@@ -4373,11 +4379,12 @@ async function saveSalesAgentCommissions(records = []) {
   }
   for (const record of list) {
     await query(
-      `INSERT INTO sales_agent_commissions (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate, commission_amount, amount, type, status, created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, related_record_id, remark)
-       VALUES (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate, :commissionAmount, :amount, :type, :status, :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :relatedRecordId, :remark)
+      `INSERT INTO sales_agent_commissions (id, business_key, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate, commission_amount, amount, type, status, created_at, settled_at, settled_by, settle_note, cancel_reason, batch_id, related_record_id, remark)
+       VALUES (:id, :businessKey, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate, :commissionAmount, :amount, :type, :status, :createdAt, :settledAt, :settledBy, :settleNote, :cancelReason, :batchId, :relatedRecordId, :remark)
        ON DUPLICATE KEY UPDATE status = VALUES(status), settled_at = VALUES(settled_at), settled_by = VALUES(settled_by), settle_note = VALUES(settle_note), cancel_reason = VALUES(cancel_reason), batch_id = VALUES(batch_id), related_record_id = VALUES(related_record_id), remark = VALUES(remark), amount = VALUES(amount), commission_amount = VALUES(commission_amount)`,
       {
         ...record,
+        businessKey: salesAgentCommissionBusinessKey(record),
         createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()),
         settledAt: toMysqlDatetime(record.settledAt)
       }
@@ -4427,12 +4434,16 @@ async function createSalesAgentCommissionForOrder(order) {
   if (pool) {
     await query(
       `INSERT IGNORE INTO sales_agent_commissions
-        (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
+        (id, business_key, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
          commission_amount, amount, type, status, created_at, remark)
        VALUES
-        (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
+        (:id, :businessKey, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
          :commissionAmount, :amount, :type, :status, :createdAt, :remark)`,
-      { ...record, createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime()) }
+      {
+        ...record,
+        businessKey: salesAgentCommissionBusinessKey(record),
+        createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime())
+      }
     )
     const rows = await query(
       `SELECT * FROM sales_agent_commissions
@@ -4479,31 +4490,72 @@ async function rollbackSalesAgentCommissionsForOrder(orderId) {
       )
       for (const record of records) {
         if (record.status === "settled") {
-          const chargebackId = `SAC${orderId}CHARGEBACK${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 10)}`
-          await connection.query(
-            `INSERT IGNORE INTO sales_agent_commissions
-              (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
-               commission_amount, amount, type, status, created_at, batch_id,
-               related_record_id, remark)
-             VALUES
-              (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount,
-               :commissionRate, :amount, :amount, 'chargeback', 'unsettled', NOW(),
-               :batchId, :relatedRecordId, :remark)`,
-            {
-              id: chargebackId,
+          const [reversedRows] = await connection.query(
+            `SELECT COALESCE(SUM(ABS(amount)),0) AS reversed_amount
+             FROM sales_agent_commissions
+             WHERE related_record_id=:recordId AND amount<0`,
+            { recordId: record.id }
+          )
+          const originalCents = Math.round(Math.abs(Number(record.amount || 0)) * 100)
+          const reversedCents = Math.round(Number(reversedRows[0]?.reversed_amount || 0) * 100)
+          const deltaCents = Math.max(0, originalCents - reversedCents)
+          if (deltaCents) {
+            await insertSalesAgentCommission({
+              id: `SAC${orderId}CHARGEBACK${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 10)}`,
+              businessKey: `sales-reversal:${record.id}:full-refund`,
               salesAgentId: record.sales_agent_id,
               storeId: record.store_id,
               orderId,
               orderNo: record.order_no || orderId,
               orderAmount: record.order_amount,
               commissionRate: record.commission_rate,
-              amount: money(-Math.abs(Number(record.amount || 0))),
+              commissionAmount: centsToYuan(-deltaCents),
+              amount: centsToYuan(-deltaCents),
+              type: "chargeback",
+              status: "unsettled",
               batchId: `refund-chargeback:${record.id}`,
               relatedRecordId: record.id,
               remark: `订单退款冲正，关联原订单号：${record.order_no || orderId}`
-            }
-          )
+            }, connection)
+          }
         } else {
+          const [settledReversals] = await connection.query(
+            `SELECT COALESCE(SUM(ABS(amount)),0) AS settled_reversal_amount
+             FROM sales_agent_commissions
+             WHERE related_record_id=:recordId
+               AND amount<0
+               AND status='settled'`,
+            { recordId: record.id }
+          )
+          await connection.query(
+            `UPDATE sales_agent_commissions
+             SET status='cancelled',
+                 cancel_reason=COALESCE(NULLIF(cancel_reason,''),'整单退款，原部分退款冲减不再单独生效')
+             WHERE related_record_id=:recordId
+               AND amount<0
+               AND status IN ('pending_confirm','unsettled')`,
+            { recordId: record.id }
+          )
+          const settledReversalCents = Math.round(Number(settledReversals[0]?.settled_reversal_amount || 0) * 100)
+          if (settledReversalCents) {
+            await insertSalesAgentCommission({
+              id: `SAC${orderId}OFFSET${crypto.createHash("md5").update(record.id).digest("hex").slice(0, 10)}`,
+              businessKey: `sales-refund-offset:${record.id}:full-refund`,
+              salesAgentId: record.sales_agent_id,
+              storeId: record.store_id,
+              orderId,
+              orderNo: record.order_no || orderId,
+              orderAmount: record.order_amount,
+              commissionRate: record.commission_rate,
+              commissionAmount: centsToYuan(settledReversalCents),
+              amount: centsToYuan(settledReversalCents),
+              type: "adjustment",
+              status: "unsettled",
+              batchId: `refund-offset:${record.id}`,
+              relatedRecordId: record.id,
+              remark: "整单退款取消未结算佣金，返还此前已结算的部分退款冲减"
+            }, connection)
+          }
           await connection.query(
             `UPDATE sales_agent_commissions
              SET status='cancelled',
@@ -4639,23 +4691,37 @@ async function settleSalesAgentCommissionRecords(ids, options = {}) {
   }
 }
 
-async function insertSalesAgentCommission(record) {
+function salesAgentCommissionBusinessKey(record = {}) {
+  if (record.businessKey || record.business_key) return String(record.businessKey || record.business_key)
+  if (record.relatedRecordId || record.related_record_id) {
+    return `sales-reversal:${record.relatedRecordId || record.related_record_id}:${record.batchId || record.batch_id || record.id}`
+  }
+  if (record.orderId && record.salesAgentId && record.storeId && record.type === "sales_agent_commission") {
+    return `sales:${record.orderId}:${record.storeId}:${record.salesAgentId}`
+  }
+  return `sales-manual:${record.id}`
+}
+
+async function insertSalesAgentCommission(record, connection = null) {
   const normalized = normalizeSalesAgentCommission(record, 0)
-  const result = await query(
+  const params = {
+    ...normalized,
+    businessKey: salesAgentCommissionBusinessKey(normalized),
+    createdAt: toMysqlDatetime(normalized.createdAt, nowMysqlDatetime()),
+    settledAt: toMysqlDatetime(normalized.settledAt)
+  }
+  const sql =
     `INSERT IGNORE INTO sales_agent_commissions
-      (id, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
+      (id, business_key, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
        commission_amount, amount, type, status, created_at, settled_at, settled_by,
        settle_note, cancel_reason, batch_id, related_record_id, remark)
      VALUES
-      (:id, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
+      (:id, :businessKey, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
        :commissionAmount, :amount, :type, :status, :createdAt, :settledAt, :settledBy,
-       :settleNote, :cancelReason, :batchId, :relatedRecordId, :remark)`,
-    {
-      ...normalized,
-      createdAt: toMysqlDatetime(normalized.createdAt, nowMysqlDatetime()),
-      settledAt: toMysqlDatetime(normalized.settledAt)
-    }
-  )
+       :settleNote, :cancelReason, :batchId, :relatedRecordId, :remark)`
+  const result = connection
+    ? (await connection.query(sql, params))[0]
+    : await query(sql, params)
   return Number(result.affectedRows || 0) === 1
 }
 
@@ -7288,6 +7354,61 @@ async function applyRefundFinancialReversals(connection, order, refundRecord, re
       }
     }
   }
+
+  const [salesRecords] = await connection.query(
+    `SELECT * FROM sales_agent_commissions
+     WHERE order_id=:orderId AND type='sales_agent_commission'
+     FOR UPDATE`,
+    { orderId: order.id }
+  )
+  if (salesRecords.length) {
+    const [refundTotals] = await connection.query(
+      `SELECT COALESCE(SUM(ri.product_refund_cents + ri.discount_refund_cents),0) AS refunded_amount_cents
+       FROM refund_items ri
+       JOIN refund_records rr ON rr.id=ri.refund_record_id
+       JOIN order_items oi ON oi.id=ri.order_item_id
+       WHERE oi.order_id=:orderId
+         AND ri.status='SUCCESS'
+         AND rr.status='SUCCESS'`,
+      { orderId: order.id }
+    )
+    const cumulativeRefundCents = Math.max(0, Number(refundTotals[0]?.refunded_amount_cents || 0))
+    const orderPaidCents = Math.max(1, yuanToCents(order.amount, "订单实付金额"))
+    for (const original of salesRecords) {
+      const originalCents = Math.round(Math.abs(Number(original.amount || 0)) * 100)
+      const targetReversalCents = Math.min(
+        originalCents,
+        Math.floor(originalCents * cumulativeRefundCents / orderPaidCents)
+      )
+      if (!targetReversalCents) continue
+      const [reversedRows] = await connection.query(
+        `SELECT COALESCE(SUM(ABS(amount)),0) AS reversed_amount
+         FROM sales_agent_commissions
+         WHERE related_record_id=:recordId AND amount<0`,
+        { recordId: original.id }
+      )
+      const alreadyReversedCents = Math.round(Number(reversedRows[0]?.reversed_amount || 0) * 100)
+      const deltaCents = Math.max(0, targetReversalCents - alreadyReversedCents)
+      if (!deltaCents) continue
+      await insertSalesAgentCommission({
+        id: `SACPR${crypto.createHash("sha256").update(`${refundRecord.id}:${original.id}`).digest("hex").slice(0, 42)}`,
+        businessKey: `sales-reversal:${original.id}:${refundRecord.id}`,
+        relatedRecordId: original.id,
+        salesAgentId: original.sales_agent_id,
+        storeId: original.store_id,
+        orderId: order.id,
+        orderNo: original.order_no || order.id,
+        orderAmount: original.order_amount,
+        commissionRate: original.commission_rate,
+        commissionAmount: centsToYuan(-deltaCents),
+        amount: centsToYuan(-deltaCents),
+        type: normalizeSettlementStatus(original.status) === "settled" ? "chargeback" : "refund_adjustment",
+        status: "unsettled",
+        batchId: `partial-refund:${refundRecord.id}`,
+        remark: `部分退款冲减，退款单：${refundRecord.refund_no}，关联原佣金：${original.id}`
+      }, connection)
+    }
+  }
 }
 
 async function applyFullRefundPickupFeeImpact(connection, order, refundRecord) {
@@ -9478,6 +9599,7 @@ async function initDb() {
   await ensureColumn("store_leads", "cooperation_type", "VARCHAR(60)")
   await query(`CREATE TABLE IF NOT EXISTS sales_agent_commissions (
     id VARCHAR(80) PRIMARY KEY,
+    business_key VARCHAR(180),
     sales_agent_id VARCHAR(60),
     store_id VARCHAR(60),
     order_id VARCHAR(40),
@@ -9496,11 +9618,19 @@ async function initDb() {
     batch_id VARCHAR(80),
     related_record_id VARCHAR(80),
     remark TEXT,
-    UNIQUE KEY uniq_sales_agent_order_type (sales_agent_id, store_id, order_id, type),
+    UNIQUE KEY uniq_sales_agent_business (business_key),
     INDEX idx_sales_agent_commission_agent (sales_agent_id, status),
     INDEX idx_sales_agent_commission_store (store_id),
     INDEX idx_sales_agent_commission_order (order_id)
   )`)
+  await ensureColumn("sales_agent_commissions", "business_key", "VARCHAR(180)")
+  await query(
+    `UPDATE sales_agent_commissions
+     SET business_key=CONCAT('legacy:',id)
+     WHERE business_key IS NULL OR business_key=''`
+  )
+  await ensureIndex("sales_agent_commissions", "uniq_sales_agent_business", "UNIQUE KEY", ["business_key"])
+  await removeIndexIfExists("sales_agent_commissions", "uniq_sales_agent_order_type")
   await query(`CREATE TABLE IF NOT EXISTS system_settings (
     id INT PRIMARY KEY,
     data JSON NOT NULL,
@@ -9554,6 +9684,19 @@ async function ensureIndex(table, indexName, kind, columns) {
   await query(
     `ALTER TABLE \`${table}\` ADD ${indexKind} \`${indexName}\` (${columns.map(column => `\`${column}\``).join(",")})`
   )
+}
+
+async function removeIndexIfExists(table, indexName) {
+  if (![table, indexName].every(value => /^[A-Za-z0-9_]+$/.test(String(value || "")))) {
+    throw new Error("数据库索引名称不安全")
+  }
+  const rows = await query(
+    `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA=:schema AND TABLE_NAME=:table AND INDEX_NAME=:indexName
+     LIMIT 1`,
+    { schema: dbConfig.database, table, indexName }
+  )
+  if (rows.length) await query(`ALTER TABLE \`${table}\` DROP INDEX \`${indexName}\``)
 }
 
 function ensureDevCertificate() {

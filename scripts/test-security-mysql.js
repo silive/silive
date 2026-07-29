@@ -134,6 +134,16 @@ async function main() {
       invitee_user_id VARCHAR(80) PRIMARY KEY,
       inviter_user_id VARCHAR(80)
     )`)
+    await pool.query(`CREATE TABLE sales_agent_commissions (
+      id VARCHAR(80) PRIMARY KEY,
+      business_key VARCHAR(180) UNIQUE,
+      sales_agent_id VARCHAR(60),
+      store_id VARCHAR(60),
+      order_id VARCHAR(40),
+      type VARCHAR(40),
+      amount DECIMAL(10,2),
+      related_record_id VARCHAR(80)
+    )`)
 
     await pool.query("INSERT INTO products VALUES ('P1', 5, 'FINITE', 0)")
     const purchase = () => withTransaction(pool, async connection => {
@@ -229,6 +239,26 @@ async function main() {
     )
     assert.strictEqual(Number(relationCount.count), 1)
 
+    await pool.query(
+      "INSERT INTO sales_agent_commissions VALUES ('S1','sales:O1:STORE1:A1','A1','STORE1','O1','sales_agent_commission',10.00,NULL)"
+    )
+    await Promise.all([
+      pool.query(
+        "INSERT IGNORE INTO sales_agent_commissions VALUES ('SR1','sales-reversal:S1:R1','A1','STORE1','O1','refund_adjustment',-2.00,'S1')"
+      ),
+      pool.query(
+        "INSERT IGNORE INTO sales_agent_commissions VALUES ('SR1-DUP','sales-reversal:S1:R1','A1','STORE1','O1','refund_adjustment',-2.00,'S1')"
+      )
+    ])
+    await pool.query(
+      "INSERT INTO sales_agent_commissions VALUES ('SR2','sales-reversal:S1:R2','A1','STORE1','O1','refund_adjustment',-3.00,'S1')"
+    )
+    const [[salesReversalCount]] = await pool.query(
+      "SELECT COUNT(*) count, SUM(amount) amount FROM sales_agent_commissions WHERE related_record_id='S1'"
+    )
+    assert.strictEqual(Number(salesReversalCount.count), 2)
+    assert.strictEqual(Number(salesReversalCount.amount), -5)
+
     console.log(JSON.stringify({
       ok: true,
       isolatedDatabase: true,
@@ -239,6 +269,7 @@ async function main() {
       concurrentPaymentCallbackIdempotent: true,
       concurrentSettlementClaimedOnce: true,
       chargebackBusinessKeyUnique: true,
+      salesPartialReversalBusinessKeyUnique: true,
       promotionInviteeUnique: true
     }, null, 2))
   } finally {

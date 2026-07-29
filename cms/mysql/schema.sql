@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS store_leads (
 
 CREATE TABLE IF NOT EXISTS sales_agent_commissions (
   id VARCHAR(80) PRIMARY KEY,
+  business_key VARCHAR(180),
   sales_agent_id VARCHAR(60),
   store_id VARCHAR(60),
   order_id VARCHAR(40),
@@ -183,7 +184,7 @@ CREATE TABLE IF NOT EXISTS sales_agent_commissions (
   batch_id VARCHAR(80),
   related_record_id VARCHAR(80),
   remark TEXT,
-  UNIQUE KEY uniq_sales_agent_order_type (sales_agent_id, store_id, order_id, type),
+  UNIQUE KEY uniq_sales_agent_business (business_key),
   INDEX idx_sales_agent_commission_agent (sales_agent_id, status),
   INDEX idx_sales_agent_commission_store (store_id),
   INDEX idx_sales_agent_commission_order (order_id)
