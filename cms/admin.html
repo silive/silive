@@ -2257,6 +2257,7 @@
       if (!order) return
       const originalImages = normalizeMediaList(order.originalImageUrls || order.originalImageUrl)
       const afterSalesImages = normalizeMediaList(order.afterSalesImages || order.refundImageUrl)
+      const orderItems = Array.isArray(order.items) ? order.items : []
       drawerMode = "order"
       drawerIndex = index
       $("drawerTitle").textContent = "订单详情"
@@ -2356,6 +2357,31 @@
           <label>拒绝原因<textarea data-order-key="refundRejectReason">${escapeHtml(order.refundRejectReason || order.afterSalesRejectReason || "")}</textarea></label>
           <label>退款单号<input data-order-key="refundNo" value="${escapeHtml(order.refundNo || "")}"></label>
         </div>
+        ${orderItems.length ? `
+          <div style="margin-top:14px">
+            <strong>选择退款商品、SKU和数量</strong>
+            <p class="muted">退款金额按下单时的不可变成交快照计算；已退款数量不能再次选择。</p>
+            <div class="media-list" data-refund-items>
+              ${orderItems.map(item => {
+                const remainingQuantity = Number(item.remainingRefundQuantity == null ? item.quantity : item.remainingRefundQuantity)
+                const remainingAmountCents = Number(item.remainingRefundAmountCents == null ? item.paidAmountCents : item.remainingRefundAmountCents)
+                return `<div class="media-row" style="align-items:center">
+                  ${item.imageUrl ? `<img class="media-thumb" src="${escapeHtml(item.imageUrl)}" alt="">` : ""}
+                  <div style="flex:1;min-width:0">
+                    <strong>${escapeHtml(item.productName || "商品")}${item.skuName ? ` · ${escapeHtml(item.skuName)}` : ""}</strong>
+                    <div class="muted">购买 ${Number(item.quantity || 0)} · 已退 ${Number(item.refundedQuantity || 0)} · 剩余可退 ${remainingQuantity} · ¥${(remainingAmountCents / 100).toFixed(2)}</div>
+                  </div>
+                  <label style="display:flex;align-items:center;gap:8px;white-space:nowrap">
+                    <input type="checkbox" data-refund-select="${escapeHtml(item.id)}" ${remainingQuantity > 0 ? "checked" : "disabled"}>
+                    退
+                    <input type="number" min="1" max="${remainingQuantity}" value="${remainingQuantity > 0 ? 1 : 0}" data-refund-quantity="${escapeHtml(item.id)}" style="width:72px" ${remainingQuantity > 0 ? "" : "disabled"}>
+                    件
+                  </label>
+                </div>`
+              }).join("")}
+            </div>
+          </div>
+        ` : `<p class="muted" style="margin-top:14px;color:#b45309">该历史订单缺少可靠商品明细，仅允许安全整单退款。</p>`}
         <p class="muted">统一状态：${escapeHtml(order.displayStatusText || "-")} · 原订单状态：${escapeHtml(order.status || "-")} · 自提状态：${escapeHtml(order.pickupStatus || "-")} · 佣金状态：${escapeHtml(settlementStatusText(order.storeSettlementStatus || "pending_confirm"))}</p>
         ${afterSalesImages.length ? `<div class="media-list" style="margin-top:12px">${afterSalesImages.map((url, imageIndex) => `<div class="media-row"><img class="media-thumb" src="${escapeHtml(url)}" alt=""><div><strong>售后凭证 ${imageIndex + 1}</strong><div class="muted">${escapeHtml(url)}</div></div></div>`).join("")}</div>` : ""}
         <div class="toolbar" style="margin-top:12px">
@@ -3665,10 +3691,30 @@
       }
       if (event.target.dataset.action === "refund-approve") {
         const order = orders[Number(event.target.dataset.index)]
-        if (!confirm("确认提交退款？已退款或退款中的订单不能重复退款。")) return
-        withButtonLoading(event.target, "退款中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/approve-refund`, "POST", { refundAmount: order.refundAmount || order.amount })
+        const refundItems = (Array.isArray(order.items) ? order.items : []).flatMap(item => {
+          const selected = document.querySelector(`[data-refund-select="${CSS.escape(String(item.id))}"]`)
+          const quantityInput = document.querySelector(`[data-refund-quantity="${CSS.escape(String(item.id))}"]`)
+          if (!selected?.checked) return []
+          return [{ orderItemId: item.id, quantity: Number(quantityInput?.value || 0) }]
+        })
+        if (Array.isArray(order.items) && order.items.length && !refundItems.length) {
+          setStatus("请至少选择一个退款商品")
+          return
+        }
+        const itemSummary = refundItems.length
+          ? `本次选择 ${refundItems.reduce((sum, item) => sum + item.quantity, 0)} 件商品`
+          : "该历史订单将执行安全整单退款"
+        if (!confirm(`确认提交退款？${itemSummary}。已退款或退款中的订单不能重复退款。`)) return
+        withButtonLoading(event.target, "退款中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/approve-refund`, "POST", {
+          refundItems,
+          refundAmount: order.refundAmount || order.amount
+        })
           .then(() => loadAll())
-          .then(() => setStatus("退款已提交受理，成功后由回调更新订单")))
+          .then(() => setStatus("退款已提交受理，成功后由回调更新订单"))
+          .catch(error => {
+            console.error(error)
+            setStatus(error.message || "退款提交失败")
+          }))
       }
       if (event.target.dataset.action === "refund-status") {
         const order = orders[Number(event.target.dataset.index)]

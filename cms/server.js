@@ -37,6 +37,16 @@ const {
   issueAttributionToken,
   safeAttributionSource
 } = require("./store-attribution")
+const {
+  canonicalRequestHash,
+  centsToYuan,
+  normalizeInventoryMode,
+  orderItemSnapshot,
+  strictPositiveInteger,
+  validateOrderItems,
+  validateRefundItems,
+  yuanToCents
+} = require("./order-domain")
 
 let mysql
 try {
@@ -2149,6 +2159,7 @@ function normalizeProduct(product, index) {
     categoryLevel2: levels.categoryLevel2,
     status: normalizeProductStatus(product.status),
     stock: String(product.stock || "0"),
+    stockMode: normalizeInventoryMode(product),
     isHot,
     isPromotionHot: promotionHot,
     promotionHot,
@@ -2251,6 +2262,7 @@ function normalizeAfterSalesStatus(value, fallback = "none") {
     rejected: "rejected",
     refund_pending: "refund_pending",
     refund_failed: "refund_failed",
+    partially_refunded: "partially_refunded",
     refunded: "refunded",
     remake: "remake",
     reship: "reship",
@@ -2259,6 +2271,7 @@ function normalizeAfterSalesStatus(value, fallback = "none") {
     "售后处理中": "requested",
     "退款处理中": "refund_pending",
     "退款失败": "refund_failed",
+    "部分退款": "partially_refunded",
     "已拒绝": "rejected",
     "售后已拒绝": "rejected",
     "已退款": "refunded",
@@ -2275,6 +2288,7 @@ function afterSalesStatusText(value) {
     rejected: "售后已拒绝",
     refund_pending: "退款处理中",
     refund_failed: "退款失败",
+    partially_refunded: "部分退款",
     refunded: "已退款",
     remake: "重新制作中",
     reship: "补发处理中",
@@ -2415,6 +2429,8 @@ function normalizeOrder(order, index) {
     supplierSettlementAmount: order.supplierSettlementAmount == null || order.supplierSettlementAmount === "" ? "0.00" : String(order.supplierSettlementAmount),
     customCommissionAmount: order.customCommissionAmount == null || order.customCommissionAmount === "" ? "0.00" : String(order.customCommissionAmount),
     storeSettlementStatus: order.storeSettlementStatus || "pending_confirm",
+    items: Array.isArray(order.items) ? order.items : [],
+    refundRecords: Array.isArray(order.refundRecords) ? order.refundRecords : [],
     ...lifecycleView(order),
     ...orderProductImageFields(order, {})
   }
@@ -2986,6 +3002,45 @@ async function findCustomerForIdentity(identity = {}) {
   return rows[0] || null
 }
 
+async function ensureInternalUserIdentity(identity = {}) {
+  const current = requestIdentity(identity)
+  if (!current.phone && !current.openid) throw httpError(401, "请先完成微信登录")
+  const existing = await findCustomerForIdentity(current)
+  if (existing?.id) return { ...current, userId: existing.id }
+  const identitySeed = current.openid || current.phone
+  const userId = `C${crypto.createHash("sha256").update(identitySeed).digest("hex").slice(0, 24).toUpperCase()}`
+  if (!pool) {
+    const customers = await getCustomers()
+    const found = customers.find(customer =>
+      (current.phone && normalizePhone(customer.phone) === normalizePhone(current.phone)) ||
+      (current.openid && String(customer.openid || "") === current.openid)
+    )
+    if (found?.id) return { ...current, userId: found.id }
+    customers.push(normalizeCustomer({
+      id: userId,
+      name: "微信用户",
+      phone: current.phone,
+      openid: current.openid
+    }, customers.length))
+    await saveCustomers(customers)
+    return { ...current, userId }
+  }
+  await query(
+    `INSERT IGNORE INTO customers
+      (id, name, nickname, phone, openid, orders, total_amount, last_contact, invite_code, shopping_money)
+     VALUES
+      (:id, '微信用户', '微信用户', :phone, :openid, 0, 0, CURDATE(), :inviteCode, 0)`,
+    {
+      id: userId,
+      phone: current.phone || null,
+      openid: current.openid || null,
+      inviteCode: current.phone ? inviteCodeFor(current.phone) : ""
+    }
+  )
+  const resolved = await findCustomerForIdentity({ ...current, userId })
+  return { ...current, userId: resolved?.id || userId }
+}
+
 function inferAiPreviewType(product = {}) {
   const text = `${product.name || ""} ${(Array.isArray(product.categories) ? product.categories.join(" ") : "")} ${product.intro || ""}`
   if (/叶雕|天然叶/.test(text)) return "leaf"
@@ -3400,6 +3455,7 @@ async function getProducts() {
     categories: normalizeProductCategories(parseJsonValue(row.categories, []), row),
     status: row.status || "on",
     stock: String(row.stock || "0"),
+    stockMode: normalizeInventoryMode({ ...row, stockMode: row.stock_mode }),
     isHot: normalizeBooleanText(row.is_hot, false),
     promotionHot: normalizeBooleanText(row.promotion_hot, false),
     aiPreviewEnabled: normalizeBooleanText(row.ai_preview_enabled, false),
@@ -3985,6 +4041,9 @@ async function saveStoreSettlementRecords(records) {
 }
 
 function storeSettlementBusinessKey(record = {}) {
+  if (record.relatedRecordId && isChargebackRecord(record)) {
+    return `chargeback:${record.relatedRecordId}:${record.batchId || record.id}`
+  }
   const canonicalType = isStoreReferralSettlement(record.type)
     ? "store_referral_commission"
     : isPickupServiceSettlement(record.type)
@@ -4026,6 +4085,59 @@ async function insertStoreSettlementRecord(record, connection = null) {
   }
   const result = await query(sql, params)
   return Number(result.affectedRows || 0) === 1
+}
+
+async function ensureFinancialItemAllocations({
+  ledgerType,
+  recordId,
+  orderId,
+  amountCents
+}, connection = null) {
+  if (!pool || !recordId || !orderId || !Number.isSafeInteger(amountCents) || amountCents <= 0) return []
+  const execute = async (sql, params) => {
+    if (connection) {
+      const [rows] = await connection.query(sql, params)
+      return rows
+    }
+    return await query(sql, params)
+  }
+  const items = await execute(
+    `SELECT id, sku_id, quantity, paid_amount_cents
+     FROM order_items WHERE order_id=:orderId ORDER BY created_at ASC, id ASC`,
+    { orderId }
+  )
+  if (!items.length) return []
+  const totalPaid = items.reduce((sum, item) => sum + Number(item.paid_amount_cents || 0), 0)
+  let allocated = 0
+  const allocations = items.map((item, index) => {
+    const isLast = index === items.length - 1
+    const amount = isLast
+      ? amountCents - allocated
+      : totalPaid > 0
+        ? Math.floor(amountCents * Number(item.paid_amount_cents || 0) / totalPaid)
+        : Math.floor(amountCents / items.length)
+    allocated += amount
+    return {
+      id: `FIA${crypto.createHash("sha256").update(`${ledgerType}:${recordId}:${item.id}`).digest("hex").slice(0, 48)}`,
+      ledgerType,
+      recordId,
+      orderId,
+      orderItemId: item.id,
+      skuId: item.sku_id || "",
+      quantity: Number(item.quantity || 0),
+      amount
+    }
+  })
+  for (const allocation of allocations) {
+    await execute(
+      `INSERT IGNORE INTO financial_record_item_allocations
+        (id, ledger_type, record_id, order_id, order_item_id, sku_id, quantity, allocated_amount_cents)
+       VALUES
+        (:id, :ledgerType, :recordId, :orderId, :orderItemId, :skuId, :quantity, :amount)`,
+      allocation
+    )
+  }
+  return allocations
 }
 
 async function getSalesAgentCommissions(filters = {}) {
@@ -4252,7 +4364,7 @@ async function saveProducts(products) {
   for (let index = 0; index < list.length; index += 1) {
     const product = list[index]
     await query(
-      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, product_type, categories, status, stock, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order, model_candidate_id, model_source_url, model_author_name, model_authorization_status, model_authorization_note) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl, :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote)",
+      "INSERT INTO products (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url, detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot, promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward, second_reward, sort_order, model_candidate_id, model_source_url, model_author_name, model_authorization_status, model_authorization_note) VALUES (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson, :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock, :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled, :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl, :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote)",
       { ...product, galleryImagesJson: JSON.stringify(product.galleryImages || []), detailImagesJson: JSON.stringify(product.detailImages || []), categoriesJson: JSON.stringify(product.categories || []), sortOrder: Number(product.sortOrder || index) }
     )
   }
@@ -4365,7 +4477,73 @@ async function getOrders(filters = {}) {
     params.keyword = `%${filters.keyword}%`
   }
   const rows = await query(`SELECT * FROM orders ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`, params)
-  const [stores, products] = await Promise.all([getPartnerStores(), getProducts()])
+  const [stores, products, itemRows, refundRows] = await Promise.all([
+    getPartnerStores(),
+    getProducts(),
+    rows.length
+      ? query(
+        `SELECT oi.*,
+                COALESCE(SUM(CASE WHEN rr.status='SUCCESS' AND ri.status='SUCCESS'
+                                  THEN ri.refund_quantity ELSE 0 END),0) AS refunded_quantity,
+                COALESCE(SUM(CASE WHEN rr.status='SUCCESS' AND ri.status='SUCCESS'
+                                  THEN ri.product_refund_cents + ri.discount_refund_cents ELSE 0 END),0) AS refunded_amount_cents
+         FROM order_items oi
+         LEFT JOIN refund_items ri ON ri.order_item_id=oi.id
+         LEFT JOIN refund_records rr ON rr.id=ri.refund_record_id
+         WHERE oi.order_id IN (${rows.map((_, index) => `:orderItemOrder${index}`).join(",")})
+         GROUP BY oi.id
+         ORDER BY oi.created_at ASC, oi.id ASC`,
+        Object.fromEntries(rows.map((row, index) => [`orderItemOrder${index}`, row.id]))
+      )
+      : [],
+    rows.length
+      ? query(
+        `SELECT * FROM refund_records
+         WHERE order_id IN (${rows.map((_, index) => `:refundOrder${index}`).join(",")})
+         ORDER BY requested_at DESC, id DESC`,
+        Object.fromEntries(rows.map((row, index) => [`refundOrder${index}`, row.id]))
+      )
+      : []
+  ])
+  const itemsByOrder = new Map()
+  for (const row of itemRows) {
+    const item = {
+      id: row.id,
+      orderItemId: row.id,
+      productId: row.product_id,
+      skuId: row.sku_id || "",
+      productName: row.product_name,
+      skuName: row.sku_name || "",
+      imageUrl: publicAssetUrl(row.image_url),
+      unitPriceCents: Number(row.unit_price_cents || 0),
+      quantity: Number(row.quantity || 0),
+      productDiscountCents: Number(row.product_discount_cents || 0),
+      orderDiscountCents: Number(row.order_discount_cents || 0),
+      paidAmountCents: Number(row.paid_amount_cents || 0),
+      refundedQuantity: Number(row.refunded_quantity || 0),
+      refundedAmountCents: Number(row.refunded_amount_cents || 0),
+      remainingRefundQuantity: Math.max(0, Number(row.quantity || 0) - Number(row.refunded_quantity || 0)),
+      remainingRefundAmountCents: Math.max(0, Number(row.paid_amount_cents || 0) - Number(row.refunded_amount_cents || 0)),
+      inventoryMode: row.inventory_mode || "",
+      customization: parseJsonValue(row.customization_json, {})
+    }
+    if (!itemsByOrder.has(row.order_id)) itemsByOrder.set(row.order_id, [])
+    itemsByOrder.get(row.order_id).push(item)
+  }
+  const refundsByOrder = new Map()
+  for (const row of refundRows) {
+    const refund = {
+      id: row.id,
+      refundNo: row.refund_no,
+      requestedAmountCents: Number(row.requested_amount_cents || 0),
+      successAmountCents: Number(row.success_amount_cents || 0),
+      status: row.status,
+      requestedAt: formatChinaDatetime(row.requested_at),
+      successAt: formatChinaDatetime(row.success_at)
+    }
+    if (!refundsByOrder.has(row.order_id)) refundsByOrder.set(row.order_id, [])
+    refundsByOrder.get(row.order_id).push(refund)
+  }
   const orders = rows.map(row => hydrateOrderProductImages(normalizeOrder({
     id: row.id,
     productId: row.product_id || "",
@@ -4473,7 +4651,9 @@ async function getOrders(filters = {}) {
     pickupServiceFee: row.pickup_service_fee,
     supplierSettlementAmount: row.supplier_settlement_amount,
     customCommissionAmount: row.custom_commission_amount,
-    storeSettlementStatus: row.store_settlement_status || "pending_confirm"
+    storeSettlementStatus: row.store_settlement_status || "pending_confirm",
+    items: itemsByOrder.get(row.id) || [],
+    refundRecords: refundsByOrder.get(row.id) || []
   }, 0), products))
   return filters.publicOnly ? orders.map(publicOrderView) : orders
 }
@@ -4919,7 +5099,17 @@ async function createStoreSettlementRecordsForOrderMysql(order) {
       ...sourceMeta
     })
   }
-  for (const record of candidates) await insertStoreSettlementRecord(record)
+  for (const record of candidates) {
+    await insertStoreSettlementRecord(record)
+    if (isStoreReferralSettlement(record.type)) {
+      await ensureFinancialItemAllocations({
+        ledgerType: "store",
+        recordId: record.id,
+        orderId: order.id,
+        amountCents: yuanToCents(record.amount, "门店推广佣金")
+      })
+    }
+  }
   return await getStoreSettlementRecordsForOrder(order.id)
 }
 
@@ -5521,7 +5711,12 @@ async function createOrder(data) {
       const found = products.find(productItem => productItem.id === item.id)
       if (!found) throw new Error(`购物车商品不存在：${item.name || item.id}`)
       if (!isPublicProduct(found)) throw httpError(409, `商品已下架：${found.name || item.name || item.id}`)
-      return { product: found, quantity: Math.max(1, Number(item.quantity || 1)) }
+      return {
+        product: found,
+        quantity: strictPositiveInteger(item.quantity == null ? 1 : item.quantity),
+        skuId: item.skuId || item.sku_id || "",
+        skuName: item.skuName || item.sku_name || ""
+      }
     })
     const amount = cartItems.reduce((sum, item) => sum + Number(item.product.price || 0) * item.quantity, 0)
     const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0)
@@ -5547,11 +5742,29 @@ async function createOrder(data) {
     throw httpError(409, "商品已下架，请返回商品页重新选择")
   }
   const productType = String(data.productType || data.orderType || product.productType || "").toLowerCase() === "normal" ? "normal" : "custom"
-  const quantity = Math.max(1, Math.floor(Number(data.quantity || 1)))
+  const quantity = strictPositiveInteger(data.quantity == null ? 1 : data.quantity)
   const isQuoteOrder = String(data.needQuote || product.needQuote || product.need_quote || "").toLowerCase() === "true" ||
     String(data.priceMode || product.priceMode || product.price_mode || "").toLowerCase() === "quote" ||
     (String(data.isCustomOrder || "false") === "true" && Number(product.price || 0) <= 0)
-  const orderAmount = isQuoteOrder ? "0.00" : money(Number(product.price || 0) * (cartItems.length ? 1 : quantity))
+  const orderItemSnapshots = validateOrderItems(
+    cartItems.length
+      ? cartItems.map(item => orderItemSnapshot(item.product, item.quantity, {
+        skuId: item.skuId || "",
+        skuName: item.skuName || ""
+      }))
+      : [orderItemSnapshot(product, quantity, {
+        skuId: data.skuId || "",
+        skuName: data.skuName || "",
+        customization: {
+          customRequest: data.customRequest || "",
+          originalImageUrls: normalizeMediaList(data.originalImageUrls || data.originalImageUrl || "")
+        }
+      })]
+  )
+  const orderAmountCents = isQuoteOrder
+    ? 0
+    : orderItemSnapshots.reduce((sum, item) => sum + item.paidAmountCents, 0)
+  const orderAmount = centsToYuan(orderAmountCents)
   const deliveryType = data.deliveryType === "pickup" ? "pickup" : "delivery"
   let pickupStore = null
   if (deliveryType === "pickup") {
@@ -5577,30 +5790,18 @@ async function createOrder(data) {
   const pickupCode = deliveryType === "pickup" ? await generateUniquePickupCode() : ""
   const pickupQrCodeUrl = pickupCode ? await generatePickupQrCode(pickupCode) : ""
   const requestKey = String(data.requestKey || data.idempotencyKey || "").trim().slice(0, 100)
+  const requestHash = canonicalRequestHash({
+    ...data,
+    phone: data.phone,
+    userId: data.userId,
+    orderItems: orderItemSnapshots.map(item => ({
+      productId: item.productId,
+      skuId: item.skuId,
+      quantity: item.quantity,
+      paidAmountCents: item.paidAmountCents
+    }))
+  })
   const reservedOrderId = `DD${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`
-  if (pool && requestKey) {
-    const result = await query(
-      "INSERT IGNORE INTO order_request_keys (request_key, order_id, created_at) VALUES (:requestKey, :orderId, NOW())",
-      { requestKey, orderId: reservedOrderId }
-    )
-    if (Number(result.affectedRows || 0) !== 1) {
-      const existing = await query("SELECT order_id, created_at FROM order_request_keys WHERE request_key=:requestKey LIMIT 1", { requestKey })
-      const existingOrderId = existing[0]?.order_id || ""
-      for (let attempt = 0; attempt < 10 && existingOrderId; attempt += 1) {
-        const found = (await getOrders({ keyword: existingOrderId })).find(item => item.id === existingOrderId)
-        if (found) return found
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
-      const reservedAt = existing[0]?.created_at ? new Date(String(existing[0].created_at).replace(" ", "T")).getTime() : Date.now()
-      if (Date.now() - reservedAt > 2 * 60 * 1000) {
-        await query("DELETE FROM order_request_keys WHERE request_key=:requestKey AND order_id=:orderId", {
-          requestKey,
-          orderId: existingOrderId
-        })
-      }
-      throw httpError(409, "订单正在创建，请稍后重试")
-    }
-  }
   const order = normalizeOrder({
     id: reservedOrderId,
     productId: product.id,
@@ -5650,39 +5851,127 @@ async function createOrder(data) {
     customCommissionAmount: "0.00",
     storeSettlementStatus: "pending_confirm"
   }, 0)
-  await ensureCustomerFromOrder(order)
-  if (!order.referrerStoreId) await bindPromotionFromOrder(order)
   if (!pool) {
     const orders = readJsonFile(ordersFile, [])
+    order.items = orderItemSnapshots
     orders.push(order)
     writeJsonFile(ordersFile, orders)
+    await ensureCustomerFromOrder(order)
+    if (!order.referrerStoreId) await bindPromotionFromOrder(order)
     if (data.source === "order-recommendation") {
       await recordOrderRecommendationEvent({ type: "conversion", productId: order.productId, productName: order.productName, orderId: order.id, amount: order.amount, phone: order.phone })
     }
     return order
   }
-  await query(
-    "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, store_attribution_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :storeAttributionId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
-    {
-      ...mysqlOrderParams(order),
-      originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
-      userLatitude: order.userLatitude === "" ? null : order.userLatitude,
-      userLongitude: order.userLongitude === "" ? null : order.userLongitude,
-      pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
-    }
-  )
-  if (order.storeAttributionId) {
-    await query(
-      `UPDATE store_referral_attributions
-       SET last_order_id = :orderId, updated_at = NOW()
-       WHERE id = :attributionId AND store_id = :storeId AND status = 'active'`,
-      {
-        orderId: order.id,
-        attributionId: order.storeAttributionId,
-        storeId: order.referrerStoreId
+  const connection = await pool.getConnection()
+  let existingOrderId = ""
+  try {
+    await connection.beginTransaction()
+    if (requestKey) {
+      try {
+        await connection.query(
+          `INSERT INTO order_idempotency_keys
+            (user_id, operation, request_key, request_hash, order_id, created_at, expires_at)
+           VALUES
+            (:userId, 'CREATE_ORDER', :requestKey, :requestHash, :orderId, NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+          { userId: order.userId, requestKey, requestHash, orderId: order.id }
+        )
+      } catch (error) {
+        if (error?.code !== "ER_DUP_ENTRY") throw error
+        const [rows] = await connection.query(
+          `SELECT request_hash, order_id
+           FROM order_idempotency_keys
+           WHERE user_id=:userId AND operation='CREATE_ORDER' AND request_key=:requestKey
+           LIMIT 1 FOR UPDATE`,
+          { userId: order.userId, requestKey }
+        )
+        const reservation = rows[0]
+        if (!reservation || reservation.request_hash !== requestHash) {
+          throw httpError(409, "该请求标识已用于其他订单，请刷新后重试")
+        }
+        existingOrderId = reservation.order_id
       }
-    )
+    }
+    if (!existingOrderId) {
+      for (const item of orderItemSnapshots) {
+        if (["CART_ORDER", "CUSTOM_UPLOAD"].includes(item.productId)) continue
+        const [rows] = await connection.query(
+          `SELECT id, name, status, stock, stock_mode, product_type
+           FROM products WHERE id=:productId LIMIT 1 FOR UPDATE`,
+          { productId: item.productId }
+        )
+        const currentProduct = rows[0]
+        if (!currentProduct || String(currentProduct.status || "on") !== "on") {
+          throw httpError(409, `商品已下架：${item.productName}`)
+        }
+        const inventoryMode = normalizeInventoryMode({
+          stockMode: currentProduct.stock_mode,
+          productType: currentProduct.product_type,
+          stock: Number(currentProduct.stock || 0)
+        })
+        item.inventoryMode = inventoryMode
+        if (inventoryMode === "FINITE") {
+          const [stockResult] = await connection.query(
+            `UPDATE products
+             SET stock_mode='FINITE', stock=stock-:quantity
+             WHERE id=:productId AND stock>=:quantity`,
+            { productId: item.productId, quantity: item.quantity }
+          )
+          if (Number(stockResult.affectedRows || 0) !== 1) {
+            throw httpError(409, `库存不足：${item.productName}`)
+          }
+        }
+      }
+      await connection.query(
+        "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, store_attribution_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :storeAttributionId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+        {
+          ...mysqlOrderParams(order),
+          originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
+          userLatitude: order.userLatitude === "" ? null : order.userLatitude,
+          userLongitude: order.userLongitude === "" ? null : order.userLongitude,
+          pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
+        }
+      )
+      for (const item of orderItemSnapshots) {
+        await connection.query(
+          `INSERT INTO order_items
+            (id, order_id, product_id, sku_id, product_name, sku_name, image_url,
+             unit_price_cents, quantity, product_discount_cents, order_discount_cents,
+             paid_amount_cents, inventory_mode, customization_json)
+           VALUES
+            (:id, :orderId, :productId, :skuId, :productName, :skuName, :imageUrl,
+             :unitPriceCents, :quantity, :productDiscountCents, :orderDiscountCents,
+             :paidAmountCents, :inventoryMode, :customizationJson)`,
+          { ...item, orderId: order.id }
+        )
+      }
+      if (order.storeAttributionId) {
+        await connection.query(
+          `UPDATE store_referral_attributions
+           SET last_order_id=:orderId, updated_at=NOW()
+           WHERE id=:attributionId AND store_id=:storeId AND status='active'`,
+          {
+            orderId: order.id,
+            attributionId: order.storeAttributionId,
+            storeId: order.referrerStoreId
+          }
+        )
+      }
+    }
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
   }
+  if (existingOrderId) {
+    const existing = (await getOrders()).find(item => item.id === existingOrderId)
+    if (!existing) throw httpError(409, "原订单正在处理中，请稍后查询订单")
+    return existing
+  }
+  await ensureCustomerFromOrder(order)
+  if (!order.referrerStoreId) await bindPromotionFromOrder(order)
   if (data.source === "order-recommendation") {
     await recordOrderRecommendationEvent({ type: "conversion", productId: order.productId, productName: order.productName, orderId: order.id, amount: order.amount, phone: order.phone })
   }
@@ -6353,13 +6642,290 @@ async function applyRefundRequest(data) {
   return applyAfterSalesRequest(data)
 }
 
-function generateRefundNo(orderId) {
+function generateRefundNo(orderId, refundRecordId = "") {
   const clean = String(orderId || "").replace(/[^\w]/g, "")
-  const digest = crypto.createHash("sha256").update(String(orderId || "")).digest("hex").slice(0, 24).toUpperCase()
+  const digest = crypto.createHash("sha256").update(`${orderId}:${refundRecordId || crypto.randomUUID()}`).digest("hex").slice(0, 24).toUpperCase()
   return `RF${clean.slice(0, 18)}${digest}`.slice(0, 64)
 }
 
+async function applyRefundFinancialReversals(connection, order, refundRecord, refundItems) {
+  for (const refundItem of refundItems) {
+    const [allocations] = await connection.query(
+      `SELECT *
+       FROM financial_record_item_allocations
+       WHERE order_id=:orderId AND order_item_id=:orderItemId
+       FOR UPDATE`,
+      { orderId: order.id, orderItemId: refundItem.order_item_id }
+    )
+    for (const allocation of allocations) {
+      const totalQuantity = Math.max(1, Number(allocation.quantity || 1))
+      const [quantityRows] = await connection.query(
+        `SELECT COALESCE(SUM(ri.refund_quantity),0) AS refunded_quantity,
+                COALESCE(SUM(ri.product_refund_cents + ri.discount_refund_cents),0) AS refunded_amount_cents,
+                MAX(oi.paid_amount_cents) AS item_paid_amount_cents
+         FROM refund_items ri
+         JOIN refund_records rr ON rr.id=ri.refund_record_id
+         LEFT JOIN order_items oi ON oi.id=ri.order_item_id
+         WHERE ri.order_item_id=:orderItemId
+           AND ri.status='SUCCESS'
+           AND rr.status='SUCCESS'`,
+        { orderItemId: refundItem.order_item_id }
+      )
+      const cumulativeQuantity = Math.min(totalQuantity, Number(quantityRows[0]?.refunded_quantity || 0))
+      const cumulativeAmountCents = Number(quantityRows[0]?.refunded_amount_cents || 0)
+      const itemPaidAmountCents = Math.max(1, Number(quantityRows[0]?.item_paid_amount_cents || 1))
+      if (allocation.ledger_type === "store") {
+        const [originalRows] = await connection.query(
+          `SELECT * FROM store_settlement_records WHERE id=:id LIMIT 1 FOR UPDATE`,
+          { id: allocation.record_id }
+        )
+        const original = originalRows[0]
+        if (!original || !isStoreReferralSettlement(original.type)) continue
+        const fixedCommission = String(original.commission_type || "").toLowerCase() === "fixed"
+        const targetReversalCents = Math.floor(
+          Number(allocation.allocated_amount_cents || 0) *
+          (fixedCommission ? cumulativeQuantity / totalQuantity : cumulativeAmountCents / itemPaidAmountCents)
+        )
+        if (targetReversalCents <= 0) continue
+        const [reversedRows] = await connection.query(
+          `SELECT COALESCE(SUM(ABS(amount)),0) AS reversed_amount
+           FROM store_settlement_records
+           WHERE related_record_id=:recordId AND amount<0`,
+          { recordId: original.id }
+        )
+        const alreadyReversedCents = Math.round(Number(reversedRows[0]?.reversed_amount || 0) * 100)
+        const deltaCents = Math.max(0, targetReversalCents - alreadyReversedCents)
+        if (!deltaCents) continue
+        await insertStoreSettlementRecord({
+          id: `SSRPR${crypto.createHash("sha256").update(`${refundRecord.id}:${original.id}`).digest("hex").slice(0, 44)}`,
+          relatedRecordId: original.id,
+          storeId: original.store_id,
+          orderId: order.id,
+          type: normalizeSettlementStatus(original.status) === "settled" ? "chargeback" : "refund_adjustment",
+          amount: centsToYuan(-deltaCents),
+          commissionType: original.commission_type || "none",
+          commissionValue: original.commission_value || "0.00",
+          orderPaidAmount: order.amount,
+          status: "unsettled",
+          description: `部分退款冲减，退款单：${refundRecord.refund_no}`,
+          settleNote: `关联原收益记录：${original.id}`,
+          batchId: `partial-refund:${refundRecord.id}`,
+          storeOrderType: original.store_order_type || "",
+          isStoreMemberOrder: boolValue(original.is_store_member_order),
+          storeOperatorUserId: original.store_operator_user_id || "",
+          storeOperatorPhone: original.store_operator_phone || "",
+          storeOperatorOpenid: original.store_operator_openid || "",
+          storeOperatorRole: original.store_operator_role || "",
+          storeOperatorName: original.store_operator_name || ""
+        }, connection)
+      } else if (allocation.ledger_type === "reward") {
+        const [originalRows] = await connection.query(
+          `SELECT * FROM reward_records WHERE id=:id LIMIT 1 FOR UPDATE`,
+          { id: allocation.record_id }
+        )
+        const original = originalRows[0]
+        if (!original || isChargebackRecord(original)) continue
+        const targetReversalCents = Math.floor(
+          Number(allocation.allocated_amount_cents || 0) * cumulativeAmountCents / itemPaidAmountCents
+        )
+        if (targetReversalCents <= 0) continue
+        const [reversedRows] = await connection.query(
+          `SELECT COALESCE(SUM(ABS(amount)),0) AS reversed_amount
+           FROM reward_records
+           WHERE related_record_id=:recordId AND amount<0`,
+          { recordId: original.id }
+        )
+        const alreadyReversedCents = Math.round(Number(reversedRows[0]?.reversed_amount || 0) * 100)
+        const deltaCents = Math.max(0, targetReversalCents - alreadyReversedCents)
+        if (!deltaCents) continue
+        await insertRewardRecord({
+          id: `RWPR${crypto.createHash("sha256").update(`${refundRecord.id}:${original.id}`).digest("hex").slice(0, 46)}`,
+          relatedRecordId: original.id,
+          orderId: order.id,
+          productName: `部分退款冲减：${original.product_name || order.productName}`,
+          buyerPhone: original.buyer_phone || order.phone,
+          promoterPhone: original.promoter_phone,
+          promoterName: original.promoter_name,
+          level: original.level,
+          type: normalizeRewardStatus(original.status) === "settled" ? "chargeback" : "refund_adjustment",
+          amount: centsToYuan(-deltaCents),
+          status: "unsettled",
+          settleNote: `退款单：${refundRecord.refund_no}，关联原奖励：${original.id}`,
+          batchId: `partial-refund:${refundRecord.id}`
+        }, connection)
+      }
+    }
+  }
+}
+
+async function applyFullRefundPickupFeeImpact(connection, order, refundRecord) {
+  const verified = isPickupVerified(order)
+  const [rows] = await connection.query(
+    `SELECT * FROM store_settlement_records
+     WHERE order_id=:orderId AND type='pickup_service_fee'
+     FOR UPDATE`,
+    { orderId: order.id }
+  )
+  for (const row of rows) {
+    if (verified) {
+      await connection.query(
+        `UPDATE store_settlement_records
+         SET description=CONCAT(COALESCE(description,''),'；退款后保留（已完成真实自提服务）'),
+             updated_at=NOW()
+         WHERE id=:id`,
+        { id: row.id }
+      )
+      continue
+    }
+    const [reversedRows] = await connection.query(
+      `SELECT COALESCE(SUM(ABS(amount)),0) AS reversed_amount
+       FROM store_settlement_records
+       WHERE related_record_id=:recordId AND amount<0`,
+      { recordId: row.id }
+    )
+    const originalCents = Math.round(Math.abs(Number(row.amount || 0)) * 100)
+    const reversedCents = Math.round(Number(reversedRows[0]?.reversed_amount || 0) * 100)
+    const deltaCents = Math.max(0, originalCents - reversedCents)
+    if (!deltaCents) continue
+    await insertStoreSettlementRecord({
+      id: `SSRPF${crypto.createHash("sha256").update(`${refundRecord.id}:${row.id}`).digest("hex").slice(0, 44)}`,
+      relatedRecordId: row.id,
+      storeId: row.store_id,
+      orderId: order.id,
+      type: normalizeSettlementStatus(row.status) === "settled" ? "chargeback" : "refund_adjustment",
+      amount: centsToYuan(-deltaCents),
+      commissionType: row.commission_type || "none",
+      commissionValue: row.commission_value || "0.00",
+      orderPaidAmount: order.amount,
+      status: "unsettled",
+      description: `整单退款取消自提服务费，退款单：${refundRecord.refund_no}`,
+      settleNote: `关联原自提服务费：${row.id}`,
+      batchId: `full-refund:${refundRecord.id}`,
+      storeOrderType: row.store_order_type || "",
+      isStoreMemberOrder: boolValue(row.is_store_member_order),
+      storeOperatorUserId: row.store_operator_user_id || "",
+      storeOperatorPhone: row.store_operator_phone || "",
+      storeOperatorOpenid: row.store_operator_openid || "",
+      storeOperatorRole: row.store_operator_role || "",
+      storeOperatorName: row.store_operator_name || ""
+    }, connection)
+  }
+}
+
 async function markRefundSuccess(order, refundData = {}) {
+  if (pool && (refundData.out_refund_no || refundData.refundNo)) {
+    const refundNo = String(refundData.out_refund_no || refundData.refundNo)
+    const connection = await pool.getConnection()
+    let resultOrder = null
+    let fullRefund = false
+    try {
+      await connection.beginTransaction()
+      const [orderRows] = await connection.query(
+        "SELECT * FROM orders WHERE id=:orderId LIMIT 1 FOR UPDATE",
+        { orderId: order.id }
+      )
+      const currentRow = orderRows[0]
+      if (!currentRow) throw httpError(404, "订单不存在")
+      const [refundRows] = await connection.query(
+        "SELECT * FROM refund_records WHERE refund_no=:refundNo LIMIT 1 FOR UPDATE",
+        { refundNo }
+      )
+      const refundRecord = refundRows[0]
+      if (!refundRecord) throw httpError(404, "退款记录不存在")
+      if (refundRecord.status === "SUCCESS") {
+        await connection.commit()
+        return (await getOrders({ keyword: order.id })).find(item => item.id === order.id)
+      }
+      const successAmountCents = Math.min(
+        Number(refundRecord.requested_amount_cents || 0),
+        Number(refundData.success_amount_cents || refundData.amount?.refund || refundRecord.requested_amount_cents || 0)
+      )
+      await connection.query(
+        `UPDATE refund_records
+         SET status='SUCCESS', success_amount_cents=:successAmountCents,
+             wechat_refund_id=COALESCE(NULLIF(:wechatRefundId,''),wechat_refund_id),
+             success_at=NOW(), updated_at=NOW()
+         WHERE id=:id AND status<>'SUCCESS'`,
+        {
+          id: refundRecord.id,
+          successAmountCents,
+          wechatRefundId: refundData.refund_id || refundData.refundId || ""
+        }
+      )
+      await connection.query(
+        `UPDATE refund_items SET status='SUCCESS', updated_at=NOW()
+         WHERE refund_record_id=:refundRecordId AND status<>'SUCCESS'`,
+        { refundRecordId: refundRecord.id }
+      )
+      const [refundItems] = await connection.query(
+        "SELECT * FROM refund_items WHERE refund_record_id=:refundRecordId FOR UPDATE",
+        { refundRecordId: refundRecord.id }
+      )
+      await applyRefundFinancialReversals(connection, normalizeOrder({
+        ...currentRow,
+        productId: currentRow.product_id,
+        productName: currentRow.product_name,
+        paymentStatus: currentRow.payment_status,
+        pickupStatus: currentRow.pickup_status,
+        pickupVerifiedAt: currentRow.pickup_verified_at,
+        forcePickupVerifiedAt: currentRow.force_pickup_verified_at
+      }, 0), refundRecord, refundItems)
+      const [sumRows] = await connection.query(
+        `SELECT COALESCE(SUM(success_amount_cents),0) AS refunded_cents
+         FROM refund_records WHERE order_id=:orderId AND status='SUCCESS'`,
+        { orderId: order.id }
+      )
+      const paidCents = Math.round(Number(currentRow.amount || 0) * 100)
+      const refundedCents = Number(sumRows[0]?.refunded_cents || 0)
+      fullRefund = paidCents > 0 && refundedCents >= paidCents
+      if (fullRefund) {
+        await applyFullRefundPickupFeeImpact(connection, normalizeOrder({
+          ...currentRow,
+          pickupStatus: currentRow.pickup_status,
+          pickupVerifiedAt: currentRow.pickup_verified_at,
+          forcePickupVerifiedAt: currentRow.force_pickup_verified_at
+        }, 0), refundRecord)
+      }
+      const nextStatus = fullRefund ? "已退款" : currentRow.status
+      const nextPaymentStatus = fullRefund ? "已退款" : "部分退款"
+      const nextRefundStatus = fullRefund ? "退款成功" : "部分退款"
+      const nextAfterSalesStatus = fullRefund ? "refunded" : "partially_refunded"
+      await connection.query(
+        `UPDATE orders
+         SET status=:status, payment_status=:paymentStatus,
+             refund_status=:refundStatus, after_sales_status=:afterSalesStatus,
+             pickup_status=CASE
+               WHEN :fullRefund=1 AND delivery_type='pickup'
+                    AND pickup_verified_at IS NULL AND force_pickup_verified_at IS NULL
+               THEN 'cancelled' ELSE pickup_status END,
+             refund_no=:refundNo,
+             refund_id=COALESCE(NULLIF(:refundId,''),refund_id),
+             refund_amount=:refundAmount,
+             refund_success_at=NOW(), refund_at=NOW(), after_sales_handled_at=NOW()
+         WHERE id=:orderId`,
+        {
+          orderId: order.id,
+          status: nextStatus,
+          paymentStatus: nextPaymentStatus,
+          refundStatus: nextRefundStatus,
+          afterSalesStatus: nextAfterSalesStatus,
+          fullRefund: fullRefund ? 1 : 0,
+          refundNo,
+          refundId: refundData.refund_id || refundData.refundId || "",
+          refundAmount: centsToYuan(refundedCents)
+        }
+      )
+      await connection.commit()
+      resultOrder = (await getOrders({ keyword: order.id })).find(item => item.id === order.id)
+    } catch (error) {
+      await connection.rollback().catch(() => {})
+      throw error
+    } finally {
+      connection.release()
+    }
+    if (fullRefund) await rollbackSalesAgentCommissionsForOrder(order.id)
+    return resultOrder
+  }
   const orders = await getOrders()
   const index = orders.findIndex(item => item.id === order.id)
   if (index < 0) throw new Error("订单不存在")
@@ -6444,23 +7010,183 @@ async function approveAfterSalesRefund(orderId, data = {}) {
   if (!isOrderPaidForAfterSales(order)) throw httpError(400, "订单未支付，不能退款")
   if (isOrderRefunded(order)) throw httpError(400, "订单已退款，不能重复退款")
   if (["退款处理中", "processing"].includes(order.refundStatus) || order.afterSalesStatus === "refund_pending") throw httpError(400, "退款正在处理中，请勿重复提交")
-  const amount = Math.min(Number(data.refundAmount || order.refundAmount || order.amount || 0), Number(order.amount || 0))
-  if (!amount || amount <= 0) throw new Error("退款金额不正确")
-  const refundNo = order.refundNo || generateRefundNo(order.id)
-  const refund = await requestWechatRefund(order, amount, refundNo)
-  const now = formatDateTime(new Date())
-  orders[index] = {
-    ...order,
-    refundStatus: "退款处理中",
-    afterSalesStatus: "refund_pending",
-    refundAmount: amount.toFixed(2),
-    refundNo,
-    refundId: refund.refund_id || order.refundId || "",
-    refundReviewedAt: now,
-    afterSalesHandledAt: now
+  if (!pool) {
+    const amount = Math.min(Number(data.refundAmount || order.refundAmount || order.amount || 0), Number(order.amount || 0))
+    if (amount !== Number(order.amount || 0)) throw httpError(400, "开发JSON模式仅支持安全整单退款")
+    const refundNo = order.refundNo || generateRefundNo(order.id)
+    const refund = await requestWechatRefund(order, amount, refundNo)
+    const now = formatDateTime(new Date())
+    orders[index] = {
+      ...order,
+      refundStatus: "退款处理中",
+      afterSalesStatus: "refund_pending",
+      refundAmount: amount.toFixed(2),
+      refundNo,
+      refundId: refund.refund_id || order.refundId || "",
+      refundReviewedAt: now,
+      afterSalesHandledAt: now
+    }
+    await saveOrders([orders[index]])
+    return orders[index]
   }
-  await saveOrders([orders[index]])
-  return orders[index]
+  const activeRows = await query(
+    `SELECT id FROM refund_records
+     WHERE order_id=:orderId AND status IN ('CREATED','PROCESSING')
+     ORDER BY requested_at DESC LIMIT 1`,
+    { orderId }
+  )
+  if (activeRows.length) throw httpError(409, "退款正在处理中，请勿重复提交")
+  const itemRows = await query(
+    `SELECT id, order_id, product_id, sku_id, product_name, sku_name,
+            quantity, paid_amount_cents
+     FROM order_items WHERE order_id=:orderId ORDER BY created_at ASC, id ASC`,
+    { orderId }
+  )
+  let validatedItems = []
+  if (itemRows.length) {
+    const previousRefundItems = await query(
+      `SELECT ri.order_item_id, ri.refund_quantity, ri.status
+       FROM refund_items ri
+       JOIN refund_records rr ON rr.id=ri.refund_record_id
+       WHERE rr.order_id=:orderId`,
+      { orderId }
+    )
+    validatedItems = validateRefundItems(itemRows.map(row => ({
+      id: row.id,
+      productName: row.product_name,
+      skuId: row.sku_id,
+      quantity: Number(row.quantity || 0),
+      paidAmountCents: Number(row.paid_amount_cents || 0)
+    })), previousRefundItems, data.refundItems)
+  } else {
+    const legacyAmountCents = yuanToCents(data.refundAmount || order.refundAmount || order.amount, "退款金额")
+    const orderAmountCents = yuanToCents(order.amount, "订单实付金额")
+    if (legacyAmountCents !== orderAmountCents) {
+      throw httpError(400, "历史订单缺少可靠商品明细，仅支持安全整单退款")
+    }
+    validatedItems = [{
+      orderItemId: `LEGACY:${order.id}`,
+      skuId: "",
+      refundQuantity: 1,
+      productRefundCents: orderAmountCents,
+      discountRefundCents: 0,
+      shippingRefundCents: 0
+    }]
+  }
+  const shippingRefundCents = data.shippingRefundCents == null
+    ? 0
+    : Number(data.shippingRefundCents)
+  if (!Number.isSafeInteger(shippingRefundCents) || shippingRefundCents < 0) {
+    throw httpError(400, "运费退款金额必须使用整数分")
+  }
+  const refundAmountCents = validatedItems.reduce((sum, item) => sum + item.productRefundCents + item.discountRefundCents, 0) + shippingRefundCents
+  const orderAmountCents = yuanToCents(order.amount, "订单实付金额")
+  const successfulRows = await query(
+    `SELECT COALESCE(SUM(success_amount_cents),0) AS refunded_cents
+     FROM refund_records WHERE order_id=:orderId AND status='SUCCESS'`,
+    { orderId }
+  )
+  if (Number(successfulRows[0]?.refunded_cents || 0) + refundAmountCents > orderAmountCents) {
+    throw httpError(409, "累计退款金额不能超过订单实付金额")
+  }
+  const refundRecordId = `RR${crypto.randomUUID().replace(/-/g, "")}`.slice(0, 60)
+  const refundNo = generateRefundNo(order.id, refundRecordId)
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    await connection.query(
+      `INSERT INTO refund_records
+        (id, order_id, refund_no, requested_amount_cents, shipping_refund_cents,
+         status, reason, operator_id, requested_at, updated_at)
+       VALUES
+        (:id, :orderId, :refundNo, :amount, :shipping, 'CREATED', :reason, :operatorId, NOW(), NOW())`,
+      {
+        id: refundRecordId,
+        orderId,
+        refundNo,
+        amount: refundAmountCents,
+        shipping: shippingRefundCents,
+        reason: String(data.refundReason || order.refundReason || "售后退款").slice(0, 255),
+        operatorId: String(data.operatorId || "admin").slice(0, 80)
+      }
+    )
+    for (const item of validatedItems) {
+      await connection.query(
+        `INSERT INTO refund_items
+          (id, refund_record_id, order_item_id, sku_id, refund_quantity,
+           product_refund_cents, discount_refund_cents, shipping_refund_cents, status)
+         VALUES
+          (:id, :refundRecordId, :orderItemId, :skuId, :refundQuantity,
+           :productRefundCents, :discountRefundCents, :shippingRefundCents, 'PROCESSING')`,
+        {
+          id: `RI${crypto.randomUUID().replace(/-/g, "")}`.slice(0, 60),
+          refundRecordId,
+          ...item,
+          shippingRefundCents: 0
+        }
+      )
+    }
+    const [orderUpdate] = await connection.query(
+      `UPDATE orders
+       SET refund_status='退款处理中', after_sales_status='refund_pending',
+           refund_amount=:refundAmount, refund_no=:refundNo,
+           refund_reviewed_at=NOW(), after_sales_handled_at=NOW()
+       WHERE id=:orderId
+         AND COALESCE(refund_status,'') NOT IN ('退款处理中','退款成功')`,
+      { orderId, refundAmount: centsToYuan(refundAmountCents), refundNo }
+    )
+    if (Number(orderUpdate.affectedRows || 0) !== 1) {
+      throw httpError(409, "订单退款状态已变化，请刷新后重试")
+    }
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+  let refund
+  try {
+    refund = await requestWechatRefund(order, centsToYuan(refundAmountCents), refundNo)
+  } catch (error) {
+    await query(
+      `UPDATE refund_records
+       SET status='FAILED', updated_at=NOW()
+       WHERE id=:id AND status='CREATED'`,
+      { id: refundRecordId }
+    )
+    await query(
+      `UPDATE refund_items SET status='FAILED', updated_at=NOW()
+       WHERE refund_record_id=:id AND status='PROCESSING'`,
+      { id: refundRecordId }
+    )
+    await query(
+      `UPDATE orders
+       SET refund_status='退款失败', after_sales_status='requested'
+       WHERE id=:orderId AND refund_no=:refundNo`,
+      { orderId, refundNo }
+    )
+    throw error
+  }
+  await query(
+    `UPDATE refund_records
+     SET status='PROCESSING', wechat_refund_id=:refundId, updated_at=NOW()
+     WHERE id=:id AND status='CREATED'`,
+    { id: refundRecordId, refundId: refund.refund_id || "" }
+  )
+  const now = formatDateTime(new Date())
+  await query(
+    `UPDATE orders
+     SET refund_id=:refundId, refund_reviewed_at=:now, after_sales_handled_at=:now
+     WHERE id=:orderId AND refund_no=:refundNo`,
+    {
+      orderId,
+      refundNo,
+      refundId: refund.refund_id || "",
+      now: toMysqlDatetime(now)
+    }
+  )
+  return (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
 }
 
 function restoreOrderStatusAfterSalesReject(order = {}) {
@@ -7211,7 +7937,7 @@ async function saveRewardRecords(records) {
 
 function rewardBusinessKey(record = {}) {
   if (record.relatedRecordId && isChargebackRecord(record)) {
-    return `chargeback:${record.relatedRecordId}`
+    return `chargeback:${record.relatedRecordId}:${record.batchId || record.id}`
   }
   return `${record.orderId}:${normalizePhone(record.promoterPhone)}:${Number(record.level || 1)}:${record.type || "level1"}`
 }
@@ -7291,7 +8017,15 @@ async function createRewardsForOrder(order) {
   if (Number(firstRewardAmount) > 0 && !hasReward(directPhone, 1)) candidates.push(makeRecord(directPhone, 1, firstRewardAmount))
   if (parentPhone && Number(secondRewardAmount) > 0 && !hasReward(parentPhone, 2)) candidates.push(makeRecord(parentPhone, 2, secondRewardAmount))
   if (pool) {
-    for (const record of candidates) await insertRewardRecord(record)
+    for (const record of candidates) {
+      await insertRewardRecord(record)
+      await ensureFinancialItemAllocations({
+        ledgerType: "reward",
+        recordId: record.id,
+        orderId: normalized.id,
+        amountCents: yuanToCents(record.amount, "推广奖励")
+      })
+    }
     const rows = await query("SELECT * FROM reward_records WHERE order_id=:orderId ORDER BY created_at DESC", {
       orderId: normalized.id
     })
@@ -7542,6 +8276,7 @@ async function initDb() {
   await ensureColumn("products", "categories", "JSON")
   await ensureColumn("products", "status", "VARCHAR(20) DEFAULT 'on'")
   await ensureColumn("products", "stock", "INT DEFAULT 0")
+  await ensureColumn("products", "stock_mode", "VARCHAR(30)")
   await ensureColumn("products", "cost_price", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("products", "is_hot", "VARCHAR(10) DEFAULT 'false'")
   await ensureColumn("products", "promotion_hot", "VARCHAR(10) DEFAULT 'false'")
@@ -7707,6 +8442,19 @@ async function initDb() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_order_request_order (order_id)
   )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_idempotency_keys (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(80) NOT NULL,
+    operation VARCHAR(40) NOT NULL,
+    request_key VARCHAR(100) NOT NULL,
+    request_hash CHAR(64) NOT NULL,
+    order_id VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    UNIQUE KEY uniq_order_idempotency_scope (user_id, operation, request_key),
+    INDEX idx_order_idempotency_order (order_id),
+    INDEX idx_order_idempotency_expiry (expires_at)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS order_state_audit (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     order_id VARCHAR(32) NOT NULL,
@@ -7735,6 +8483,73 @@ async function initDb() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_payment_fact_transaction (transaction_id),
     INDEX idx_payment_fact_order (order_id, created_at)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_items (
+    id VARCHAR(60) PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    product_id VARCHAR(32) NOT NULL,
+    sku_id VARCHAR(60),
+    product_name VARCHAR(160) NOT NULL,
+    sku_name VARCHAR(160),
+    image_url VARCHAR(500),
+    unit_price_cents INT UNSIGNED NOT NULL,
+    quantity INT UNSIGNED NOT NULL,
+    product_discount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    order_discount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    paid_amount_cents INT UNSIGNED NOT NULL,
+    inventory_mode VARCHAR(30) NOT NULL,
+    customization_json JSON,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order_item_order (order_id),
+    INDEX idx_order_item_product (product_id, sku_id)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS refund_records (
+    id VARCHAR(60) PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    refund_no VARCHAR(64) NOT NULL,
+    wechat_refund_id VARCHAR(80),
+    requested_amount_cents INT UNSIGNED NOT NULL,
+    success_amount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    shipping_refund_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    status VARCHAR(30) NOT NULL,
+    reason VARCHAR(255),
+    operator_id VARCHAR(80),
+    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    success_at DATETIME,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_refund_no (refund_no),
+    INDEX idx_refund_order (order_id, status)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS refund_items (
+    id VARCHAR(60) PRIMARY KEY,
+    refund_record_id VARCHAR(60) NOT NULL,
+    order_item_id VARCHAR(60) NOT NULL,
+    sku_id VARCHAR(60),
+    refund_quantity INT UNSIGNED NOT NULL,
+    product_refund_cents INT UNSIGNED NOT NULL,
+    discount_refund_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    shipping_refund_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    store_commission_reversal_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    personal_reward_reversal_cents INT UNSIGNED NOT NULL DEFAULT 0,
+    pickup_service_fee_impact VARCHAR(30) NOT NULL DEFAULT 'NONE',
+    status VARCHAR(30) NOT NULL DEFAULT 'PROCESSING',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_refund_item_record (refund_record_id, order_item_id),
+    INDEX idx_refund_item_order_item (order_item_id, status)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS financial_record_item_allocations (
+    id VARCHAR(80) PRIMARY KEY,
+    ledger_type VARCHAR(30) NOT NULL,
+    record_id VARCHAR(60) NOT NULL,
+    order_id VARCHAR(32) NOT NULL,
+    order_item_id VARCHAR(60) NOT NULL,
+    sku_id VARCHAR(60),
+    quantity INT UNSIGNED NOT NULL,
+    allocated_amount_cents INT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_financial_item_allocation (ledger_type, record_id, order_item_id),
+    INDEX idx_financial_allocation_order (order_id, order_item_id)
   )`)
   await query(`CREATE TABLE IF NOT EXISTS store_referral_attributions (
     id VARCHAR(60) PRIMARY KEY,
@@ -8982,11 +9797,12 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
-    const identity = await resolveIdentityFromRequest(req, body)
+    let identity = await resolveIdentityFromRequest(req, body)
     if (!hasRequestIdentity(identity)) {
       sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
       return
     }
+    identity = await ensureInternalUserIdentity(identity)
     const order = await createOrder({
       ...body,
       phone: identity.phone || "",
