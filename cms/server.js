@@ -5600,7 +5600,10 @@ function buildWechatFulfillmentPayload(order, node) {
     delivery_mode: 1,
     is_all_delivered: true,
     shipping_list: [item],
-    upload_time: chinaIsoTime(order.pickedUpAt || order.arrivedStoreAt || order.shippedAt || new Date()),
+    // WeChat defines this as the API upload time, not the historical
+    // fulfillment event time. Generate it at each attempt so delayed retries
+    // and safe historical backfills remain valid RFC 3339 timestamps.
+    upload_time: chinaIsoTime(new Date()),
     payer: { openid: order.openid }
   }
 }

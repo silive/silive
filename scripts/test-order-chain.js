@@ -135,6 +135,7 @@ async function main() {
   assert.match(server, /CREATE TABLE IF NOT EXISTS user_sessions/)
   assert.match(server, /CREATE TABLE IF NOT EXISTS order_request_keys/)
   assert.match(server, /upload_shipping_info/)
+  assert.match(server, /upload_time: chinaIsoTime\(new Date\(\)\)/)
   assert.match(server, /startWechatFulfillmentWorker\(\)/)
   assert.match(server, /startRefundSyncWorker\(\)/)
   assert.match(server, /const queryRefundNo = order\.refundNo \|\| generateRefundNo\(order\.id\)/)
