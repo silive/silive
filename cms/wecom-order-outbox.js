@@ -1,4 +1,5 @@
 const crypto = require("crypto")
+const { enqueuePaymentFinanceEvent } = require("./payment-finance-outbox")
 
 function positiveInteger(value, fallback, maximum) {
   const number = Math.floor(Number(value))
@@ -12,6 +13,7 @@ async function markOrderPaidAndEnqueue(options = {}) {
   const transactionId = String(options.transactionId || "").trim()
   const notificationType = options.notificationType == null ? null : String(options.notificationType).trim()
   if (!pool || !orderId) throw new Error("支付事务参数不完整")
+  if (!transactionId) throw new Error("支付交易号不能为空")
 
   const connection = await pool.getConnection()
   try {
@@ -106,18 +108,23 @@ async function markOrderPaidAndEnqueue(options = {}) {
       updated = true
     }
 
-    if (!notificationType) throw new Error("支付通知类型不能为空")
-    const [notificationResult] = await connection.query(
-      `INSERT IGNORE INTO order_notification_records
-        (order_id, notification_type, status, attempt_count, next_retry_at, created_at, updated_at)
-       VALUES
-        (:orderId, :notificationType, 'PENDING', 0, NOW(), NOW(), NOW())`,
-      { orderId, notificationType }
-    )
+    const financeQueued = await enqueuePaymentFinanceEvent(connection, { orderId, transactionId })
+    let notificationQueued = false
+    if (notificationType) {
+      const [notificationResult] = await connection.query(
+        `INSERT IGNORE INTO order_notification_records
+          (order_id, notification_type, status, attempt_count, next_retry_at, created_at, updated_at)
+         VALUES
+          (:orderId, :notificationType, 'PENDING', 0, NOW(), NOW(), NOW())`,
+        { orderId, notificationType }
+      )
+      notificationQueued = Number(notificationResult.affectedRows || 0) === 1
+    }
     await connection.commit()
     return {
       updated,
-      queued: Number(notificationResult.affectedRows || 0) === 1,
+      queued: notificationQueued,
+      financeQueued,
       outcome: updated ? "PAID" : "ALREADY_PAID"
     }
   } catch (error) {

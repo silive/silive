@@ -8,7 +8,7 @@ const SHARE_TITLES = [
   "高颜值定制礼物店 · 邀你来逛逛",
   "精选礼物小店 · 朋友觉得你会喜欢"
 ]
-const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.png"
+const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.webp"
 const ONLINE_SHARE_IMAGE = "https://api.feichangjiandan.xyz/uploads/share-promotion.png"
 
 function pickOne(list) {

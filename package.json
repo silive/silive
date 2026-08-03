@@ -9,13 +9,22 @@
     "test:wecom-order-notifier": "node scripts/test-wecom-order-notifier.js",
     "test:wecom-order-notification": "node scripts/test-wecom-order-notification.js",
     "test:wecom-order-notification-db": "node scripts/test-wecom-order-notification-db.js",
+    "test:payment-finance-outbox": "node scripts/test-payment-finance-outbox.js",
+    "test:payment-finance-backfill": "node scripts/test-payment-finance-backfill.js",
+    "backfill:payment-finance-outbox": "node scripts/backfill-payment-finance-outbox.js",
+    "backfill:order-payment-expiry": "node scripts/backfill-order-payment-expiry.js",
     "test:order-chain": "node scripts/test-order-chain.js",
+    "test:order-payment-timeout": "node scripts/test-order-payment-timeout.js",
     "test:security-p0": "node scripts/test-security-p0.js",
     "test:order-domain": "node scripts/test-order-domain.js",
     "test:security-session-promotion": "node scripts/test-security-session-promotion.js",
     "test:security-boundaries": "node scripts/test-security-boundaries.js",
     "test:security-ledgers": "node scripts/test-security-ledgers.js",
-    "test:security-mysql": "node scripts/test-security-mysql.js"
+    "test:security-mysql": "node scripts/test-security-mysql.js",
+    "test:blue-team-migrations-mysql": "node scripts/test-blue-team-migrations-mysql.js",
+    "test:cleanup-test-orders-mysql": "node scripts/test-cleanup-test-orders-mysql.js",
+    "test:order-ownership-mysql": "node scripts/test-order-ownership-mysql.js",
+    "test:ai-preview-access": "node scripts/test-ai-preview-access.js"
   },
   "dependencies": {
     "mysql2": "^3.11.5",

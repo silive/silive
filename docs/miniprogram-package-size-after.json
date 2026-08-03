@@ -1,0 +1,443 @@
+{
+  "generatedAt": "2026-08-03T13:45:45.656Z",
+  "note": "这是按 project.config.json packOptions.ignore 估算的本地结果，微信开发者工具显示的实际源码包大小才是最终依据。",
+  "projectRoot": "/Users/xiaomo/Documents/Codex/2026-04-25/gpt-5-5",
+  "miniprogramRoot": "/Users/xiaomo/Documents/Codex/2026-04-25/gpt-5-5",
+  "publicIgnoreCount": 34,
+  "privateIgnoreCount": 34,
+  "files": 99,
+  "bytes": 480470,
+  "kib": 469.21,
+  "extensionSummary": [
+    {
+      "extension": ".js",
+      "files": 30,
+      "bytes": 233307
+    },
+    {
+      "extension": ".wxss",
+      "files": 23,
+      "bytes": 126941
+    },
+    {
+      "extension": ".wxml",
+      "files": 21,
+      "bytes": 79359
+    },
+    {
+      "extension": ".webp",
+      "files": 1,
+      "bytes": 34280
+    },
+    {
+      "extension": ".json",
+      "files": 24,
+      "bytes": 6583
+    }
+  ],
+  "largestFiles": [
+    {
+      "path": "assets/share-promotion.webp",
+      "bytes": 34280,
+      "extension": ".webp"
+    },
+    {
+      "path": "pages/checkout/checkout.js",
+      "bytes": 26939,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/orders/orders.js",
+      "bytes": 26873,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/index/index.wxss",
+      "bytes": 20197,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/profile/profile.js",
+      "bytes": 19777,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/index/index.js",
+      "bytes": 18721,
+      "extension": ".js"
+    },
+    {
+      "path": "app.js",
+      "bytes": 17652,
+      "extension": ".js"
+    },
+    {
+      "path": "utils/auth.js",
+      "bytes": 17599,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/product/detail.js",
+      "bytes": 16501,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/orders/orders.wxss",
+      "bytes": 16143,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/category/list.js",
+      "bytes": 15843,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/product/detail.wxss",
+      "bytes": 14202,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/checkout/checkout.wxss",
+      "bytes": 13358,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/category/list.wxss",
+      "bytes": 11417,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/orders/orders.wxml",
+      "bytes": 11405,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/profile/profile.wxss",
+      "bytes": 11137,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/promotion/promotion.js",
+      "bytes": 10203,
+      "extension": ".js"
+    },
+    {
+      "path": "utils/theme.js",
+      "bytes": 9546,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/poster/poster.js",
+      "bytes": 9320,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/checkout/checkout.wxml",
+      "bytes": 8358,
+      "extension": ".wxml"
+    },
+    {
+      "path": "utils/api.js",
+      "bytes": 7952,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/index/index.wxml",
+      "bytes": 7477,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/profile/profile.wxml",
+      "bytes": 7331,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/promotion/promotion.wxss",
+      "bytes": 7044,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/store/pickup-orders/pickup-orders.js",
+      "bytes": 6230,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/product/detail.wxml",
+      "bytes": 5803,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/help/help.wxss",
+      "bytes": 5529,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/help/help.js",
+      "bytes": 4973,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/promotion/promotion.wxml",
+      "bytes": 4847,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/cart/cart.wxss",
+      "bytes": 4781,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/index/default-data.js",
+      "bytes": 4475,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/store/center/center.wxml",
+      "bytes": 4210,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/store/store.wxss",
+      "bytes": 4132,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/store/pickup-orders/pickup-orders.wxss",
+      "bytes": 4071,
+      "extension": ".wxss"
+    },
+    {
+      "path": "components/login-sheet/login-sheet.wxss",
+      "bytes": 3955,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/agreement/privacy.wxml",
+      "bytes": 3504,
+      "extension": ".wxml"
+    },
+    {
+      "path": "project.config.json",
+      "bytes": 3441,
+      "extension": ".json"
+    },
+    {
+      "path": "pages/agreement/service.wxml",
+      "bytes": 3331,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/store/pickup-orders/pickup-orders.wxml",
+      "bytes": 3248,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/category/list.wxml",
+      "bytes": 3204,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/store/referral-orders/referral-orders.wxml",
+      "bytes": 2821,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/store/verify/verify.js",
+      "bytes": 2772,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/store/code/code.js",
+      "bytes": 2753,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/store/verify/verify.wxss",
+      "bytes": 2725,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/store/common.js",
+      "bytes": 2683,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/store/settlements/settlements.wxml",
+      "bytes": 2612,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/cart/cart.js",
+      "bytes": 2483,
+      "extension": ".js"
+    },
+    {
+      "path": "pages/poster/poster.wxss",
+      "bytes": 2299,
+      "extension": ".wxss"
+    },
+    {
+      "path": "pages/store/verify/verify.wxml",
+      "bytes": 2145,
+      "extension": ".wxml"
+    },
+    {
+      "path": "pages/help/help.wxml",
+      "bytes": 2121,
+      "extension": ".wxml"
+    }
+  ],
+  "filesOver50KiB": [],
+  "ignored": [
+    {
+      "path": "cms",
+      "type": "folder",
+      "bytes": 44963137,
+      "rule": "cms"
+    },
+    {
+      "path": "node_modules",
+      "type": "folder",
+      "bytes": 22298077,
+      "rule": "node_modules"
+    },
+    {
+      "path": ".git",
+      "type": "folder",
+      "bytes": 4476805,
+      "rule": ".git"
+    },
+    {
+      "path": "assets/logo.png",
+      "type": "file",
+      "bytes": 1006221,
+      "rule": "assets/logo.png"
+    },
+    {
+      "path": "artifacts",
+      "type": "folder",
+      "bytes": 332255,
+      "rule": "artifacts"
+    },
+    {
+      "path": "assets/share-promotion.png",
+      "type": "file",
+      "bytes": 318159,
+      "rule": "assets/share-promotion.png"
+    },
+    {
+      "path": "assets/logo-orange.png",
+      "type": "file",
+      "bytes": 255298,
+      "rule": "assets/logo-orange.png"
+    },
+    {
+      "path": "scripts",
+      "type": "folder",
+      "bytes": 181912,
+      "rule": "scripts"
+    },
+    {
+      "path": "docs",
+      "type": "folder",
+      "bytes": 80849,
+      "rule": "docs"
+    },
+    {
+      "path": "handoff",
+      "type": "folder",
+      "bytes": 42654,
+      "rule": "handoff"
+    },
+    {
+      "path": "package-lock.json",
+      "type": "file",
+      "bytes": 33414,
+      "rule": "package-lock.json"
+    },
+    {
+      "path": "TEST_CHECKLIST.md",
+      "type": "file",
+      "bytes": 17441,
+      "rule": "TEST_CHECKLIST.md"
+    },
+    {
+      "path": "TEST_RESULT.md",
+      "type": "file",
+      "bytes": 16906,
+      "rule": "TEST_RESULT.md"
+    },
+    {
+      "path": "WORKBUDDY_MINIPROGRAM_AUDIT.md",
+      "type": "file",
+      "bytes": 12322,
+      "rule": "WORKBUDDY_MINIPROGRAM_AUDIT.md"
+    },
+    {
+      "path": "LAUNCH_CHECKLIST.md",
+      "type": "file",
+      "bytes": 11188,
+      "rule": "LAUNCH_CHECKLIST.md"
+    },
+    {
+      "path": ".DS_Store",
+      "type": "file",
+      "bytes": 8196,
+      "rule": ".DS_Store"
+    },
+    {
+      "path": "DEPLOY.md",
+      "type": "file",
+      "bytes": 3947,
+      "rule": "DEPLOY.md"
+    },
+    {
+      "path": "themes",
+      "type": "folder",
+      "bytes": 3254,
+      "rule": "themes"
+    },
+    {
+      "path": "project.private.config.json",
+      "type": "file",
+      "bytes": 3205,
+      "rule": "project.private.config.json"
+    },
+    {
+      "path": "project.config.json.backup-20260730",
+      "type": "file",
+      "bytes": 2082,
+      "rule": "project.config.json.backup-20260730"
+    },
+    {
+      "path": "package.json",
+      "type": "file",
+      "bytes": 1530,
+      "rule": "package.json"
+    },
+    {
+      "path": ".env.example",
+      "type": "file",
+      "bytes": 1029,
+      "rule": ".env.*"
+    },
+    {
+      "path": ".env",
+      "type": "file",
+      "bytes": 924,
+      "rule": ".env"
+    },
+    {
+      "path": ".gitignore",
+      "type": "file",
+      "bytes": 143,
+      "rule": ".gitignore"
+    },
+    {
+      "path": "providers",
+      "type": "folder",
+      "bytes": 0,
+      "rule": "providers"
+    }
+  ]
+}

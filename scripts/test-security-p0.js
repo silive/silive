@@ -15,6 +15,7 @@ function fakePool(order) {
     committed: false,
     rolledBack: false,
     notifications: 0,
+    financeEvents: 0,
     paymentFacts: 0,
     audits: []
   }
@@ -47,6 +48,10 @@ function fakePool(order) {
         state.notifications += 1
         return [{ affectedRows: 1 }]
       }
+      if (sql.includes("INSERT IGNORE INTO payment_finance_outbox")) {
+        state.financeEvents += 1
+        return [{ affectedRows: 1 }]
+      }
       throw new Error(`unexpected SQL: ${sql.slice(0, 80)}`)
     }
   }
@@ -77,8 +82,9 @@ async function main() {
     transactionId: "TX-PAID",
     notificationType: "WECOM_ORDER_PAID"
   })
-  assert.deepStrictEqual(paidResult, { updated: true, queued: true, outcome: "PAID" })
+  assert.deepStrictEqual(paidResult, { updated: true, queued: true, financeQueued: true, outcome: "PAID" })
   assert.strictEqual(paid.state.notifications, 1)
+  assert.strictEqual(paid.state.financeEvents, 1)
   assert.strictEqual(paid.state.paymentFacts, 1)
 
   const refunded = fakePool({

@@ -2298,7 +2298,7 @@
             ${order.finalDesignUrl ? `<div class="media-row"><img class="media-thumb" src="${escapeHtml(order.finalDesignUrl)}" alt=""><div><strong>最终确认稿</strong><div class="muted">${escapeHtml(order.finalDesignUrl)}</div></div></div>` : ""}
           </div>
           <div class="toolbar" style="margin-top:12px">
-            <button class="secondary" data-action="regen-order-preview" data-index="${index}">重新生成</button>
+            <button class="secondary" type="button" disabled title="AI预览功能当前未启用">AI预览已关闭</button>
             <label class="secondary" style="height:40px;padding:0 16px;border-radius:999px;display:flex;align-items:center;cursor:pointer">人工修图替换<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-order-final-upload="${index}" style="display:none"></label>
             <button class="secondary" data-action="send-design-confirm" data-index="${index}">发送客户确认</button>
           </div>
@@ -3747,24 +3747,6 @@
             drawerDirty = false
             closeDrawer(true)
           })
-          .catch(error => setStatus(error.message))
-      }
-      if (event.target.dataset.action === "regen-order-preview") {
-        const index = Number(event.target.dataset.index)
-        collectOrderDrawer()
-        const order = orders[index]
-        const sourceImageUrl = normalizeMediaList(order?.originalImageUrls || order?.originalImageUrl)[0]
-        if (!sourceImageUrl) return setStatus("订单缺少客户原图")
-        setStatus("AI预览生成中...")
-        api("/api/ai/preview", "POST", {
-          productId: order.productId,
-          productName: order.productName,
-          sourceImageUrl
-        }).then(result => {
-          order.aiPreviewUrl = result.imageUrl
-          order.finalDesignUrl = result.imageUrl
-          return api("/api/admin/orders", "PUT", allOrders)
-        }).then(() => loadAll()).then(() => setStatus("AI预览已重新生成"))
           .catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "send-design-confirm") {

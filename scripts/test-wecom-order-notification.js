@@ -25,7 +25,7 @@ function loadEnv(file) {
 }
 
 async function main() {
-  loadEnv(path.join(__dirname, "..", ".env"))
+  if (process.env.WECOM_TEST_SKIP_DOTENV !== "true") loadEnv(path.join(__dirname, "..", ".env"))
   const webhookUrl = String(process.env.WECOM_ORDER_WEBHOOK_URL || "").trim()
   if (!webhookUrl) throw new Error("未配置 WECOM_ORDER_WEBHOOK_URL")
   await sendWecomMarkdown({

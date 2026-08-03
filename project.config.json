@@ -68,6 +68,78 @@
       {
         "type": "folder",
         "value": "artifacts"
+      },
+      {
+        "type": "folder",
+        "value": "scripts"
+      },
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "test"
+      },
+      {
+        "type": "folder",
+        "value": "docs"
+      },
+      {
+        "type": "folder",
+        "value": ".git"
+      },
+      {
+        "type": "folder",
+        "value": "coverage"
+      },
+      {
+        "type": "folder",
+        "value": ".github"
+      },
+      {
+        "type": "folder",
+        "value": "handoff"
+      },
+      {
+        "type": "folder",
+        "value": "providers"
+      },
+      {
+        "type": "file",
+        "value": ".DS_Store"
+      },
+      {
+        "type": "file",
+        "value": "WORKBUDDY_MINIPROGRAM_AUDIT.md"
+      },
+      {
+        "type": "file",
+        "value": "TEST_CHECKLIST.md"
+      },
+      {
+        "type": "file",
+        "value": "TEST_RESULT.md"
+      },
+      {
+        "type": "file",
+        "value": "LAUNCH_CHECKLIST.md"
+      },
+      {
+        "type": "file",
+        "value": ".gitignore"
+      },
+      {
+        "type": "file",
+        "value": "project.private.config.json"
+      },
+      {
+        "type": "file",
+        "value": "project.config.json.backup-20260730"
+      },
+      {
+        "type": "file",
+        "value": "assets/share-promotion.png"
       }
     ]
   },
@@ -81,7 +153,7 @@
     "ignoreUploadUnusedFiles": true,
     "compileWorklet": false,
     "uglifyFileName": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "packNpmManually": false,
     "packNpmRelationList": [],
     "minifyWXSS": true,

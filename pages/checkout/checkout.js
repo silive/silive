@@ -25,9 +25,7 @@ function buildCustomProduct(category = "图片定制") {
     needQuote: true,
     badge: "new",
     cover: "keyring",
-    categories: [category],
-    aiPreviewEnabled: "true",
-    aiPreviewType: /军牌/.test(category) ? "dogtag" : /叶雕/.test(category) ? "leaf" : /木牌|激光/.test(category) ? "wood" : /宠物|摆件/.test(category) ? "stand" : /情侣/.test(category) ? "couple" : "gift"
+    categories: [category]
   }
 }
 
@@ -83,12 +81,6 @@ Page({
     phoneError: "",
     phoneTip: "仅支持中国大陆11位手机号",
     phoneTipType: "",
-    aiPreview: {
-      status: "",
-      imageUrl: "",
-      provider: "",
-      message: ""
-    },
     mode: "",
     category: "",
     source: "",
@@ -503,67 +495,8 @@ Page({
     })
   },
 
-  templateType() {
-    const product = this.data.product || {}
-    if (product.aiPreviewType) return product.aiPreviewType
-    const text = `${product.name || ""} ${(product.categories || []).join(" ")} ${product.intro || ""}`
-    if (/叶雕|天然叶/.test(text)) return "leaf"
-    if (/宠物|摆件|3D|手办/.test(text)) return "stand"
-    if (/木牌|木|激光|雕刻/.test(text)) return "wood"
-    if (/军牌/.test(text)) return "dogtag"
-    if (/情侣|纪念|礼物/.test(text)) return "couple"
-    return "gift"
-  },
-
-  shouldGeneratePreview() {
-    return this.data.mode === "custom" || String(this.data.product?.aiPreviewEnabled) === "true" || !!this.data.uploadedImages.length
-  },
-
   isQuoteOrder() {
     return this.isQuoteProduct(this.data.product || {}, this.data.mode)
-  },
-
-  generatePreview() {
-    const sourceImage = this.data.uploadedImages[0]?.url || this.data.customImage || ""
-    if (!sourceImage || this.data.aiPreview.status === "loading") return
-    this.setData({
-      aiPreview: {
-        status: "loading",
-        imageUrl: "",
-        provider: "",
-        message: "正在生成专属定制效果图..."
-      }
-    })
-    request("/api/ai/preview", {
-      method: "POST",
-      timeout: 45000,
-      data: {
-        productId: this.data.product.id,
-        productName: this.data.product.name,
-        sourceImageUrl: sourceImage,
-        templateType: this.templateType(),
-        categories: this.data.product.categories || []
-      }
-    }).then(result => {
-      const data = result.data || result
-      this.setData({
-        aiPreview: {
-          status: "done",
-          imageUrl: data.imageUrl,
-          provider: data.provider || "",
-          message: "你的专属定制预览"
-        }
-      })
-    }).catch(() => {
-      this.setData({
-        aiPreview: {
-          status: "error",
-          imageUrl: "",
-          provider: "",
-          message: "预览生成失败，可稍后重试或联系客服"
-        }
-      })
-    })
   },
 
   contactAdjust() {
@@ -656,8 +589,7 @@ Page({
     const next = this.data.uploadedImages.filter((_, itemIndex) => itemIndex !== index)
     this.setData({
       uploadedImages: next,
-      customImage: next[0]?.url || "",
-      aiPreview: next.length ? this.data.aiPreview : { status: "", imageUrl: "", provider: "", message: "" }
+      customImage: next[0]?.url || ""
     })
   },
 

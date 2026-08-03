@@ -2,7 +2,7 @@ const { request } = require("../../../utils/api")
 const { applyTheme } = require("../../../utils/theme")
 const { saveImage } = require("../../../utils/privacy")
 
-const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.png"
+const DEFAULT_SHARE_IMAGE = "/assets/share-promotion.webp"
 
 Page({
   data: {

@@ -22,6 +22,13 @@ const {
   markOrderPaidAndEnqueue
 } = require("./wecom-order-outbox")
 const {
+  PAYMENT_FINANCE_MAX_ATTEMPTS,
+  claimDuePaymentFinanceEvents,
+  completePaymentFinanceEvent,
+  failPaymentFinanceEvent
+} = require("./payment-finance-outbox")
+const { isPickupServiceFeeEligible } = require("./pickup-service-fee")
+const {
   assertAdminTransition,
   isPickupVerified,
   lifecycleView
@@ -49,8 +56,23 @@ const {
 } = require("./order-domain")
 const {
   canReleaseOrderInventory,
-  releaseOrderInventory
+  canRestockRefundedInventory,
+  releaseOrderInventory,
+  releaseOrderItemInventory
 } = require("./inventory-ledger")
+const {
+  ORDER_PAYMENT_TIMEOUT_MAX_ATTEMPTS,
+  claimDueOrderPaymentTimeoutJobs,
+  closeOrderForPaymentTimeout,
+  enqueueOrderPaymentTimeout,
+  failOrderPaymentTimeoutJob,
+  paymentExpiresAt,
+  paymentTimeoutMinutes
+} = require("./order-payment-timeout")
+const {
+  aiPreviewRouteDecision,
+  isAiPreviewEnabled
+} = require("./ai-preview-access")
 const {
   claimPickupCode,
   generatePickupCodeCandidate
@@ -76,9 +98,16 @@ try {
 }
 
 const ROOT = path.join(__dirname, "..")
-loadEnv(path.join(ROOT, ".env"))
+// Isolated database acceptance explicitly supplies every connection value and
+// must never inherit a developer or production-like .env file.
+if (process.env.MYSQL_TEST_SKIP_DOTENV !== "true") loadEnv(path.join(ROOT, ".env"))
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"
+const AI_PREVIEW_ENABLED = isAiPreviewEnabled()
+// Historical compatibility writes are operational backfills, not schema
+// initialization. They must be explicitly enabled after a reviewed dry-run.
+const STARTUP_HISTORY_COMPENSATION_ENABLED = String(process.env.STARTUP_HISTORY_COMPENSATION_ENABLED || "").trim().toLowerCase() === "true"
+const ORDER_PAYMENT_TIMEOUT_MINUTES = paymentTimeoutMinutes()
 const STORAGE_MODE = String(process.env.STORAGE_MODE || "mysql").trim().toLowerCase()
 const PORT = Number(process.env.PORT || 3000)
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443)
@@ -135,6 +164,10 @@ let reservedUploadBytes = 0
 let lastOrphanUploadCleanupAt = 0
 let wecomNotificationWorkerRunning = false
 let wecomNotificationWorkerTimer = null
+let paymentFinanceWorkerRunning = false
+let paymentFinanceWorkerTimer = null
+let orderPaymentTimeoutWorkerRunning = false
+let orderPaymentTimeoutWorkerTimer = null
 let wechatFulfillmentWorkerRunning = false
 let wechatFulfillmentWorkerTimer = null
 let refundSyncWorkerRunning = false
@@ -2474,6 +2507,9 @@ function normalizeOrder(order, index) {
     amount: String(order.amount || "0"),
     status: order.status || "待发货",
     paymentStatus: order.paymentStatus || "待支付",
+    paymentExpiresAt: order.paymentExpiresAt || order.payment_expires_at || null,
+    stockReservedAt: order.stockReservedAt || order.stock_reserved_at || null,
+    stockReleasedAt: order.stockReleasedAt || order.stock_released_at || null,
     transactionId: order.transactionId || "",
     openid: order.openid || "",
     userId: order.userId || "",
@@ -2652,6 +2688,9 @@ function mysqlOrderParams(order) {
     afterSalesHandledAt: toMysqlDatetime(order.afterSalesHandledAt),
     refundSuccessAt: toMysqlDatetime(order.refundSuccessAt),
     createdAt: toMysqlDatetime(order.createdAt, nowMysqlDatetime()),
+    paymentExpiresAt: toMysqlDatetime(order.paymentExpiresAt),
+    stockReservedAt: toMysqlDatetime(order.stockReservedAt),
+    stockReleasedAt: toMysqlDatetime(order.stockReleasedAt),
     paidAt: toMysqlDatetime(order.paidAt),
     completedAt: toMysqlDatetime(order.completedAt),
     refundAt: toMysqlDatetime(order.refundAt),
@@ -4452,7 +4491,7 @@ function salesAgentCommissionRate(store = {}, agent = {}) {
   return Math.max(0, Number(agent.commissionRate || 0))
 }
 
-async function createSalesAgentCommissionForOrder(order) {
+async function createSalesAgentCommissionForOrder(order, connection = null) {
   if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return null
   const storeId = order.pickupStoreId || order.referrerStoreId || ""
   if (!storeId) return null
@@ -4481,19 +4520,8 @@ async function createSalesAgentCommissionForOrder(order) {
     createdAt: now
   }, 0)
   if (pool) {
-    await query(
-      `INSERT IGNORE INTO sales_agent_commissions
-        (id, business_key, sales_agent_id, store_id, order_id, order_no, order_amount, commission_rate,
-         commission_amount, amount, type, status, created_at, remark)
-       VALUES
-        (:id, :businessKey, :salesAgentId, :storeId, :orderId, :orderNo, :orderAmount, :commissionRate,
-         :commissionAmount, :amount, :type, :status, :createdAt, :remark)`,
-      {
-        ...record,
-        businessKey: salesAgentCommissionBusinessKey(record),
-        createdAt: toMysqlDatetime(record.createdAt, nowMysqlDatetime())
-      }
-    )
+    await insertSalesAgentCommission(record, connection)
+    if (connection) return record
     const rows = await query(
       `SELECT * FROM sales_agent_commissions
        WHERE sales_agent_id=:salesAgentId AND store_id=:storeId
@@ -5069,6 +5097,9 @@ async function getOrders(filters = {}) {
     amount: String(row.amount || "0"),
     status: row.status || "待发货",
     paymentStatus: row.payment_status || "待支付",
+    paymentExpiresAt: formatChinaDatetime(row.payment_expires_at),
+    stockReservedAt: formatChinaDatetime(row.stock_reserved_at),
+    stockReleasedAt: formatChinaDatetime(row.stock_released_at),
     transactionId: row.transaction_id || "",
     openid: row.openid || "",
     userId: row.user_id || "",
@@ -5185,7 +5216,7 @@ async function saveOrders(orders) {
       const index = merged.findIndex(item => item.id === order.id)
       if (index >= 0) {
         const previous = merged[index]
-        const next = { ...previous, ...order }
+        const next = { ...previous, ...order, userToken: previous.userToken || "" }
         if (next.status === "已完成" && previous.status !== "已完成") next.completedAt = formatDateTime(new Date())
         if (next.status === "已退款" && previous.status !== "已退款") next.refundAt = formatDateTime(new Date())
         if (shouldInvalidateStoreSettlementForOrderChange(previous, next)) invalidateOrderIds.push(next.id)
@@ -5194,7 +5225,7 @@ async function saveOrders(orders) {
       }
       else {
         if (isOrderRewardConfirmed(order)) confirmOrderIds.push(order.id)
-        merged.push(order)
+        merged.push({ ...order, userToken: "" })
       }
     }
     writeJsonFile(ordersFile, merged)
@@ -5210,13 +5241,13 @@ async function saveOrders(orders) {
   const previousOrders = await getOrders()
   const invalidateOrderIds = []
   const confirmOrderIds = []
-  const releaseInventoryOrderIds = []
+  const releaseInventoryOrders = []
   for (const order of list) {
     if (isPickupOrder(order) && order.pickupCode) await ensurePickupCodeClaim(order)
     const previousOrder = previousOrders.find(item => item.id === order.id)
     if (previousOrder && shouldInvalidateStoreSettlementForOrderChange(previousOrder, order)) invalidateOrderIds.push(order.id)
     if (previousOrder && !canReleaseOrderInventory(previousOrder) && canReleaseOrderInventory(order)) {
-      releaseInventoryOrderIds.push(order.id)
+      releaseInventoryOrders.push({ id: order.id, status: order.status })
     }
     if (isOrderRewardConfirmed(order)) confirmOrderIds.push(order.id)
     const orderParams = {
@@ -5228,15 +5259,14 @@ async function saveOrders(orders) {
       pickupDistance: order.pickupDistance === "" ? null : order.pickupDistance
     }
     await query(
-      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, force_pickup_verified_at, force_pickup_verified_by, force_pickup_reason, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
-       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :forcePickupVerifiedAt, :forcePickupVerifiedBy, :forcePickupReason, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
+      `INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, shipping_company, tracking_number, shipped_at, refund_type, refund_status, refund_reason, refund_amount, refund_remark, refund_image_url, refund_reject_reason, refund_reviewed_at, after_sales_status, after_sales_type, after_sales_reason, after_sales_desc, after_sales_images, after_sales_requested_at, after_sales_handled_at, after_sales_reject_reason, after_sales_apply_count, refund_no, refund_id, refund_success_at, created_at, paid_at, completed_at, refund_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, notify_status, notified_at, arrived_store_at, picked_up_at, pickup_verified_at, pickup_verified_by, force_pickup_verified_at, force_pickup_verified_by, force_pickup_reason, user_latitude, user_longitude, pickup_distance, referrer_store_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status)
+       VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :shippingCompany, :trackingNumber, :shippedAt, :refundType, :refundStatus, :refundReason, :refundAmount, :refundRemark, :refundImageUrl, :refundRejectReason, :refundReviewedAt, :afterSalesStatus, :afterSalesType, :afterSalesReason, :afterSalesDesc, :afterSalesImagesJson, :afterSalesRequestedAt, :afterSalesHandledAt, :afterSalesRejectReason, :afterSalesApplyCount, :refundNo, :refundId, :refundSuccessAt, :createdAt, :paidAt, :completedAt, :refundAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :notifyStatus, :notifiedAt, :arrivedStoreAt, :pickedUpAt, :pickupVerifiedAt, :pickupVerifiedBy, :forcePickupVerifiedAt, :forcePickupVerifiedBy, :forcePickupReason, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)
        ON DUPLICATE KEY UPDATE
        status = VALUES(status),
        payment_status = VALUES(payment_status),
        transaction_id = VALUES(transaction_id),
        openid = VALUES(openid),
        user_id = VALUES(user_id),
-       user_token = VALUES(user_token),
        address = VALUES(address),
        custom_request = VALUES(custom_request),
        original_image_url = VALUES(original_image_url),
@@ -5319,11 +5349,21 @@ async function saveOrders(orders) {
   for (const orderId of [...new Set(confirmOrderIds)]) {
     await confirmOrderRewards(orderId)
   }
-  for (const orderId of [...new Set(releaseInventoryOrderIds)]) {
+  for (const order of [...new Map(releaseInventoryOrders.map(item => [item.id, item])).values()]) {
+    const sourceType = ["已取消", "取消", "cancelled", "canceled"].includes(String(order.status || "").trim().toLowerCase())
+      ? "user_cancel"
+      : ["已关闭", "关闭", "closed", "void", "作废"].includes(String(order.status || "").trim().toLowerCase())
+        ? "admin_close"
+        : "order_terminal"
     const connection = await pool.getConnection()
     try {
       await connection.beginTransaction()
-      await releaseOrderInventory(connection, orderId, "订单取消、关闭或退款")
+      await releaseOrderInventory(connection, order.id, {
+        reason: "订单取消、关闭或退款",
+        sourceType,
+        sourceId: order.id,
+        releaseRemaining: true
+      })
       await connection.commit()
     } catch (error) {
       await connection.rollback().catch(() => {})
@@ -5579,10 +5619,22 @@ async function resolvePersonalOrderAttribution(phone) {
   }
 }
 
-async function createStoreSettlementRecordsForOrderMysql(order) {
+function normalizeStoreSettlementCreationOptions(options = {}) {
+  if (options && typeof options.query === "function") {
+    return { connection: options, includeReferral: true, includePickup: false }
+  }
+  return {
+    connection: options.connection || null,
+    includeReferral: options.includeReferral !== false,
+    includePickup: options.includePickup === true
+  }
+}
+
+async function createStoreSettlementRecordsForOrderMysql(order, options = {}) {
+  const { connection, includeReferral, includePickup } = normalizeStoreSettlementCreationOptions(options)
   if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return []
-  const referrerStore = await getPartnerStore(order.referrerStoreId)
-  const pickupStore = await getPartnerStore(order.pickupStoreId)
+  const referrerStore = includeReferral ? await getPartnerStore(order.referrerStoreId) : null
+  const pickupStore = includePickup && isPickupServiceFeeEligible(order) ? await getPartnerStore(order.pickupStoreId) : null
   const referralAmount = referrerStore && Number(order.referralCommission || 0) <= 0
     ? calculateStoreAmount(order.amount, referrerStore.referralCommissionType, referrerStore.referralCommissionValue)
     : money(order.referralCommission || 0)
@@ -5634,16 +5686,17 @@ async function createStoreSettlementRecordsForOrderMysql(order) {
     })
   }
   for (const record of candidates) {
-    await insertStoreSettlementRecord(record)
+    await insertStoreSettlementRecord(record, connection)
     if (isStoreReferralSettlement(record.type)) {
       await ensureFinancialItemAllocations({
         ledgerType: "store",
         recordId: record.id,
         orderId: order.id,
         amountCents: yuanToCents(record.amount, "门店推广佣金")
-      })
+      }, connection)
     }
   }
+  if (connection) return candidates
   return await getStoreSettlementRecordsForOrder(order.id)
 }
 
@@ -5710,13 +5763,14 @@ async function settleStoreSettlementRecords(ids = [], options = {}) {
   }
 }
 
-async function createStoreSettlementRecordsForOrder(order) {
-  if (pool) return await createStoreSettlementRecordsForOrderMysql(order)
+async function createStoreSettlementRecordsForOrder(order, options = {}) {
+  const { includeReferral, includePickup } = normalizeStoreSettlementCreationOptions(options)
+  if (pool) return await createStoreSettlementRecordsForOrderMysql(order, options)
   const existing = await getStoreSettlementRecords()
   if (!isOrderPaidForPickupCredential(order) || isOrderRefunded(order)) return existing.filter(record => record.orderId === order.id)
   const next = [...existing]
-  const referrerStore = await getPartnerStore(order.referrerStoreId)
-  const pickupStore = await getPartnerStore(order.pickupStoreId)
+  const referrerStore = includeReferral ? await getPartnerStore(order.referrerStoreId) : null
+  const pickupStore = includePickup && isPickupServiceFeeEligible(order) ? await getPartnerStore(order.pickupStoreId) : null
   const createdAt = formatDateTime(new Date())
   const upsertSettlementRecord = incoming => {
     const normalized = normalizeSettlementRecord(incoming)
@@ -5805,6 +5859,23 @@ async function createStoreSettlementRecordsForOrder(order) {
   }
   await saveStoreSettlementRecords(deduped)
   return deduped.filter(record => record.orderId === order.id)
+}
+
+async function createStoreReferralCommissionForOrder(order, connection = null) {
+  return createStoreSettlementRecordsForOrder(order, {
+    connection,
+    includeReferral: true,
+    includePickup: false
+  })
+}
+
+async function createPickupServiceFeeForVerifiedOrder(order, connection = null) {
+  if (!isPickupServiceFeeEligible(order)) return []
+  return createStoreSettlementRecordsForOrder(order, {
+    connection,
+    includeReferral: false,
+    includePickup: true
+  })
 }
 
 async function sendPickupArrivedNotice(orderId) {
@@ -6201,7 +6272,7 @@ async function verifyStorePickupMysql(store, selector = {}) {
   }
   const order = (await getOrders()).find(item => item.id === row.id)
   if (!order) throw new Error("verified_order_missing")
-  await createStoreSettlementRecordsForOrder(order)
+  await createPickupServiceFeeForVerifiedOrder(order)
   await recordOrderStateAudit(
     {
       ...order,
@@ -6246,7 +6317,7 @@ async function verifyStorePickupOrder(store, orderId, pickupCode) {
   order.pickupVerifiedBy = store.id
   order.completedAt = order.completedAt || order.pickedUpAt
   await saveOrders([order])
-  await createStoreSettlementRecordsForOrder(order)
+  await createPickupServiceFeeForVerifiedOrder(order)
   await recordOrderStateAudit(previous, order, {
     source: "store_pickup_code",
     operatorId: store.id,
@@ -6315,7 +6386,7 @@ async function verifyStorePickupByCode(store, pickupCode) {
   order.pickupVerifiedBy = store.id
   order.completedAt = order.completedAt || verifiedAt
   await saveOrders([order])
-  await createStoreSettlementRecordsForOrder(order)
+  await createPickupServiceFeeForVerifiedOrder(order)
   await recordOrderStateAudit(previous, order, {
     source: "store_pickup_code",
     operatorId: store.id,
@@ -6446,6 +6517,9 @@ async function createOrder(data) {
     amount: orderAmount,
     status: isQuoteOrder ? "待客服确认" : "待支付",
     paymentStatus: isQuoteOrder ? "待报价" : "待支付",
+    paymentExpiresAt: isQuoteOrder ? null : paymentExpiresAt(),
+    stockReservedAt: null,
+    stockReleasedAt: null,
     address: data.address,
     customRequest: productType === "normal" ? (data.customRequest || "") : data.customRequest,
     originalImageUrl: data.originalImageUrl || "",
@@ -6501,6 +6575,7 @@ async function createOrder(data) {
   }
   const connection = await pool.getConnection()
   let existingOrderId = ""
+  let finiteOrderInventory = false
   try {
     await connection.beginTransaction()
     if (requestKey) {
@@ -6548,6 +6623,7 @@ async function createOrder(data) {
         })
         item.inventoryMode = inventoryMode
         if (inventoryMode === "FINITE") {
+          finiteOrderInventory = true
           const [stockResult] = await connection.query(
             `UPDATE products
              SET stock_mode='FINITE',
@@ -6561,8 +6637,9 @@ async function createOrder(data) {
           }
         }
       }
+      if (finiteOrderInventory) order.stockReservedAt = new Date()
       await connection.query(
-        "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, user_token, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, store_attribution_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :userToken, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :storeAttributionId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
+        "INSERT INTO orders (id, product_id, customer_name, phone, product_name, amount, status, payment_status, transaction_id, openid, user_id, address, custom_request, original_image_url, original_image_urls, ai_preview_url, final_design_url, category, is_custom_order, remark, inviter_code, created_at, payment_expires_at, stock_reserved_at, stock_released_at, delivery_type, pickup_store_id, pickup_code, pickup_qrcode_url, pickup_status, user_latitude, user_longitude, pickup_distance, referrer_store_id, store_attribution_id, source_type, source_store_id, source_store_code, store_order_type, is_store_member_order, store_operator_user_id, store_operator_phone, store_operator_openid, store_operator_role, store_operator_name, referrer_user_id, parent_referrer_user_id, supplier_store_id, referral_commission, pickup_service_fee, supplier_settlement_amount, custom_commission_amount, store_settlement_status) VALUES (:id, :productId, :customerName, :phone, :productName, :amount, :status, :paymentStatus, :transactionId, :openid, :userId, :address, :customRequest, :originalImageUrl, :originalImageUrlsJson, :aiPreviewUrl, :finalDesignUrl, :category, :isCustomOrder, :remark, :inviterCode, :createdAt, :paymentExpiresAt, :stockReservedAt, :stockReleasedAt, :deliveryType, :pickupStoreId, :pickupCode, :pickupQrCodeUrl, :pickupStatus, :userLatitude, :userLongitude, :pickupDistance, :referrerStoreId, :storeAttributionId, :sourceType, :sourceStoreId, :sourceStoreCode, :storeOrderType, :isStoreMemberOrder, :storeOperatorUserId, :storeOperatorPhone, :storeOperatorOpenid, :storeOperatorRole, :storeOperatorName, :referrerUserId, :parentReferrerUserId, :supplierStoreId, :referralCommission, :pickupServiceFee, :supplierSettlementAmount, :customCommissionAmount, :storeSettlementStatus)",
         {
           ...mysqlOrderParams(order),
           originalImageUrlsJson: JSON.stringify(order.originalImageUrls || []),
@@ -6583,6 +6660,25 @@ async function createOrder(data) {
              :paidAmountCents, :inventoryMode, :customizationJson)`,
           { ...item, orderId: order.id }
         )
+        if (item.inventoryMode === "FINITE") {
+          await connection.query(
+            `INSERT INTO order_inventory_reservations
+              (order_item_id, order_id, product_id, quantity, created_at)
+             VALUES (:orderItemId, :orderId, :productId, :quantity, NOW())`,
+            {
+              orderItemId: item.id,
+              orderId: order.id,
+              productId: item.productId,
+              quantity: item.quantity
+            }
+          )
+        }
+      }
+      if (finiteOrderInventory && order.paymentExpiresAt) {
+        await enqueueOrderPaymentTimeout(connection, {
+          orderId: order.id,
+          expiresAt: order.paymentExpiresAt
+        })
       }
       if (order.storeAttributionId) {
         await connection.query(
@@ -6698,7 +6794,7 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
       }
       writeJsonFile(ordersFile, orders)
       await createRewardsForOrder(orders[index])
-      await createStoreSettlementRecordsForOrder(orders[index])
+      await createStoreReferralCommissionForOrder(orders[index])
       await createSalesAgentCommissionForOrder(orders[index])
       console.log("[pay] markOrderPaid updated json order", { orderId, hasTransactionId: !!transactionId })
       return true
@@ -6708,29 +6804,25 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
   }
   let affectedRows = 0
   let notificationQueued = false
+  let financeQueued = false
   let paymentOutcome = ""
-  if (options.queueWecomNotification) {
-    const result = await markOrderPaidAndEnqueue({
-      pool,
-      orderId,
-      transactionId,
-      notificationType: WECOM_ORDER_PAID_NOTIFICATION
-    })
-    affectedRows = result.updated ? 1 : 0
-    notificationQueued = result.queued
-    paymentOutcome = result.outcome || ""
-    setImmediate(() => runWecomOrderNotificationWorkerSafe())
-  } else {
-    const result = await query(
-      "UPDATE orders SET payment_status = '已支付', status = '待发货', transaction_id = :transactionId, paid_at = NOW() WHERE id = :orderId AND payment_status <> '已支付'",
-      { orderId, transactionId }
-    )
-    affectedRows = Number(result.affectedRows || 0)
-  }
+  const result = await markOrderPaidAndEnqueue({
+    pool,
+    orderId,
+    transactionId,
+    notificationType: options.queueWecomNotification ? WECOM_ORDER_PAID_NOTIFICATION : ""
+  })
+  affectedRows = result.updated ? 1 : 0
+  notificationQueued = result.queued
+  financeQueued = result.financeQueued
+  paymentOutcome = result.outcome || ""
+  setImmediate(() => runPaymentFinanceWorkerSafe())
+  if (options.queueWecomNotification) setImmediate(() => runWecomOrderNotificationWorkerSafe())
   console.log("[pay] markOrderPaid mysql update", {
     orderId,
     affectedRows,
     notificationQueued,
+    financeQueued,
     hasTransactionId: !!transactionId,
     paymentOutcome
   })
@@ -6743,11 +6835,184 @@ async function markOrderPaid(orderId, transactionId = "", options = {}) {
       order.pickupQrCodeUrl = order.pickupQrCodeUrl || await generatePickupQrCode(order.pickupCode)
       await saveOrders([order])
     }
-    await createRewardsForOrder(order)
-    await createStoreSettlementRecordsForOrder(order)
-    await createSalesAgentCommissionForOrder(order)
   }
   return true
+}
+
+function isPaymentFinanceEligibleOrder(order = {}) {
+  const status = String(order.status || "").trim().toLowerCase()
+  const paymentStatus = String(order.paymentStatus || order.payment_status || "").trim().toLowerCase()
+  const refundStatus = String(order.refundStatus || order.refund_status || "").trim().toLowerCase()
+  const afterSalesStatus = String(order.afterSalesStatus || order.after_sales_status || "").trim().toLowerCase()
+  if (!isOrderPaidForPickupCredential(order)) return false
+  if (["已取消", "cancelled", "canceled", "已关闭", "closed", "已作废", "void", "paid_after_cancel", "已退款", "退款中", "退款处理中", "refunded", "refund_processing"].includes(status)) return false
+  if (["已退款", "退款处理中", "refunded", "refund_pending"].includes(paymentStatus)) return false
+  if (["退款成功", "退款处理中", "refunded", "processing", "refund_pending"].includes(refundStatus)) return false
+  return !["refunded", "refund_pending"].includes(afterSalesStatus)
+}
+
+async function processPaymentFinanceEvent(record) {
+  const orderId = String(record.aggregate_id || "").trim()
+  if (!orderId) throw new Error("支付财务事件缺少订单号")
+  const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!order) throw new Error("支付财务事件关联订单不存在")
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [events] = await connection.query(
+      `SELECT id, status, locked_by
+       FROM payment_finance_outbox
+       WHERE id=:id FOR UPDATE`,
+      { id: record.id }
+    )
+    const event = events[0]
+    if (!event || event.status !== "PROCESSING" || event.locked_by !== record.locked_by) {
+      throw new Error("支付财务事件认领已失效")
+    }
+    const [orders] = await connection.query(
+      `SELECT status, payment_status, refund_status, after_sales_status
+       FROM orders WHERE id=:orderId FOR UPDATE`,
+      { orderId }
+    )
+    if (!orders[0]) throw new Error("支付财务事件关联订单不存在")
+    const lockedOrder = {
+      ...order,
+      status: orders[0].status || order.status,
+      paymentStatus: orders[0].payment_status || order.paymentStatus,
+      refundStatus: orders[0].refund_status || order.refundStatus,
+      afterSalesStatus: orders[0].after_sales_status || order.afterSalesStatus
+    }
+    if (!isPaymentFinanceEligibleOrder(lockedOrder)) {
+      await completePaymentFinanceEvent(connection, record, "SKIPPED")
+      await connection.commit()
+      console.log("[payment-finance-outbox] skipped", { orderId, reason: "order_not_eligible" })
+      return { skipped: true }
+    }
+
+    await createRewardsForOrder(lockedOrder, connection)
+    await createStoreReferralCommissionForOrder(lockedOrder, connection)
+    await createSalesAgentCommissionForOrder(lockedOrder, connection)
+    await completePaymentFinanceEvent(connection, record)
+    await connection.commit()
+    console.log("[payment-finance-outbox] completed", { orderId, eventId: record.id })
+    return { completed: true }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+async function runPaymentFinanceWorker() {
+  if (!pool || paymentFinanceWorkerRunning) return
+  paymentFinanceWorkerRunning = true
+  try {
+    const records = await claimDuePaymentFinanceEvents({
+      pool,
+      limit: 10,
+      lockMinutes: 5,
+      maxAttempts: PAYMENT_FINANCE_MAX_ATTEMPTS
+    })
+    for (const record of records) {
+      try {
+        await processPaymentFinanceEvent(record)
+      } catch (error) {
+        const updated = await failPaymentFinanceEvent({
+          pool,
+          record,
+          maxAttempts: PAYMENT_FINANCE_MAX_ATTEMPTS,
+          retryMinutes: 1,
+          error
+        })
+        console.error("[payment-finance-outbox] failed", {
+          orderId: record.aggregate_id,
+          eventId: record.id,
+          attemptCount: Number(record.attempt_count || 0),
+          updated,
+          message: String(error.message || "支付财务事件处理失败").slice(0, 300)
+        })
+      }
+    }
+  } finally {
+    paymentFinanceWorkerRunning = false
+  }
+}
+
+async function runPaymentFinanceWorkerSafe() {
+  try {
+    await runPaymentFinanceWorker()
+  } catch (error) {
+    console.error("[payment-finance-outbox] worker error", { message: String(error.message || "worker error").slice(0, 300) })
+  }
+}
+
+function startPaymentFinanceWorker() {
+  if (paymentFinanceWorkerTimer) return
+  setTimeout(() => runPaymentFinanceWorkerSafe(), 1000).unref()
+  paymentFinanceWorkerTimer = setInterval(() => runPaymentFinanceWorkerSafe(), 30000)
+  paymentFinanceWorkerTimer.unref()
+  console.log("[payment-finance-outbox] worker ready", { maxAttempts: PAYMENT_FINANCE_MAX_ATTEMPTS })
+}
+
+async function runOrderPaymentTimeoutWorker() {
+  if (!pool || orderPaymentTimeoutWorkerRunning) return
+  orderPaymentTimeoutWorkerRunning = true
+  try {
+    const records = await claimDueOrderPaymentTimeoutJobs({
+      pool,
+      limit: 20,
+      lockMinutes: 5,
+      maxAttempts: ORDER_PAYMENT_TIMEOUT_MAX_ATTEMPTS
+    })
+    for (const record of records) {
+      try {
+        const result = await closeOrderForPaymentTimeout({ pool, record })
+        console.log("[order-payment-timeout] processed", {
+          orderId: record.order_id,
+          outcome: result.outcome,
+          releasedQuantity: Number(result.release?.releasedQuantity || 0)
+        })
+      } catch (error) {
+        const updated = await failOrderPaymentTimeoutJob({
+          pool,
+          record,
+          maxAttempts: ORDER_PAYMENT_TIMEOUT_MAX_ATTEMPTS,
+          retryMinutes: 1,
+          error
+        })
+        console.error("[order-payment-timeout] failed", {
+          orderId: record.order_id,
+          attemptCount: Number(record.attempt_count || 0),
+          updated,
+          message: String(error.message || "支付超时任务失败").slice(0, 300)
+        })
+      }
+    }
+  } finally {
+    orderPaymentTimeoutWorkerRunning = false
+  }
+}
+
+async function runOrderPaymentTimeoutWorkerSafe() {
+  try {
+    await runOrderPaymentTimeoutWorker()
+  } catch (error) {
+    console.error("[order-payment-timeout] worker error", {
+      message: String(error.message || "worker error").slice(0, 300)
+    })
+  }
+}
+
+function startOrderPaymentTimeoutWorker() {
+  if (orderPaymentTimeoutWorkerTimer) return
+  setTimeout(() => runOrderPaymentTimeoutWorkerSafe(), 1000).unref()
+  orderPaymentTimeoutWorkerTimer = setInterval(() => runOrderPaymentTimeoutWorkerSafe(), 30000)
+  orderPaymentTimeoutWorkerTimer.unref()
+  console.log("[order-payment-timeout] worker ready", {
+    paymentTimeoutMinutes: ORDER_PAYMENT_TIMEOUT_MINUTES,
+    maxAttempts: ORDER_PAYMENT_TIMEOUT_MAX_ATTEMPTS
+  })
 }
 
 function isWecomOrderNotificationEnabled() {
@@ -7145,7 +7410,7 @@ async function markOrderPickedUp(orderId, options = {}) {
     completedAt: orders[index].completedAt || now
   }
   await saveOrders([orders[index]])
-  await createStoreSettlementRecordsForOrder(orders[index])
+  await createPickupServiceFeeForVerifiedOrder(orders[index])
   await recordOrderStateAudit(previous, orders[index], {
     source: "admin_force_pickup",
     operatorId: options.operatorId || "admin",
@@ -7248,7 +7513,7 @@ async function applyAfterSalesRequest(data) {
   const orderId = data.orderId || data.id
   const index = orders.findIndex(order => order.id === orderId)
   if (index < 0) throw new Error("订单不存在")
-  if (!orderBelongsToIdentity(orders[index], data)) throw new Error("无权操作该订单")
+  if (!orderBelongsToIdentity(orders[index], data)) throw httpError(403, "无权操作该订单")
   if (!canApplyAfterSales(orders[index])) throw httpError(400, "当前订单暂不支持申请售后")
   const currentAfterSalesStatus = normalizeAfterSalesStatus(orders[index].afterSalesStatus || orders[index].refundStatus)
   if (["requested", "approved", "refund_pending"].includes(currentAfterSalesStatus) || ["待审核", "退款处理中", "售后处理中"].includes(orders[index].refundStatus)) {
@@ -7616,14 +7881,34 @@ async function markRefundSuccess(order, refundData = {}) {
           refundAmount: centsToYuan(refundedCents)
         }
       )
-      if (fullRefund && canReleaseOrderInventory({
+      const inventoryRefundOrder = {
         ...currentRow,
         status: nextStatus,
         paymentStatus: nextPaymentStatus,
         refundStatus: nextRefundStatus,
         afterSalesStatus: nextAfterSalesStatus
-      })) {
-        await releaseOrderInventory(connection, order.id, "订单全额退款")
+      }
+      if (canRestockRefundedInventory(inventoryRefundOrder)) {
+        if (fullRefund) {
+          await releaseOrderInventory(connection, order.id, {
+            reason: "订单全额退款",
+            sourceType: "full_refund",
+            sourceId: refundRecord.id,
+            releaseRemaining: true
+          })
+        } else {
+          for (const refundItem of refundItems) {
+            const refundQuantity = Number(refundItem.refund_quantity || 0)
+            await releaseOrderItemInventory(connection, {
+              orderItemId: refundItem.order_item_id,
+              requestedQuantity: refundQuantity,
+              businessKey: `refund:${refundRecord.id}:${refundItem.id}:${refundItem.order_item_id}`,
+              reason: "订单部分退款",
+              sourceType: "partial_refund",
+              sourceId: refundRecord.id
+            })
+          }
+        }
       }
       await connection.commit()
       resultOrder = (await getOrders({ keyword: order.id })).find(item => item.id === order.id)
@@ -8285,7 +8570,7 @@ async function saveCustomers(customers) {
       `INSERT INTO customers (id, name, nickname, phone, openid, avatar_url, wechat, orders, total_amount, last_contact, invite_code, shopping_money)
        VALUES (:id, :name, :nickname, :phone, :openid, :avatarUrl, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)
        ON DUPLICATE KEY UPDATE name = VALUES(name), nickname = VALUES(nickname), openid = VALUES(openid), avatar_url = VALUES(avatar_url), wechat = VALUES(wechat), orders = VALUES(orders), total_amount = VALUES(total_amount), last_contact = VALUES(last_contact), invite_code = VALUES(invite_code), shopping_money = VALUES(shopping_money)`,
-      customer
+      { ...customer, lastContact: customer.lastContact || null }
     )
   }
   return list
@@ -8792,7 +9077,7 @@ async function insertRewardRecord(record, connection = null) {
   return Number(result.affectedRows || 0) === 1
 }
 
-async function createRewardsForOrder(order) {
+async function createRewardsForOrder(order, connection = null) {
   const normalized = normalizeOrder(order, 0)
   if (!isOrderPaidForPickupCredential(normalized) || isOrderRefunded(normalized)) return []
   if (normalized.referrerStoreId) return []
@@ -8841,14 +9126,15 @@ async function createRewardsForOrder(order) {
   if (parentPhone && Number(secondRewardAmount) > 0 && !hasReward(parentPhone, 2)) candidates.push(makeRecord(parentPhone, 2, secondRewardAmount))
   if (pool) {
     for (const record of candidates) {
-      await insertRewardRecord(record)
+      await insertRewardRecord(record, connection)
       await ensureFinancialItemAllocations({
         ledgerType: "reward",
         recordId: record.id,
         orderId: normalized.id,
         amountCents: yuanToCents(record.amount, "推广奖励")
-      })
+      }, connection)
     }
+    if (connection) return candidates
     const rows = await query("SELECT * FROM reward_records WHERE order_id=:orderId ORDER BY created_at DESC", {
       orderId: normalized.id
     })
@@ -8889,11 +9175,11 @@ async function ensureReferralRewardRecords() {
     }
     if (!isOrderPaidForPickupCredential(order)) continue
     if (order.referrerStoreId) {
-      await createStoreSettlementRecordsForOrder(order)
+      if (!pool) await createStoreReferralCommissionForOrder(order)
       storeOrdersChecked += 1
     }
     if (!order.referrerStoreId && (order.referrerUserId || order.parentReferrerUserId || order.inviterCode)) {
-      await createRewardsForOrder(order)
+      if (!pool) await createRewardsForOrder(order)
       personalOrdersChecked += 1
     }
     if (isOrderRewardConfirmed(order)) await confirmOrderRewards(order.id)
@@ -9062,9 +9348,11 @@ async function initDb() {
     return
   }
   if (!mysql) throw new Error("缺少 mysql2；如需本地 JSON 模式，请显式设置 STORAGE_MODE=json")
-  const rootPool = mysql.createPool({ ...dbConfig, database: undefined })
-  await rootPool.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`)
-  await rootPool.end()
+  if (process.env.MYSQL_TEST_DATABASE_READY !== "true") {
+    const rootPool = mysql.createPool({ ...dbConfig, database: undefined })
+    await rootPool.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`)
+    await rootPool.end()
+  }
   pool = mysql.createPool(dbConfig)
   await query(`CREATE TABLE IF NOT EXISTS home_config (
     id INT PRIMARY KEY,
@@ -9166,6 +9454,9 @@ async function initDb() {
     refund_id VARCHAR(120),
     refund_success_at DATETIME,
     created_at DATETIME,
+    payment_expires_at DATETIME,
+    stock_reserved_at DATETIME,
+    stock_released_at DATETIME,
     paid_at DATETIME,
     completed_at DATETIME,
     refund_at DATETIME
@@ -9208,6 +9499,10 @@ async function initDb() {
   await ensureColumn("orders", "refund_id", "VARCHAR(120)")
   await ensureColumn("orders", "refund_success_at", "DATETIME")
   await ensureColumn("orders", "paid_at", "DATETIME")
+  await ensureColumn("orders", "payment_expires_at", "DATETIME")
+  await ensureColumn("orders", "stock_reserved_at", "DATETIME")
+  await ensureColumn("orders", "stock_released_at", "DATETIME")
+  await ensureIndex("orders", "idx_orders_payment_timeout", "INDEX", ["payment_status", "payment_expires_at"])
   await ensureColumn("orders", "completed_at", "DATETIME")
   await ensureColumn("orders", "refund_at", "DATETIME")
   await ensureColumn("orders", "delivery_type", "VARCHAR(20) DEFAULT 'delivery'")
@@ -9347,11 +9642,54 @@ async function initDb() {
     order_item_id VARCHAR(60) PRIMARY KEY,
     order_id VARCHAR(32) NOT NULL,
     product_id VARCHAR(32) NOT NULL,
-    quantity INT UNSIGNED NOT NULL,
+    quantity INT UNSIGNED NOT NULL COMMENT '累计已释放数量',
     reason VARCHAR(120),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_inventory_release_order (order_id),
     INDEX idx_inventory_release_product (product_id)
+  )`)
+  await ensureColumn("order_inventory_releases", "updated_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+  await query(`CREATE TABLE IF NOT EXISTS order_inventory_release_events (
+    id VARCHAR(80) PRIMARY KEY,
+    business_key VARCHAR(180) NOT NULL,
+    order_item_id VARCHAR(60) NOT NULL,
+    order_id VARCHAR(32) NOT NULL,
+    product_id VARCHAR(32) NOT NULL,
+    quantity INT UNSIGNED NOT NULL,
+    reason VARCHAR(120),
+    source_type VARCHAR(40) NOT NULL,
+    source_id VARCHAR(80) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_inventory_release_event_business (business_key),
+    INDEX idx_inventory_release_event_item (order_item_id),
+    INDEX idx_inventory_release_event_order (order_id),
+    INDEX idx_inventory_release_event_source (source_type, source_id)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_inventory_reservations (
+    order_item_id VARCHAR(60) PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    product_id VARCHAR(32) NOT NULL,
+    quantity INT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_inventory_reservation_order (order_id),
+    INDEX idx_inventory_reservation_product (product_id)
+  )`)
+  await query(`CREATE TABLE IF NOT EXISTS order_payment_timeout_jobs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    attempt_count INT NOT NULL DEFAULT 0,
+    available_at DATETIME NOT NULL,
+    locked_at DATETIME,
+    locked_by VARCHAR(64),
+    processed_at DATETIME,
+    last_error VARCHAR(500),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_payment_timeout_order (order_id),
+    INDEX idx_payment_timeout_due (status, available_at),
+    INDEX idx_payment_timeout_lock (status, locked_at)
   )`)
   await query(`CREATE TABLE IF NOT EXISTS refund_records (
     id VARCHAR(60) PRIMARY KEY,
@@ -9455,6 +9793,35 @@ async function initDb() {
   )`)
   await ensureColumn("order_notification_records", "claim_token", "VARCHAR(64)")
   await ensureColumn("order_notification_records", "processing_started_at", "DATETIME")
+  await query(`CREATE TABLE IF NOT EXISTS payment_finance_outbox (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    event_type VARCHAR(60) NOT NULL,
+    business_key VARCHAR(180) NOT NULL,
+    aggregate_type VARCHAR(40) NOT NULL,
+    aggregate_id VARCHAR(40) NOT NULL,
+    payload_json JSON,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    attempt_count INT NOT NULL DEFAULT 0,
+    available_at DATETIME,
+    locked_at DATETIME,
+    locked_by VARCHAR(64),
+    processed_at DATETIME,
+    last_error VARCHAR(500),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_payment_finance_business (business_key),
+    INDEX idx_payment_finance_due (event_type, status, available_at),
+    INDEX idx_payment_finance_order (aggregate_id, event_type)
+  )`)
+  await ensureColumn("payment_finance_outbox", "payload_json", "JSON")
+  await ensureColumn("payment_finance_outbox", "available_at", "DATETIME")
+  await ensureColumn("payment_finance_outbox", "locked_at", "DATETIME")
+  await ensureColumn("payment_finance_outbox", "locked_by", "VARCHAR(64)")
+  await ensureColumn("payment_finance_outbox", "processed_at", "DATETIME")
+  await ensureColumn("payment_finance_outbox", "last_error", "VARCHAR(500)")
+  await ensureIndex("payment_finance_outbox", "uniq_payment_finance_business", "UNIQUE KEY", ["business_key"])
+  await ensureIndex("payment_finance_outbox", "idx_payment_finance_due", "INDEX", ["event_type", "status", "available_at"])
+  await ensureIndex("payment_finance_outbox", "idx_payment_finance_order", "INDEX", ["aggregate_id", "event_type"])
   await query(`CREATE TABLE IF NOT EXISTS partner_stores (
     id VARCHAR(40) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -9569,26 +9936,30 @@ async function initDb() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_promotion_relation_claim (relation_id)
   )`)
-  await query(
-    `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
-     SELECT invitee_phone, MIN(id), MIN(COALESCE(created_at,NOW()))
-     FROM promotion_relations
-     WHERE invitee_phone IS NOT NULL AND invitee_phone<>''
-     GROUP BY invitee_phone`
-  )
+  if (STARTUP_HISTORY_COMPENSATION_ENABLED) {
+    await query(
+      `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
+       SELECT invitee_phone, MIN(id), MIN(COALESCE(created_at,NOW()))
+       FROM promotion_relations
+       WHERE invitee_phone IS NOT NULL AND invitee_phone<>''
+       GROUP BY invitee_phone`
+    )
+  }
   await query(`CREATE TABLE IF NOT EXISTS promotion_relation_claims (
     invitee_phone VARCHAR(30) PRIMARY KEY,
     relation_id VARCHAR(32) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_promotion_relation_claim (relation_id)
   )`)
-  await query(
-    `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
-     SELECT invitee_phone, MIN(id), MIN(COALESCE(created_at,NOW()))
-     FROM promotion_relations
-     WHERE invitee_phone IS NOT NULL AND invitee_phone<>''
-     GROUP BY invitee_phone`
-  )
+  if (STARTUP_HISTORY_COMPENSATION_ENABLED) {
+    await query(
+      `INSERT IGNORE INTO promotion_relation_claims (invitee_phone, relation_id, created_at)
+       SELECT invitee_phone, MIN(id), MIN(COALESCE(created_at,NOW()))
+       FROM promotion_relations
+       WHERE invitee_phone IS NOT NULL AND invitee_phone<>''
+       GROUP BY invitee_phone`
+    )
+  }
   await query(`CREATE TABLE IF NOT EXISTS promotion_visits (
     id VARCHAR(32) PRIMARY KEY,
     invite VARCHAR(64),
@@ -9689,11 +10060,13 @@ async function initDb() {
     INDEX idx_sales_agent_commission_order (order_id)
   )`)
   await ensureColumn("sales_agent_commissions", "business_key", "VARCHAR(180)")
-  await query(
-    `UPDATE sales_agent_commissions
-     SET business_key=CONCAT('legacy:',id)
-     WHERE business_key IS NULL OR business_key=''`
-  )
+  if (STARTUP_HISTORY_COMPENSATION_ENABLED) {
+    await query(
+      `UPDATE sales_agent_commissions
+       SET business_key=CONCAT('legacy:',id)
+       WHERE business_key IS NULL OR business_key=''`
+    )
+  }
   await ensureIndex("sales_agent_commissions", "uniq_sales_agent_business", "UNIQUE KEY", ["business_key"])
   await removeIndexIfExists("sales_agent_commissions", "uniq_sales_agent_order_type")
   await query(`CREATE TABLE IF NOT EXISTS system_settings (
@@ -9702,28 +10075,30 @@ async function initDb() {
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`)
 
-  const homeRows = await query("SELECT id FROM home_config WHERE id = 1")
-  if (!homeRows.length) {
-    const home = normalizeHome(readSeed("home.json", {}))
-    await query("INSERT INTO home_config (id, data) VALUES (1, :data)", { data: JSON.stringify(home) })
-    await saveProducts(home.products)
-  }
-  const orderRows = await query("SELECT id FROM orders LIMIT 1")
-  if (!orderRows.length) await saveOrders(readSeed("orders.json", []))
-  const customerRows = await query("SELECT id FROM customers LIMIT 1")
-  if (!customerRows.length) {
-    for (const customer of readSeed("customers.json", []).map(normalizeCustomer)) {
-      await query(
-        "INSERT INTO customers (id, name, nickname, phone, openid, avatar_url, wechat, orders, total_amount, last_contact, invite_code, shopping_money) VALUES (:id, :name, :nickname, :phone, :openid, :avatarUrl, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)",
-        customer
-      )
+  if (process.env.MYSQL_TEST_SKIP_SEED_DATA !== "true") {
+    const homeRows = await query("SELECT id FROM home_config WHERE id = 1")
+    if (!homeRows.length) {
+      const home = normalizeHome(readSeed("home.json", {}))
+      await query("INSERT INTO home_config (id, data) VALUES (1, :data)", { data: JSON.stringify(home) })
+      await saveProducts(home.products)
     }
+    const orderRows = await query("SELECT id FROM orders LIMIT 1")
+    if (!orderRows.length) await saveOrders(readSeed("orders.json", []))
+    const customerRows = await query("SELECT id FROM customers LIMIT 1")
+    if (!customerRows.length) {
+      for (const customer of readSeed("customers.json", []).map(normalizeCustomer)) {
+        await query(
+          "INSERT INTO customers (id, name, nickname, phone, openid, avatar_url, wechat, orders, total_amount, last_contact, invite_code, shopping_money) VALUES (:id, :name, :nickname, :phone, :openid, :avatarUrl, :wechat, :orders, :totalAmount, :lastContact, :inviteCode, :shoppingMoney)",
+          customer
+        )
+      }
+    }
+    const settingRows = await query("SELECT id FROM system_settings WHERE id = 1")
+    if (!settingRows.length) {
+      await query("INSERT INTO system_settings (id, data) VALUES (1, :data)", { data: JSON.stringify(readSeed("settings.json", {})) })
+    }
+    await migrateProductCategoriesToCanonical()
   }
-  const settingRows = await query("SELECT id FROM system_settings WHERE id = 1")
-  if (!settingRows.length) {
-    await query("INSERT INTO system_settings (id, data) VALUES (1, :data)", { data: JSON.stringify(readSeed("settings.json", {})) })
-  }
-  await migrateProductCategoriesToCanonical()
 }
 
 async function ensureColumn(table, column, definition) {
@@ -10429,6 +10804,13 @@ async function handle(req, res) {
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
     const sid = parseCookies(req).vsc_sid
     if (sid) sessions.delete(sid)
+    const authorization = String(req.headers.authorization || "")
+    const userToken = String(
+      req.headers["x-user-session"] ||
+      req.headers["x-user-token"] ||
+      (authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7) : "")
+    ).trim()
+    if (userToken) await revokeUserSession(userToken)
     sendJson(res, 200, { ok: true })
     return
   }
@@ -10822,7 +11204,16 @@ async function handle(req, res) {
     return
   }
 
-  if (url.pathname === "/api/ai/preview" && req.method === "POST") {
+  if (url.pathname === "/api/ai/preview") {
+    const decision = aiPreviewRouteDecision({
+      enabled: AI_PREVIEW_ENABLED,
+      isAdmin: isAuthed(req),
+      method: req.method
+    })
+    if (decision.status !== 200) {
+      sendJson(res, decision.status, { ok: false, message: decision.message })
+      return
+    }
     sendJson(res, 200, { ok: true, data: await createAiPreview(JSON.parse((await readBody(req)).toString() || "{}")) })
     return
   }
@@ -10882,18 +11273,6 @@ async function handle(req, res) {
         } : {}
       }
     })
-    return
-  }
-
-  if (url.pathname === "/api/auth/logout" && req.method === "POST") {
-    const authorization = String(req.headers.authorization || "")
-    const token = String(
-      req.headers["x-user-session"] ||
-      req.headers["x-user-token"] ||
-      (authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7) : "")
-    ).trim()
-    if (token) await revokeUserSession(token)
-    sendJson(res, 200, { ok: true })
     return
   }
 
@@ -11218,7 +11597,7 @@ async function handle(req, res) {
     return
   }
 
-  if (!url.pathname.startsWith("/api/admin") && url.pathname !== "/api/home" && url.pathname !== "/api/theme/current" && url.pathname !== "/api/upload" && url.pathname !== "/api/upload/public" && url.pathname !== "/api/ai/preview") {
+  if (!url.pathname.startsWith("/api/admin") && url.pathname !== "/api/home" && url.pathname !== "/api/theme/current" && url.pathname !== "/api/upload" && url.pathname !== "/api/upload/public") {
     sendJson(res, 404, { ok: false, message: "Not found" })
     return
   }
@@ -11437,7 +11816,8 @@ async function handle(req, res) {
     const previousOrders = await getOrders()
     for (const next of incoming) {
       const previous = previousOrders.find(item => item.id === next.id)
-      if (previous) assertAdminTransition(previous, next)
+      if (!previous) throw httpError(400, "后台订单接口仅允许编辑已有订单，不能创建或导入新订单")
+      assertAdminTransition(previous, next)
     }
     const saved = await saveOrders(incoming)
     for (const next of incoming) {
@@ -12141,15 +12521,29 @@ ensureUploadDirectoryGuards()
 
 initDb().then(async () => {
   await restoreUserSessions().catch(error => console.warn("[auth-state] session restore check failed", { message: error.message }))
-  await ensureLegacyStoreMembers().catch(error => console.warn("门店成员兼容迁移失败：", error.message))
-  await ensureReferralRewardRecords().catch(error => console.warn("推广收益补偿检查失败：", error.message))
-  cleanupOrphanTempUploads(true).catch(error => console.warn("临时图片清理失败：", error.message))
-  await compensateMissingWecomOrderNotifications().catch(error => {
-    console.error("[wecom-order-notification] compensation error", { error: safeWecomError(error) })
-  })
-  startWecomOrderNotificationWorker()
-  startWechatFulfillmentWorker()
-  startRefundSyncWorker()
+  if (STARTUP_HISTORY_COMPENSATION_ENABLED) {
+    await ensureLegacyStoreMembers().catch(error => console.warn("门店成员兼容迁移失败：", error.message))
+    await ensureReferralRewardRecords().catch(error => console.warn("推广收益补偿检查失败：", error.message))
+  } else {
+    console.log("[startup-history-compensation] disabled; use reviewed backfill commands explicitly")
+  }
+  if (process.env.MYSQL_TEST_ISOLATED !== "true") {
+    cleanupOrphanTempUploads(true).catch(error => console.warn("临时图片清理失败：", error.message))
+    if (STARTUP_HISTORY_COMPENSATION_ENABLED) {
+      await compensateMissingWecomOrderNotifications().catch(error => {
+        console.error("[wecom-order-notification] compensation error", { error: safeWecomError(error) })
+      })
+    }
+  }
+  if (process.env.MYSQL_TEST_DISABLE_WORKERS !== "true") {
+    startOrderPaymentTimeoutWorker()
+    startPaymentFinanceWorker()
+    startWecomOrderNotificationWorker()
+    startWechatFulfillmentWorker()
+    startRefundSyncWorker()
+  } else {
+    console.log("[isolated-mysql] background workers disabled for deterministic acceptance")
+  }
   const serverHandler = (req, res) => {
     handle(req, res).catch(error => {
       console.error(error)

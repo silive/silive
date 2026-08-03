@@ -32,12 +32,6 @@ function getLoginState() {
   const hasToken = !!(userSession || userToken)
   const hasPhone = !!phone
   const isLoggedIn = !!(hasToken && openid && hasPhone)
-  console.log("[auth-state]", {
-    isLoggedIn,
-    hasPhone,
-    hasToken,
-    hasOpenid: !!openid
-  })
   return {
     loggedIn: isLoggedIn,
     isLoggedIn,

@@ -19,7 +19,7 @@ function loadEnv(file) {
 }
 
 async function main() {
-  loadEnv(path.join(__dirname, "..", ".env"))
+  if (process.env.MYSQL_TEST_SKIP_DOTENV !== "true") loadEnv(path.join(__dirname, "..", ".env"))
   const database = process.env.MYSQL_TEST_DATABASE || ""
   if (!/^vsc_security_test_[a-z0-9_]+$/i.test(database)) {
     throw new Error("拒绝运行：MYSQL_TEST_DATABASE 必须使用 vsc_security_test_ 前缀的隔离测试库")
@@ -72,7 +72,7 @@ async function main() {
       transactionId: `TX${suffix}`,
       notificationType: notificationTypes[0]
     })
-    assert.deepStrictEqual(success, { updated: true, queued: true, outcome: "PAID" })
+    assert.deepStrictEqual(success, { updated: true, queued: true, financeQueued: true, outcome: "PAID" })
     const [[successOrder]] = await pool.query("SELECT payment_status FROM orders WHERE id = ?", [successOrderId])
     const [[successNotification]] = await pool.query(
       "SELECT status FROM order_notification_records WHERE order_id = ? AND notification_type = ?",
@@ -80,6 +80,11 @@ async function main() {
     )
     assert.strictEqual(successOrder.payment_status, "已支付")
     assert.strictEqual(successNotification.status, "PENDING")
+    const [[successFinanceEvent]] = await pool.query(
+      "SELECT status FROM payment_finance_outbox WHERE aggregate_id = ?",
+      [successOrderId]
+    )
+    assert.strictEqual(successFinanceEvent.status, "PENDING")
     await assert.rejects(() => sendWecomMarkdown({
       webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-only",
       content: "test",
@@ -95,7 +100,7 @@ async function main() {
     await assert.rejects(() => markOrderPaidAndEnqueue({
       pool,
       orderId: rollbackOrderId,
-      transactionId: `TXRB${suffix}`,
+      transactionId: "",
       notificationType: null
     }))
     const [[rollbackOrder]] = await pool.query("SELECT payment_status FROM orders WHERE id = ?", [rollbackOrderId])
@@ -136,11 +141,17 @@ async function main() {
     ])
     assert.strictEqual(concurrentResults.filter(item => item.updated).length, 1)
     assert.strictEqual(concurrentResults.filter(item => item.queued).length, 1)
+    assert.strictEqual(concurrentResults.filter(item => item.financeQueued).length, 1)
     const [[concurrentCount]] = await pool.query(
       "SELECT COUNT(*) count FROM order_notification_records WHERE order_id = ? AND notification_type = ?",
       [concurrentOrderId, notificationTypes[2]]
     )
     assert.strictEqual(Number(concurrentCount.count), 1)
+    const [[concurrentFinanceCount]] = await pool.query(
+      "SELECT COUNT(*) count FROM payment_finance_outbox WHERE aggregate_id = ?",
+      [concurrentOrderId]
+    )
+    assert.strictEqual(Number(concurrentFinanceCount.count), 1)
 
     const recentOrderId = await insertOrder("ZNEW", {
       status: "待发货",
@@ -253,6 +264,7 @@ async function main() {
       missingOrderRollbackVerified: true,
       duplicateCallbackVerified: true,
       concurrentCallbackVerified: true,
+      paymentFinanceEventCommittedWithPayment: true,
       compensationVerified: true,
       compensationIdempotent: true,
       dueRetryVerified: true,
@@ -267,6 +279,7 @@ async function main() {
   } finally {
     if (orderIds.length) {
       await pool.query("DELETE FROM order_notification_records WHERE notification_type IN (?)", [notificationTypes]).catch(() => {})
+      await pool.query("DELETE FROM payment_finance_outbox WHERE aggregate_id IN (?)", [orderIds]).catch(() => {})
       await pool.query("DELETE FROM orders WHERE id IN (?)", [orderIds]).catch(() => {})
     }
     await pool.end()

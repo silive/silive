@@ -112,6 +112,7 @@ function displayStatus(order) {
   if (afterStatus === "remake") return "重新制作中"
   if (afterStatus === "reship") return "补发处理中"
   if (isRefunded(order)) return "已退款"
+  if (isPartiallyRefunded(order)) return "部分退款"
   if (isRefunding(order)) return "退款中"
   if (isUnpaid(order)) return "未支付"
   if (status === "制作中") return "制作中"
@@ -175,7 +176,11 @@ function isRefunding(order) {
 }
 
 function isRefunded(order) {
-  return afterSalesStatus(order) === "refunded" || order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功" || order.refundStatus === "部分退款成功"
+  return afterSalesStatus(order) === "refunded" || order.status === "已退款" || order.paymentStatus === "已退款" || order.refundStatus === "退款成功"
+}
+
+function isPartiallyRefunded(order = {}) {
+  return order.refundStatus === "部分退款成功"
 }
 
 function isCompletedWithinAfterSaleWindow(order) {
