@@ -24,7 +24,9 @@
     "test:blue-team-migrations-mysql": "node scripts/test-blue-team-migrations-mysql.js",
     "test:cleanup-test-orders-mysql": "node scripts/test-cleanup-test-orders-mysql.js",
     "test:order-ownership-mysql": "node scripts/test-order-ownership-mysql.js",
-    "test:ai-preview-access": "node scripts/test-ai-preview-access.js"
+    "test:ai-preview-access": "node scripts/test-ai-preview-access.js",
+    "test:production-operation-guard": "node scripts/test-production-operation-guard.js",
+    "test:production-operation-entry-mysql": "node scripts/test-blue-team-migrations-mysql.js"
   },
   "dependencies": {
     "mysql2": "^3.11.5",

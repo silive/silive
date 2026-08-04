@@ -4,7 +4,8 @@
 const fs = require("fs")
 const path = require("path")
 const mysql = require("mysql2/promise")
-const { connectionConfig, inspectMigrationReadiness } = require("./preflight-production-migration")
+const guard = require("./lib/production-operation-guard")
+const { connectionConfig, inspectMigrationReadiness, migrationFiles, structuralFingerprint } = require("./preflight-production-migration")
 
 const MIGRATION_DIR = path.join(__dirname, "..", "migrations", "2026-08-blue-team")
 
@@ -144,14 +145,53 @@ async function businessRowCounts(connection) {
   return result
 }
 
-async function runMigrations({ env = process.env, logger = console } = {}) {
-  const config = connectionConfig(env)
-  const files = fs.readdirSync(MIGRATION_DIR).filter(file => file.endsWith(".sql")).sort()
+function parseArgs(argv) {
+  const common = guard.parseCommonOperationArgs(argv)
+  const value = name => common.raw.find(arg => arg.startsWith(`${name}=`))?.slice(name.length + 1) || ""
+  return {
+    ...common,
+    preflightPlan: value("--preflight-plan"),
+    preflightPlanSha256: value("--preflight-plan-sha256"),
+    confirmSeven: common.raw.includes("--confirm-run-seven-migrations")
+  }
+}
+
+async function validateControlledExecution(connection, args, mode, env, repoRoot) {
+  if (mode.kind === "production" && !args.apply) throw new Error("安全拒绝：生产迁移必须明确提供 --apply")
+  if (args.apply && !args.confirmSeven) throw new Error("安全拒绝：apply 必须同时提供 --confirm-run-seven-migrations")
+  for (const [label, value] of Object.entries({ "--preflight-plan": args.preflightPlan, "--preflight-plan-sha256": args.preflightPlanSha256, "--backup-manifest": args.backupManifest, "--operation-log": args.operationLog })) if (!value) throw new Error(`安全拒绝：缺少 ${label}`)
+  const planRead = guard.readJson(args.preflightPlan, "preflight 计划文件", repoRoot)
+  if (planRead.sha256 !== args.preflightPlanSha256) throw new Error("安全拒绝：preflight 计划摘要不一致")
+  guard.assertPlanFresh(planRead.value, args.expectedGitSha)
+  const fingerprint = await guard.databaseFingerprint(connection); guard.assertFingerprint(fingerprint, args, mode)
+  if (planRead.value.database !== fingerprint.database || planRead.value.serverUuid !== fingerprint.serverUuid || planRead.value.databaseFingerprint !== guard.fingerprintDigest(fingerprint)) throw new Error("安全拒绝：计划数据库指纹不一致")
+  if (planRead.value.structureFingerprint !== await structuralFingerprint(connection)) throw new Error("安全拒绝：数据库结构在 dry-run 后发生变化")
+  const files = migrationFiles()
+  if (JSON.stringify(planRead.value.migrations) !== JSON.stringify(files)) throw new Error("安全拒绝：迁移文件或 SHA-256 已变化")
+  if (Number(planRead.value.uniqueIndexDuplicateCandidates || 0) !== 0 || planRead.value.conclusion !== "PASS") throw new Error("安全拒绝：preflight 存在重复候选或未通过")
+  if (String(env.AI_PREVIEW_ENABLED || "").toLowerCase() === "true") throw new Error("安全拒绝：AI_PREVIEW_ENABLED=true")
+  const backup = guard.assertBackupManifest(args.backupManifest, fingerprint, repoRoot)
+  const disk = guard.assertDiskSpace(path.dirname(backup.manifest.backupFile), backup.backupSize, env)
+  guard.requireExternalPath(args.operationLog, "--operation-log", repoRoot)
+  return { fingerprint, planRead, files: files.map(item => item.file), backup, disk }
+}
+
+async function runMigrations({ argv = process.argv.slice(2), env = process.env, logger = console, repoRoot = path.join(__dirname, "..") } = {}) {
+  const args = parseArgs(argv)
+  const mode = guard.assertMode(args, env, repoRoot)
+  const config = mode.kind === "isolated" ? connectionConfig(env) : guard.mysqlConfigForMode(env, mode)
+  const files = mode.kind === "isolated" ? fs.readdirSync(MIGRATION_DIR).filter(file => file.endsWith(".sql")).sort() : migrationFiles().map(item => item.file)
   if (!files.length) throw new Error("迁移目录为空")
   const pool = mysql.createPool(config)
   try {
     const connection = await pool.getConnection()
     try {
+      const controlled = mode.kind === "isolated" ? null : await validateControlledExecution(connection, args, mode, env, repoRoot)
+      if (controlled && !args.apply) {
+        const report = { ok: true, mode: mode.kind, dryRun: true, databaseFingerprint: guard.fingerprintDigest(controlled.fingerprint), migrationFileCount: files.length, migrationFiles: files, preflightPlanSha256: controlled.planRead.sha256, backupManifestSha256: controlled.backup.manifestSha256, disk: controlled.disk }
+        guard.createOperationLog(args.operationLog, { operation: "migration-dry-run", mode: mode.kind, gitSha: args.expectedGitSha, databaseFingerprint: report.databaseFingerprint, planSha256: controlled.planRead.sha256, confirmedAt: new Date().toISOString(), result: "PASS" }, repoRoot)
+        logger.log(JSON.stringify(report, null, 2)); return report
+      }
       const preflight = await inspectMigrationReadiness(connection, env)
       if (!preflight.ok) {
         const error = new Error(`MANUAL_REVIEW：迁移前检查发现 ${preflight.manualReviewCount} 项数据异常`)
@@ -192,6 +232,7 @@ async function runMigrations({ env = process.env, logger = console } = {}) {
       const finalRows = await businessRowCounts(connection)
       const report = {
         ok: true,
+        mode: mode.kind,
         database: config.database,
         migrationFileCount: files.length,
         executions,
@@ -202,6 +243,7 @@ async function runMigrations({ env = process.env, logger = console } = {}) {
         businessRowCountsAfter: finalRows,
         businessRowCountChanges: Object.fromEntries(Object.keys({ ...initialRows, ...finalRows }).map(table => [table, Number(finalRows[table] || 0) - Number(initialRows[table] || 0)]))
       }
+      if (controlled) guard.createOperationLog(args.operationLog, { operation: "migration-apply", mode: mode.kind, gitSha: args.expectedGitSha, databaseFingerprint: guard.fingerprintDigest(controlled.fingerprint), planSha256: controlled.planRead.sha256, confirmedAt: new Date().toISOString(), result: "PASS", migrationFiles: files }, repoRoot)
       logger.log(JSON.stringify(report, null, 2))
       return report
     } finally {
@@ -226,6 +268,7 @@ module.exports = {
   businessRowCounts,
   parseCreateIndex,
   parseAddColumn,
+  parseArgs,
   runMigrations,
   schemaSnapshot,
   splitSql

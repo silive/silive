@@ -4,6 +4,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/www/wwwroot/very-simple-custom}"
 BACKUP_ROOT="${BACKUP_ROOT:-/www/backup/very-simple-custom}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
+ALLOW_RETENTION_DELETE="${ALLOW_RETENTION_DELETE:-false}"
 LOG_FILE="${LOG_FILE:-$BACKUP_ROOT/backup.log}"
 NOW="$(date +%Y%m%d_%H%M%S)"
 
@@ -82,7 +83,11 @@ else
   log "WARN: uploads dir not found, skip uploads backup"
 fi
 
-log "remove backups older than ${RETENTION_DAYS} days"
-find "$BACKUP_ROOT" -type f \( -name 'mysql_*.sql.gz' -o -name 'uploads_*.tar.gz' \) -mtime +"$RETENTION_DAYS" -print -delete >> "$LOG_FILE" 2>&1 || fail "retention cleanup failed"
+if [ "$ALLOW_RETENTION_DELETE" = "true" ]; then
+  log "explicit retention cleanup requested for backups older than ${RETENTION_DAYS} days"
+  find "$BACKUP_ROOT" -type f \( -name 'mysql_*.sql.gz' -o -name 'uploads_*.tar.gz' \) -mtime +"$RETENTION_DAYS" -print -delete >> "$LOG_FILE" 2>&1 || fail "retention cleanup failed"
+else
+  log "retention cleanup disabled; no backup or log file was deleted"
+fi
 
 log "backup completed"

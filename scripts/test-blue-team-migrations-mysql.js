@@ -9,8 +9,9 @@ const path = require("path")
 const { spawn } = require("child_process")
 const mysql = require("mysql2/promise")
 const { runCleanup } = require("./cleanup-production-test-orders")
-const { REQUIRED_DATABASE, connectionConfig, inspectMigrationReadiness } = require("./preflight-production-migration")
+const { REQUIRED_DATABASE, connectionConfig, inspectMigrationReadiness, runPreflight } = require("./preflight-production-migration")
 const { runMigrations, schemaSnapshot } = require("./run-blue-team-migrations")
+const guard = require("./lib/production-operation-guard")
 
 const SILENT = { log() {} }
 const TEST_ORDERS = Array.from({ length: 10 }, (_, index) => `MIG_TEST_ORDER_${String(index + 1).padStart(2, "0")}`)
@@ -336,6 +337,10 @@ async function main() {
   const pool = mysql.createPool(connectionConfig(env))
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "migration-rehearsal-"))
   const whitelistFile = path.join(tempDir, "migration-order-whitelist.json")
+  const preflightPlan = path.join(tempDir, "production-preflight-plan.json")
+  const backupFile = path.join(tempDir, "fixture-backup.sql.gz")
+  const backupManifest = path.join(tempDir, "fixture-backup-manifest.json")
+  const operationLog = path.join(tempDir, "production-operation.log")
   let service
   const checks = []
   const check = (name, value) => { assert(value, name); checks.push(name) }
@@ -355,7 +360,17 @@ async function main() {
     check("02 preflight严格只读并识别缺失对象", preflight.readOnly && preflight.missingTables.length >= 7 && preflight.userTokenCount === 12)
     check("03 preflight无虚构数据异常", preflight.ok && preflight.manualReviewCount === 0)
 
-    const first = await runMigrations({ env, logger: SILENT })
+    const [[fingerprint]] = await pool.query("SELECT DATABASE() AS database_name,@@server_uuid AS server_uuid")
+    const gitSha = require("child_process").execFileSync("git", ["rev-parse", "HEAD"], { cwd: path.join(__dirname, ".."), encoding: "utf8" }).trim()
+    const commonRehearsal = ["--rehearsal", "--confirm-production", `--expected-database=${fingerprint.database_name}`, `--expected-server-uuid=${fingerprint.server_uuid}`, `--expected-git-sha=${gitSha}`]
+    const rehearsalPreflight = await runPreflight({ argv: [...commonRehearsal, "--read-only", `--output-plan=${preflightPlan}`, `--operation-log=${operationLog}`], env, logger: SILENT })
+    check("03a 生产同级preflight彩排生成PASS计划", rehearsalPreflight.exitCode === 0 && rehearsalPreflight.report.conclusion === "PASS" && fs.existsSync(preflightPlan))
+    fs.writeFileSync(backupFile, "fixture-backup-only-for-isolated-rehearsal\n")
+    fs.writeFileSync(backupManifest, JSON.stringify({ database: fingerprint.database_name, serverUuid: fingerprint.server_uuid, createdAt: new Date().toISOString(), backupFile, backupSize: fs.statSync(backupFile).size, sha256: guard.sha256File(backupFile), checksumVerified: true, restoreVerification: "PASS" }))
+    const planSha256 = guard.sha256File(preflightPlan)
+    const rehearsalDryRun = await runMigrations({ argv: [...commonRehearsal, `--preflight-plan=${preflightPlan}`, `--preflight-plan-sha256=${planSha256}`, `--backup-manifest=${backupManifest}`, `--operation-log=${operationLog}`], env, logger: SILENT })
+    check("03b 生产同级迁移dry-run验证计划摘要和备份", rehearsalDryRun.dryRun === true && rehearsalDryRun.migrationFileCount === 7)
+    const first = await runMigrations({ argv: [...commonRehearsal, "--apply", "--confirm-run-seven-migrations", `--preflight-plan=${preflightPlan}`, `--preflight-plan-sha256=${planSha256}`, `--backup-manifest=${backupManifest}`, `--operation-log=${operationLog}`], env, logger: SILENT })
     check("04 旧结构第一次迁移成功", first.ok && first.migrationFileCount === 7)
     check("05 新表全部创建", first.addedTables.includes("payment_finance_outbox") && first.addedTables.includes("order_payment_timeout_jobs") && first.addedTables.includes("order_inventory_release_events"))
     check("06 新字段全部创建", first.addedColumns.includes("orders.payment_expires_at") && first.addedColumns.includes("order_inventory_releases.updated_at"))
@@ -412,10 +427,14 @@ async function main() {
       ...env,
       MYSQL_TEST_DATABASE: REQUIRED_DATABASE
     }
-    const dryRun = await runCleanup({ argv: [`--whitelist-file=${whitelistFile}`], env: cleanupEnv, logger: SILENT })
+    const cleanupPlan = path.join(tempDir, "production-cleanup-plan.json")
+    const cleanupDryRun = await runCleanup({ argv: [...commonRehearsal, "--dry-run", `--whitelist-file=${whitelistFile}`, "--expected-count=10", `--output-cleanup-plan=${cleanupPlan}`, `--operation-log=${operationLog}`], env: cleanupEnv, logger: SILENT })
+    check("19a 生产同级清理dry-run生成不可变计划", cleanupDryRun.exitCode === 0 && cleanupDryRun.report.plan.conclusion === "PASS" && fs.existsSync(cleanupPlan))
+    const dryRun = cleanupDryRun
     check("20 迁移后清理dry-run识别10笔", dryRun.exitCode === 0 && dryRun.report.automaticDeleteCount === 10 && dryRun.report.manualReviewCount === 0)
-    const apply = await runCleanup({ argv: [`--whitelist-file=${whitelistFile}`, "--apply", "--confirm-delete-test-orders"], env: cleanupEnv, logger: SILENT })
+    const apply = await runCleanup({ argv: [...commonRehearsal, "--apply", "--confirm-delete-test-orders", "--confirm-exact-count=10", `--whitelist-file=${whitelistFile}`, `--cleanup-plan=${cleanupPlan}`, `--cleanup-plan-sha256=${guard.sha256File(cleanupPlan)}`, `--backup-manifest=${backupManifest}`, `--operation-log=${operationLog}`], env: cleanupEnv, logger: SILENT })
     check("21 迁移后清理apply只删除10笔", apply.exitCode === 0 && apply.report.deleted.orders === 10)
+    check("21a 生产操作审计日志0600且不含白名单原文", (fs.statSync(operationLog).mode & 0o777) === 0o600 && !fs.readFileSync(operationLog, "utf8").includes(TEST_ORDERS[0]))
     check("22 白名单外2笔逐行不变", JSON.stringify(await orderSnapshot(pool, NORMAL_ORDERS)) === JSON.stringify(outsideBefore))
     check("23 主数据不删除", masterCounts.customers === await count(pool, "SELECT COUNT(*) AS count FROM customers") && masterCounts.products === await count(pool, "SELECT COUNT(*) AS count FROM products") && masterCounts.stores === await count(pool, "SELECT COUNT(*) AS count FROM partner_stores") && masterCounts.members === await count(pool, "SELECT COUNT(*) AS count FROM store_members") && masterCounts.sales === await count(pool, "SELECT COUNT(*) AS count FROM sales_agents"))
     const repeat = await runCleanup({ argv: [`--whitelist-file=${whitelistFile}`, "--apply", "--confirm-delete-test-orders"], env: cleanupEnv, logger: SILENT })

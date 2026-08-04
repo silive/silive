@@ -5,10 +5,12 @@ const fs = require("fs")
 const path = require("path")
 const mysql = require("mysql2/promise")
 const { releaseOrderItemInventory } = require("../cms/inventory-ledger")
+const guard = require("./lib/production-operation-guard")
+const { structuralFingerprint } = require("./preflight-production-migration")
 
 const MAX_ORDERS = 20
 const REQUIRED_DATABASE = "vsc_security_test_order_cleanup"
-const ALLOWED_DATABASES = new Set([REQUIRED_DATABASE, "vsc_security_test_migration_rehearsal"])
+const ALLOWED_DATABASES = new Set([REQUIRED_DATABASE, "vsc_security_test_migration_rehearsal", "vsc_security_test_production_entry_rehearsal"])
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost"])
 const SETTLED_STATUSES = new Set(["settled", "completed", "paid", "confirmed", "已结算", "已支付"])
 
@@ -81,11 +83,19 @@ function usage() {
 }
 
 function parseArgs(argv) {
-  const args = { apply: false, confirmed: false, whitelistFile: "" }
+  const common = guard.parseCommonOperationArgs(argv)
+  const args = { ...common, confirmed: false, whitelistFile: "", expectedCount: "", confirmExactCount: "", outputCleanupPlan: "", cleanupPlan: "", cleanupPlanSha256: "" }
   for (const arg of argv) {
     if (arg === "--apply") args.apply = true
     else if (arg === "--confirm-delete-test-orders") args.confirmed = true
     else if (arg.startsWith("--whitelist-file=")) args.whitelistFile = arg.slice("--whitelist-file=".length)
+    else if (arg === "--production" || arg === "--rehearsal" || arg === "--dry-run" || arg === "--confirm-production" || arg === "--read-only") continue
+    else if (/^--(expected-database|expected-server-uuid|expected-git-sha|backup-manifest|operation-log)=/.test(arg)) continue
+    else if (arg.startsWith("--expected-count=")) args.expectedCount = arg.slice("--expected-count=".length)
+    else if (arg.startsWith("--confirm-exact-count=")) args.confirmExactCount = arg.slice("--confirm-exact-count=".length)
+    else if (arg.startsWith("--output-cleanup-plan=")) args.outputCleanupPlan = arg.slice("--output-cleanup-plan=".length)
+    else if (arg.startsWith("--cleanup-plan=")) args.cleanupPlan = arg.slice("--cleanup-plan=".length)
+    else if (arg.startsWith("--cleanup-plan-sha256=")) args.cleanupPlanSha256 = arg.slice("--cleanup-plan-sha256=".length)
     else throw new Error(`未知参数：${arg}`)
   }
   return args
@@ -494,6 +504,54 @@ function publicReport(mode, whitelist, analysis, deleted = null) {
   }
 }
 
+function cleanupStateDigest(analysis) {
+  const orders = analysis.graph.orders.map(order => ({
+    id: guard.sha256(String(order.id)), status: String(order.status || ""), paymentStatus: String(order.payment_status || ""), refundStatus: String(order.refund_status || ""), transaction: !!order.transaction_id
+  })).sort((a, b) => a.id.localeCompare(b.id))
+  const items = analysis.graph.items.map(item => ({ id: guard.sha256(String(item.id)), orderId: guard.sha256(String(item.order_id)), quantity: Number(item.quantity), productId: guard.sha256(String(item.product_id)) })).sort((a, b) => a.id.localeCompare(b.id))
+  const refunds = analysis.graph.refunds.map(row => ({ id: guard.sha256(String(row.id)), orderId: guard.sha256(String(row.order_id)), status: String(row.status || ""), amount: Number(row.success_amount_cents || 0) })).sort((a, b) => a.id.localeCompare(b.id))
+  return guard.sha256(JSON.stringify({ orders, items, refunds, tableCounts: analysis.tableCounts, inventoryQuantity: analysis.inventoryQuantity, finance: analysis.finance, manual: analysis.manual.length, missing: analysis.missing.length }))
+}
+
+function buildCleanupPlan({ mode, gitSha, fingerprint, whitelistSha256, whitelist, analysis, structureFingerprint }) {
+  const generatedAt = new Date().toISOString()
+  return {
+    version: 1, operation: "test-order-cleanup", mode, generatedAt,
+    expiresAt: new Date(Date.now() + guard.MAX_PLAN_AGE_MS).toISOString(), gitSha,
+    database: fingerprint.database, serverUuid: fingerprint.serverUuid, databaseFingerprint: guard.fingerprintDigest(fingerprint),
+    whitelistSha256, whitelistCount: whitelist.orderIds.length, maskedOrderIdentifiers: whitelist.orderIds.map(value => guard.sha256(value).slice(0, 16)),
+    expectedDeletesByTable: analysis.tableCounts, expectedInventoryReturn: analysis.inventoryQuantity,
+    financeSummary: analysis.finance, manualReviewCount: analysis.manual.length, notFoundCount: analysis.missing.length,
+    structureFingerprint, stateDigest: cleanupStateDigest(analysis), conclusion: analysis.manual.length === 0 && analysis.missing.length === 0 ? "PASS" : "BLOCKED"
+  }
+}
+
+async function validateControlledCleanup(connection, args, mode, env, repoRoot, whitelist) {
+  if (!args.operationLog) throw new Error("安全拒绝：缺少 --operation-log")
+  guard.requireExternalPath(args.operationLog, "--operation-log", repoRoot)
+  const fingerprint = await guard.databaseFingerprint(connection); guard.assertFingerprint(fingerprint, args, mode)
+  if (String(env.AI_PREVIEW_ENABLED || "").toLowerCase() === "true") throw new Error("安全拒绝：AI_PREVIEW_ENABLED=true")
+  if (mode.kind === "production" && !args.dryRun && !args.apply) throw new Error("安全拒绝：生产清理必须明确选择 --dry-run 或 --apply")
+  if (!args.apply) {
+    if (!args.dryRun) throw new Error("安全拒绝：彩排 dry-run 必须明确提供 --dry-run")
+    if (!args.expectedCount || Number(args.expectedCount) !== 10 || whitelist.orderIds.length !== 10) throw new Error("安全拒绝：生产/彩排 dry-run 必须确认 --expected-count=10 且白名单为10笔")
+    if (!args.outputCleanupPlan) throw new Error("安全拒绝：缺少 --output-cleanup-plan")
+    guard.requireExternalPath(args.outputCleanupPlan, "--output-cleanup-plan", repoRoot)
+    return { fingerprint, whitelistSha256: guard.sha256File(args.whitelistFile) }
+  }
+  if (!args.confirmed || Number(args.confirmExactCount) !== 10 || whitelist.orderIds.length !== 10) throw new Error("安全拒绝：apply 必须同时提供 --confirm-delete-test-orders、--confirm-exact-count=10 且白名单为10笔")
+  for (const [label, value] of Object.entries({ "--cleanup-plan": args.cleanupPlan, "--cleanup-plan-sha256": args.cleanupPlanSha256, "--backup-manifest": args.backupManifest })) if (!value) throw new Error(`安全拒绝：缺少 ${label}`)
+  const planRead = guard.readJson(args.cleanupPlan, "清理计划文件", repoRoot)
+  if (planRead.sha256 !== args.cleanupPlanSha256) throw new Error("安全拒绝：清理计划摘要不一致")
+  guard.assertPlanFresh(planRead.value, args.expectedGitSha)
+  if (planRead.value.database !== fingerprint.database || planRead.value.serverUuid !== fingerprint.serverUuid || planRead.value.databaseFingerprint !== guard.fingerprintDigest(fingerprint)) throw new Error("安全拒绝：清理计划数据库指纹不一致")
+  const currentWhitelistSha = guard.sha256File(args.whitelistFile)
+  if (planRead.value.whitelistSha256 !== currentWhitelistSha) throw new Error("安全拒绝：白名单文件摘要已变化")
+  const backup = guard.assertBackupManifest(args.backupManifest, fingerprint, repoRoot)
+  const disk = guard.assertDiskSpace(path.dirname(backup.manifest.backupFile), backup.backupSize, env)
+  return { fingerprint, planRead, whitelistSha256: currentWhitelistSha, backup, disk }
+}
+
 async function deleteTargets(connection, tables, analysis, env = process.env) {
   const orderIds = analysis.automatic.map(review => review.orderId)
   if (!orderIds.length) return Object.fromEntries(DELETE_ORDER.map(table => [table, 0]))
@@ -558,25 +616,42 @@ async function deleteTargets(connection, tables, analysis, env = process.env) {
   return deleted
 }
 
-async function runCleanup({ argv = process.argv.slice(2), env = process.env, logger = console } = {}) {
+async function runCleanup({ argv = process.argv.slice(2), env = process.env, logger = console, repoRoot = path.join(__dirname, "..") } = {}) {
   const args = parseArgs(argv)
-  const config = assertConnectionSafety(env, args)
+  const mode = guard.assertMode(args, env, repoRoot)
+  if (mode.kind !== "isolated") guard.requireExternalPath(args.whitelistFile, "--whitelist-file", repoRoot)
   const whitelist = readWhitelist(args.whitelistFile)
+  const config = mode.kind === "isolated" ? assertConnectionSafety(env, args) : guard.mysqlConfigForMode(env, mode)
   const pool = mysql.createPool(config)
   try {
     const connection = await pool.getConnection()
     try {
       const tables = await existingTables(connection)
       await assertRequiredSchema(connection, tables)
+      const controlled = mode.kind === "isolated" ? null : await validateControlledCleanup(connection, args, mode, env, repoRoot, whitelist)
       if (!args.apply) {
         const analysis = await analyze(connection, tables, whitelist, false)
         const report = publicReport("DRY_RUN", whitelist, analysis)
+        if (controlled) {
+          const plan = buildCleanupPlan({ mode: mode.kind, gitSha: args.expectedGitSha, fingerprint: controlled.fingerprint, whitelistSha256: controlled.whitelistSha256, whitelist, analysis, structureFingerprint: await structuralFingerprint(connection) })
+          fs.writeFileSync(args.outputCleanupPlan, `${JSON.stringify(plan, null, 2)}\n`, { mode: 0o600 }); fs.chmodSync(args.outputCleanupPlan, 0o600)
+          guard.createOperationLog(args.operationLog, { operation: "cleanup-dry-run", mode: mode.kind, gitSha: args.expectedGitSha, databaseFingerprint: guard.fingerprintDigest(controlled.fingerprint), planSha256: guard.sha256File(args.outputCleanupPlan), confirmedAt: new Date().toISOString(), result: plan.conclusion }, repoRoot)
+          report.cleanupPlan = { sha256: guard.sha256File(args.outputCleanupPlan), conclusion: plan.conclusion, stateDigest: plan.stateDigest }
+          report.plan = plan
+          logger.log(JSON.stringify(report, null, 2))
+          return { report, exitCode: plan.conclusion === "PASS" ? 0 : 2 }
+        }
         logger.log(JSON.stringify(report, null, 2))
         return { report, exitCode: analysis.manual.length ? 2 : 0 }
       }
       await connection.beginTransaction()
       try {
         const analysis = await analyze(connection, tables, whitelist, true)
+        if (controlled) {
+          if (controlled.planRead.value.structureFingerprint !== await structuralFingerprint(connection)) throw new Error("安全拒绝：数据库结构在清理计划后发生变化")
+          if (controlled.planRead.value.stateDigest !== cleanupStateDigest(analysis)) throw new Error("安全拒绝：清理计划状态已漂移")
+          if (controlled.planRead.value.manualReviewCount !== 0 || controlled.planRead.value.whitelistCount !== 10 || analysis.automatic.length !== 10 || analysis.missing.length) throw new Error("安全拒绝：订单数量、状态或 MANUAL_REVIEW 与计划不一致")
+        }
         if (analysis.manual.length) {
           const report = publicReport("APPLY_BLOCKED", whitelist, analysis)
           await connection.rollback()
@@ -586,6 +661,7 @@ async function runCleanup({ argv = process.argv.slice(2), env = process.env, log
         const deleted = await deleteTargets(connection, tables, analysis, env)
         await connection.commit()
         const report = publicReport("APPLY", whitelist, analysis, deleted)
+        if (controlled) guard.createOperationLog(args.operationLog, { operation: "cleanup-apply", mode: mode.kind, gitSha: args.expectedGitSha, databaseFingerprint: guard.fingerprintDigest(controlled.fingerprint), planSha256: controlled.planRead.sha256, confirmedAt: new Date().toISOString(), result: "PASS", deletedOrders: deleted.orders }, repoRoot)
         logger.log(JSON.stringify(report, null, 2))
         return { report, exitCode: 0 }
       } catch (error) {
@@ -617,6 +693,8 @@ module.exports = {
   REQUIRED_DATABASE,
   assertConnectionSafety,
   maskId,
+  cleanupStateDigest,
+  buildCleanupPlan,
   parseArgs,
   readWhitelist,
   runCleanup
