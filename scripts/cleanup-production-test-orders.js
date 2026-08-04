@@ -514,10 +514,11 @@ function cleanupStateDigest(analysis) {
 }
 
 function buildCleanupPlan({ mode, gitSha, fingerprint, whitelistSha256, whitelist, analysis, structureFingerprint }) {
-  const generatedAt = new Date().toISOString()
+  const generatedMs = Date.now()
+  const generatedAt = new Date(generatedMs).toISOString()
   return {
     version: 1, operation: "test-order-cleanup", mode, generatedAt,
-    expiresAt: new Date(Date.now() + guard.MAX_PLAN_AGE_MS).toISOString(), gitSha,
+    expiresAt: new Date(generatedMs + guard.MAX_PLAN_AGE_MS).toISOString(), gitSha,
     database: fingerprint.database, serverUuid: fingerprint.serverUuid, databaseFingerprint: guard.fingerprintDigest(fingerprint),
     whitelistSha256, whitelistCount: whitelist.orderIds.length, maskedOrderIdentifiers: whitelist.orderIds.map(value => guard.sha256(value).slice(0, 16)),
     expectedDeletesByTable: analysis.tableCounts, expectedInventoryReturn: analysis.inventoryQuantity,
