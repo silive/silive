@@ -122,13 +122,13 @@ function mysqlConfigForMode(env, mode) {
 }
 
 async function databaseFingerprint(connection) {
-  const [[row]] = await connection.query("SELECT DATABASE() AS database_name, @@hostname AS hostname, @@server_uuid AS server_uuid, @@version AS version, CURRENT_USER() AS current_user")
+  const [[row]] = await connection.query("SELECT DATABASE() AS database_name, @@hostname AS hostname, @@server_uuid AS server_uuid, @@version AS version, CURRENT_USER() AS current_user_name")
   return {
     database: String(row.database_name || ""),
     hostname: String(row.hostname || ""),
     serverUuid: String(row.server_uuid || ""),
     version: String(row.version || ""),
-    currentUser: String(row.current_user || "")
+    currentUser: String(row.current_user_name || "")
   }
 }
 
