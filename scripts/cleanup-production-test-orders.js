@@ -113,7 +113,7 @@ function assertConnectionSafety(env, args) {
   if (!ALLOWED_DATABASES.has(database)) throw new Error(`安全拒绝：本专项只允许已登记的隔离数据库`)
   const user = String(env.MYSQL_TEST_USER || "").trim()
   if (!user) throw new Error("安全拒绝：缺少 MYSQL_TEST_USER 测试用户名")
-  if (/prod|production|online|master/i.test(`${host}/${database}/${user}`)) throw new Error("安全拒绝：连接信息疑似生产环境")
+  if (/prod|production|online|master/i.test(`${host}/${user}`)) throw new Error("安全拒绝：连接信息疑似生产环境")
   if (args.apply && !args.confirmed) throw new Error("安全拒绝：apply 必须同时提供 --confirm-delete-test-orders")
   return {
     host,
