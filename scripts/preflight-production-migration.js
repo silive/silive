@@ -25,7 +25,7 @@ function connectionConfig(env = process.env) {
   const mode = { kind: "isolated" }
   const config = guard.mysqlConfigForMode(env, mode)
   if (config.database !== REQUIRED_DATABASE) throw new Error(`安全拒绝：只允许隔离数据库 ${REQUIRED_DATABASE}`)
-  if (/prod|production|online|master/i.test(`${config.host}/${config.database}/${config.user}`)) throw new Error("安全拒绝：连接信息疑似生产环境")
+  if (/prod|production|online|master/i.test(`${config.host}/${config.user}`)) throw new Error("安全拒绝：连接信息疑似生产环境")
   return { ...config, connectionLimit: 2 }
 }
 
