@@ -77,6 +77,10 @@ const {
   claimPickupCode,
   generatePickupCodeCandidate
 } = require("./pickup-security")
+const {
+  SAFE_LICENSES: MAKERWORLD_SAFE_LICENSES,
+  planSync: planMakerWorldSync
+} = require("./makerworld-catalog-sync")
 
 let mysql
 try {
@@ -108,6 +112,11 @@ const AI_PREVIEW_ENABLED = isAiPreviewEnabled()
 // initialization. They must be explicitly enabled after a reviewed dry-run.
 const STARTUP_HISTORY_COMPENSATION_ENABLED = String(process.env.STARTUP_HISTORY_COMPENSATION_ENABLED || "").trim().toLowerCase() === "true"
 const ORDER_PAYMENT_TIMEOUT_MINUTES = paymentTimeoutMinutes()
+const QUOTE_REQUEST_TIMEOUT_MINUTES = Math.max(60, Math.min(Number(process.env.QUOTE_REQUEST_TIMEOUT_MINUTES || 1440), 7 * 24 * 60))
+const ORDER_AUTO_COMPLETE_DAYS = Math.max(1, Math.min(Number(process.env.ORDER_AUTO_COMPLETE_DAYS || 10), 30))
+const MAKERWORLD_SYNC_ENABLED = String(process.env.MAKERWORLD_SYNC_ENABLED || "").trim().toLowerCase() === "true"
+const MAKERWORLD_AUTO_PUBLISH = String(process.env.MAKERWORLD_AUTO_PUBLISH || "").trim().toLowerCase() === "true"
+const MAKERWORLD_SYNC_INTERVAL_MINUTES = Math.max(60, Math.min(Number(process.env.MAKERWORLD_SYNC_INTERVAL_MINUTES || 360), 7 * 24 * 60))
 const STORAGE_MODE = String(process.env.STORAGE_MODE || "mysql").trim().toLowerCase()
 const PORT = Number(process.env.PORT || 3000)
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443)
@@ -116,6 +125,7 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || (ENABLE_HTTPS ? `https://
 const WECHAT_APPID = process.env.WECHAT_APPID || ""
 const WECHAT_SECRET = process.env.WECHAT_SECRET || ""
 const WECHAT_PICKUP_TEMPLATE_ID = process.env.WECHAT_PICKUP_TEMPLATE_ID || ""
+const WECHAT_QUOTE_TEMPLATE_ID = process.env.WECHAT_QUOTE_TEMPLATE_ID || ""
 const PAY_MOCK_ENV = String(process.env.PAY_MOCK || "").toLowerCase()
 const PAY_MOCK = IS_PRODUCTION ? false : process.env.PAY_MOCK !== "false"
 const MOCK_WECHAT_OPENID = "mock-openid-local"
@@ -168,10 +178,21 @@ let paymentFinanceWorkerRunning = false
 let paymentFinanceWorkerTimer = null
 let orderPaymentTimeoutWorkerRunning = false
 let orderPaymentTimeoutWorkerTimer = null
+let orderAutoCompleteWorkerRunning = false
+let orderAutoCompleteWorkerTimer = null
 let wechatFulfillmentWorkerRunning = false
 let wechatFulfillmentWorkerTimer = null
 let refundSyncWorkerRunning = false
 let refundSyncWorkerTimer = null
+let makerworldSyncWorkerRunning = false
+let makerworldSyncWorkerTimer = null
+let makerworldSyncState = {
+  running: false,
+  lastStartedAt: "",
+  lastCompletedAt: "",
+  lastError: "",
+  lastReport: null
+}
 
 fs.mkdirSync(uploadsDir, { recursive: true })
 fs.mkdirSync(salesLeadUploadsDir, { recursive: true })
@@ -565,6 +586,123 @@ function requestJson(url, options = {}, body = "") {
     if (body) req.write(body)
     req.end()
   })
+}
+
+function makerworldSyncConfig() {
+  const feedUrl = String(process.env.MAKERWORLD_FEED_URL || "").trim()
+  const allowedHosts = String(process.env.MAKERWORLD_FEED_ALLOWED_HOSTS || "makerworld.com.cn")
+    .split(",").map(item => item.trim().toLowerCase()).filter(Boolean)
+  let feedReady = false
+  let feedHost = ""
+  if (feedUrl) {
+    try {
+      const parsed = new URL(feedUrl)
+      feedHost = parsed.hostname.toLowerCase()
+      feedReady = parsed.protocol === "https:" && allowedHosts.some(host => feedHost === host || feedHost.endsWith(`.${host}`))
+    } catch (error) {}
+  }
+  const allowedLicenses = String(process.env.MAKERWORLD_ALLOWED_LICENSES || Array.from(MAKERWORLD_SAFE_LICENSES).join(","))
+    .split(",").map(item => item.trim()).filter(Boolean)
+  let defaultMediaHost = ""
+  try { defaultMediaHost = new URL(PUBLIC_BASE_URL).hostname } catch (error) {}
+  const allowedMediaHosts = String(process.env.MAKERWORLD_MEDIA_ALLOWED_HOSTS || defaultMediaHost)
+    .split(",").map(item => item.trim().toLowerCase()).filter(Boolean)
+  return {
+    enabled: MAKERWORLD_SYNC_ENABLED,
+    autoPublish: MAKERWORLD_AUTO_PUBLISH,
+    feedConfigured: !!feedUrl,
+    feedReady,
+    feedHost,
+    allowedHosts,
+    allowedLicenses,
+    allowedMediaHosts,
+    intervalMinutes: MAKERWORLD_SYNC_INTERVAL_MINUTES,
+    limit: Math.max(1, Math.min(Number(process.env.MAKERWORLD_SYNC_LIMIT || 20), 100)),
+    defaultPrice: String(process.env.MAKERWORLD_DEFAULT_PRICE || "0"),
+    defaultCostPrice: String(process.env.MAKERWORLD_DEFAULT_COST_PRICE || "0"),
+    defaultStock: String(process.env.MAKERWORLD_DEFAULT_STOCK || "0")
+  }
+}
+
+function publicMakerworldSyncStatus() {
+  const config = makerworldSyncConfig()
+  return {
+    ...makerworldSyncState,
+    enabled: config.enabled,
+    autoPublish: config.autoPublish,
+    feedConfigured: config.feedConfigured,
+    feedReady: config.feedReady,
+    feedHost: config.feedHost,
+    intervalMinutes: config.intervalMinutes,
+    limit: config.limit,
+    allowedLicenses: config.allowedLicenses,
+    allowedMediaHosts: config.allowedMediaHosts
+  }
+}
+
+async function runMakerworldCatalogSync() {
+  if (makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 同步正在进行")
+  const config = makerworldSyncConfig()
+  if (!config.feedConfigured) throw httpError(400, "尚未配置经授权的 MAKERWORLD_FEED_URL")
+  if (!config.feedReady) throw httpError(400, "MakerWorld 数据源必须使用 HTTPS，且域名需在 MAKERWORLD_FEED_ALLOWED_HOSTS 白名单中")
+  makerworldSyncWorkerRunning = true
+  makerworldSyncState = { ...makerworldSyncState, running: true, lastStartedAt: new Date().toISOString(), lastError: "" }
+  try {
+    const headers = { Accept: "application/json" }
+    const token = String(process.env.MAKERWORLD_FEED_TOKEN || "").trim()
+    if (token) headers.Authorization = `Bearer ${token}`
+    const response = await requestJson(process.env.MAKERWORLD_FEED_URL, {
+      method: "GET",
+      headers,
+      timeout: Math.max(3000, Math.min(Number(process.env.MAKERWORLD_FEED_TIMEOUT_MS || 10000), 30000))
+    })
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`授权数据源返回 HTTP ${response.statusCode}`)
+    }
+    if (!response.data || typeof response.data !== "object") {
+      throw new Error("授权数据源没有返回 JSON")
+    }
+    const current = await getProducts()
+    const planned = planMakerWorldSync(response.data, current, config)
+    const syncedByCandidate = new Map(planned.products.map(item => [String(item.modelCandidateId), item]))
+    const retained = current.map(item => syncedByCandidate.get(String(item.modelCandidateId || "")) || item)
+    const existingCandidateIds = new Set(current.map(item => String(item.modelCandidateId || "")).filter(Boolean))
+    const additions = planned.products.filter(item => !existingCandidateIds.has(String(item.modelCandidateId || "")))
+    await saveProducts([...additions, ...retained])
+    makerworldSyncState = {
+      ...makerworldSyncState,
+      running: false,
+      lastCompletedAt: new Date().toISOString(),
+      lastError: "",
+      lastReport: planned.report
+    }
+    return planned.report
+  } catch (error) {
+    makerworldSyncState = { ...makerworldSyncState, running: false, lastError: error.message || "同步失败" }
+    throw error
+  } finally {
+    makerworldSyncWorkerRunning = false
+  }
+}
+
+async function runMakerworldCatalogSyncSafe() {
+  try {
+    await runMakerworldCatalogSync()
+  } catch (error) {
+    console.error("[makerworld-sync] failed", { message: error.message })
+  }
+}
+
+function startMakerworldCatalogSyncWorker() {
+  const config = makerworldSyncConfig()
+  if (!config.enabled) return
+  if (!config.feedReady) {
+    console.warn("[makerworld-sync] enabled but authorized feed is not configured correctly")
+    return
+  }
+  setTimeout(() => runMakerworldCatalogSyncSafe(), 5000).unref()
+  makerworldSyncWorkerTimer = setInterval(() => runMakerworldCatalogSyncSafe(), config.intervalMinutes * 60 * 1000)
+  if (makerworldSyncWorkerTimer.unref) makerworldSyncWorkerTimer.unref()
 }
 
 function requestBuffer(url, options = {}, body = "") {
@@ -1789,20 +1927,34 @@ function isPublicProduct(product = {}) {
 }
 
 function publicProductView(product = {}) {
+  const modelProvenance = product.modelSourceUrl ? {
+    platform: product.modelSourcePlatform || "MakerWorld",
+    sourceUrl: product.modelSourceUrl,
+    author: product.modelAuthorName,
+    licenseCode: product.modelLicenseCode,
+    licenseUrl: product.modelLicenseUrl,
+    attribution: product.modelAttribution
+  } : null
   const {
     costPrice,
     rewardEnabled,
     firstReward,
     secondReward,
     modelCandidateId,
+    modelSourcePlatform,
     modelSourceUrl,
     modelAuthorName,
+    modelLicenseCode,
+    modelLicenseUrl,
+    modelAttribution,
     modelAuthorizationStatus,
     modelAuthorizationNote,
+    modelSyncScore,
+    modelSyncedAt,
     inventoryVersion,
     ...publicProduct
   } = product
-  return publicProduct
+  return { ...publicProduct, modelProvenance }
 }
 
 function homepageRecommendedProducts(products = []) {
@@ -2307,6 +2459,19 @@ function assertProductionPaymentConfig() {
   }
 }
 
+function modelPublicationStatus(product = {}) {
+  const requested = normalizeProductStatus(product.status)
+  const sourceUrl = String(product.modelSourceUrl || product.model_source_url || "")
+  const sourcePlatform = String(product.modelSourcePlatform || product.model_source_platform || "").toLowerCase()
+  const isMakerworld = sourcePlatform === "makerworld" || /https:\/\/([^/]+\.)?makerworld\.com\.cn\//i.test(sourceUrl)
+  if (!isMakerworld || requested !== "on") return requested
+  const authorization = String(product.modelAuthorizationStatus || product.model_authorization_status || "").toLowerCase()
+  if (["creator_permission", "written_permission", "merchant_owned"].includes(authorization)) return requested
+  const license = String(product.modelLicenseCode || product.model_license_code || "").toUpperCase()
+  if (authorization === "feed_verified" && MAKERWORLD_SAFE_LICENSES.has(license)) return requested
+  return "off"
+}
+
 function normalizeProduct(product, index) {
   const imageUrl = publicAssetUrl(product.mainImage || product.imageUrl || product.image || product.coverImage)
   const imageVariants = uploadImageVariants(imageUrl)
@@ -2342,7 +2507,7 @@ function normalizeProduct(product, index) {
     categories,
     categoryLevel1: levels.categoryLevel1,
     categoryLevel2: levels.categoryLevel2,
-    status: normalizeProductStatus(product.status),
+    status: modelPublicationStatus(product),
     stock: String(product.stock || "0"),
     stockMode: normalizeInventoryMode(product),
     inventoryVersion: Number(product.inventoryVersion ?? product.inventory_version ?? 0),
@@ -2355,10 +2520,16 @@ function normalizeProduct(product, index) {
     firstReward: String(product.firstReward || "0"),
     secondReward: String(product.secondReward || "0"),
     modelCandidateId: product.modelCandidateId || product.model_candidate_id || "",
+    modelSourcePlatform: product.modelSourcePlatform || product.model_source_platform || "",
     modelSourceUrl: product.modelSourceUrl || product.model_source_url || "",
     modelAuthorName: product.modelAuthorName || product.model_author_name || "",
+    modelLicenseCode: product.modelLicenseCode || product.model_license_code || "",
+    modelLicenseUrl: product.modelLicenseUrl || product.model_license_url || "",
+    modelAttribution: product.modelAttribution || product.model_attribution || "",
     modelAuthorizationStatus: product.modelAuthorizationStatus || product.model_authorization_status || "",
     modelAuthorizationNote: product.modelAuthorizationNote || product.model_authorization_note || "",
+    modelSyncScore: String(product.modelSyncScore || product.model_sync_score || "0"),
+    modelSyncedAt: product.modelSyncedAt || product.model_synced_at || "",
     sort: String(sortOrder),
     sortOrder: String(sortOrder)
   }
@@ -3685,10 +3856,16 @@ async function getProducts() {
     firstReward: String(row.first_reward || "0"),
     secondReward: String(row.second_reward || "0"),
     modelCandidateId: row.model_candidate_id || "",
+    modelSourcePlatform: row.model_source_platform || "",
     modelSourceUrl: row.model_source_url || "",
     modelAuthorName: row.model_author_name || "",
+    modelLicenseCode: row.model_license_code || "",
+    modelLicenseUrl: row.model_license_url || "",
+    modelAttribution: row.model_attribution || "",
     modelAuthorizationStatus: row.model_authorization_status || "",
     modelAuthorizationNote: row.model_authorization_note || "",
+    modelSyncScore: String(row.model_sync_score || "0"),
+    modelSyncedAt: row.model_synced_at || "",
     sortOrder: String(row.sort_order || "0")
     }
     const normalized = normalizeProduct(product, index)
@@ -4870,14 +5047,18 @@ async function saveProducts(products) {
           (id, name, intro, price, cost_price, badge, cover, image_url, gallery_images, video_url,
            detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot,
            promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward,
-           second_reward, sort_order, model_candidate_id, model_source_url, model_author_name,
-           model_authorization_status, model_authorization_note, inventory_version)
+           second_reward, sort_order, model_candidate_id, model_source_platform, model_source_url,
+           model_author_name, model_license_code, model_license_url, model_attribution,
+           model_authorization_status, model_authorization_note, model_sync_score, model_synced_at,
+           inventory_version)
          VALUES
           (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson,
            :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock,
            :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled,
-           :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourceUrl,
-           :modelAuthorName, :modelAuthorizationStatus, :modelAuthorizationNote, :inventoryVersion)
+           :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourcePlatform,
+           :modelSourceUrl, :modelAuthorName, :modelLicenseCode, :modelLicenseUrl, :modelAttribution,
+           :modelAuthorizationStatus, :modelAuthorizationNote, :modelSyncScore, :modelSyncedAt,
+           :inventoryVersion)
          ON DUPLICATE KEY UPDATE
            name=VALUES(name), intro=VALUES(intro), price=VALUES(price), cost_price=VALUES(cost_price),
            badge=VALUES(badge), cover=VALUES(cover), image_url=VALUES(image_url),
@@ -4889,9 +5070,13 @@ async function saveProducts(products) {
            ai_preview_type=VALUES(ai_preview_type), reward_enabled=VALUES(reward_enabled),
            first_reward=VALUES(first_reward), second_reward=VALUES(second_reward),
            sort_order=VALUES(sort_order), model_candidate_id=VALUES(model_candidate_id),
+           model_source_platform=VALUES(model_source_platform),
            model_source_url=VALUES(model_source_url), model_author_name=VALUES(model_author_name),
+           model_license_code=VALUES(model_license_code), model_license_url=VALUES(model_license_url),
+           model_attribution=VALUES(model_attribution),
            model_authorization_status=VALUES(model_authorization_status),
            model_authorization_note=VALUES(model_authorization_note),
+           model_sync_score=VALUES(model_sync_score), model_synced_at=VALUES(model_synced_at),
            inventory_version=VALUES(inventory_version)`,
         {
           ...product,
@@ -5385,6 +5570,239 @@ async function calculateOrderStoreIncome(data, amount) {
     ? calculatePickupServiceFee(amount, pickupStore.pickupFeeType, pickupStore.pickupFeeValue)
     : "0.00"
   return { referrerStore, pickupStore, referralCommission, pickupServiceFee }
+}
+
+function quoteAmount(value) {
+  const amount = Number(value)
+  const amountCents = Math.round(amount * 100)
+  if (!Number.isFinite(amount) || amountCents < 1) throw httpError(400, "报价金额必须大于 0")
+  if (amount > 1000000) throw httpError(400, "报价金额超出允许范围")
+  return (amountCents / 100).toFixed(2)
+}
+
+function isPendingQuoteOrder(order = {}) {
+  return String(order.status || "") === "待客服确认" && String(order.paymentStatus || order.payment_status || "") === "待报价"
+}
+
+async function applyAdminQuote(orderId, data = {}) {
+  const amount = quoteAmount(data.amount)
+  const amountCents = Math.round(Number(amount) * 100)
+  const current = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!current) throw httpError(404, "订单不存在")
+  if (!isPendingQuoteOrder(current)) throw httpError(409, "只有待报价订单可以确认报价")
+  const expiresAt = paymentExpiresAt()
+  const income = await calculateOrderStoreIncome(current, amount)
+  if (!pool) {
+    const items = Array.isArray(current.items) ? current.items : []
+    if (items.length > 1) throw httpError(400, "多商品订单暂不支持人工报价")
+    const next = {
+      ...current,
+      amount,
+      status: "待支付",
+      paymentStatus: "待支付",
+      paymentExpiresAt: formatDateTime(expiresAt),
+      referralCommission: income.referralCommission,
+      pickupServiceFee: income.pickupServiceFee,
+      items: items.map(item => ({
+        ...item,
+        unitPriceCents: Math.floor(amountCents / Math.max(1, Number(item.quantity || 1))),
+        paidAmountCents: amountCents
+      }))
+    }
+    await saveOrders([next])
+    await recordOrderStateAudit(current, next, {
+      source: "admin_quote",
+      operatorId: "admin",
+      reason: `确认报价 ¥${amount}`
+    })
+    return { ...next, quoteNotification: await sendQuoteReadyNotice(orderId) }
+  }
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      "SELECT id, status, payment_status FROM orders WHERE id=:orderId LIMIT 1 FOR UPDATE",
+      { orderId }
+    )
+    const locked = rows[0]
+    if (!locked) throw httpError(404, "订单不存在")
+    if (!isPendingQuoteOrder(locked)) throw httpError(409, "订单状态已变化，请刷新后重试")
+    const [items] = await connection.query(
+      "SELECT id, quantity FROM order_items WHERE order_id=:orderId ORDER BY id FOR UPDATE",
+      { orderId }
+    )
+    if (items.length > 1) throw httpError(400, "多商品订单暂不支持人工报价")
+    await connection.query(
+      `UPDATE orders
+       SET amount=:amount, status='待支付', payment_status='待支付',
+           payment_expires_at=:expiresAt, referral_commission=:referralCommission,
+           pickup_service_fee=:pickupServiceFee
+       WHERE id=:orderId`,
+      {
+        orderId,
+        amount,
+        expiresAt,
+        referralCommission: income.referralCommission,
+        pickupServiceFee: income.pickupServiceFee
+      }
+    )
+    if (items[0]) {
+      await connection.query(
+        `UPDATE order_items
+         SET unit_price_cents=:unitPriceCents, paid_amount_cents=:paidAmountCents
+         WHERE id=:id AND order_id=:orderId`,
+        {
+          id: items[0].id,
+          orderId,
+          unitPriceCents: Math.floor(amountCents / Math.max(1, Number(items[0].quantity || 1))),
+          paidAmountCents: amountCents
+        }
+      )
+    }
+    await enqueueOrderPaymentTimeout(connection, { orderId, expiresAt })
+    await connection.query(
+      `INSERT INTO order_state_audit
+        (order_id, old_order_status, new_order_status, action_source, operator_id, reason, created_at)
+       VALUES (:orderId, '待客服确认', '待支付', 'admin_quote', 'admin', :reason, NOW())`,
+      { orderId, reason: `确认报价 ¥${amount}` }
+    )
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+  const quoted = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  return { ...quoted, quoteNotification: await sendQuoteReadyNotice(orderId) }
+}
+
+const ADMIN_ORDER_EDITABLE_FIELDS = new Set([
+  "customerName", "address", "customRequest", "remark", "aiPreviewUrl", "finalDesignUrl"
+])
+
+async function patchAdminOrder(orderId, data = {}) {
+  const current = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!current) throw httpError(404, "订单不存在")
+  const changes = {}
+  for (const key of ADMIN_ORDER_EDITABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) changes[key] = String(data[key] || "").slice(0, key === "address" || key === "customRequest" || key === "remark" ? 4000 : 500)
+  }
+  if (!Object.keys(changes).length) throw httpError(400, "没有可保存的订单字段")
+  if (!pool) {
+    const next = { ...current, ...changes }
+    await saveOrders([next])
+    return next
+  }
+  await query(
+    `UPDATE orders SET
+       customer_name=:customerName, address=:address, custom_request=:customRequest,
+       remark=:remark, ai_preview_url=:aiPreviewUrl, final_design_url=:finalDesignUrl
+     WHERE id=:orderId`,
+    {
+      orderId,
+      customerName: changes.customerName ?? current.customerName ?? "",
+      address: changes.address ?? current.address ?? "",
+      customRequest: changes.customRequest ?? current.customRequest ?? "",
+      remark: changes.remark ?? current.remark ?? "",
+      aiPreviewUrl: changes.aiPreviewUrl ?? current.aiPreviewUrl ?? "",
+      finalDesignUrl: changes.finalDesignUrl ?? current.finalDesignUrl ?? ""
+    }
+  )
+  return (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+}
+
+async function confirmDeliveryReceipt(orderId, identity = {}) {
+  const current = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!current) throw httpError(404, "订单不存在")
+  if (!orderBelongsToIdentity(current, identity)) throw httpError(403, "无权操作该订单")
+  if (isPickupOrder(current)) throw httpError(400, "自提订单必须使用取货码核销")
+  if (isOrderRefunded(current) || isOrderCancelledClosedOrRefunded(current)) throw httpError(409, "当前订单状态不能确认收货")
+  if (current.status === "已完成") return current
+  if (current.status !== "已发货") throw httpError(409, "订单尚未发货，不能确认收货")
+  if (!pool) {
+    const next = { ...current, status: "已完成", completedAt: formatDateTime(new Date()) }
+    await saveOrders([next])
+    await recordOrderStateAudit(current, next, {
+      source: "user_confirm_receipt",
+      operatorId: identity.userId || identity.openid || "user",
+      reason: "用户确认收货"
+    })
+    return next
+  }
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      `SELECT id, status, payment_status, delivery_type, pickup_store_id,
+              user_id, openid, phone, refund_status, after_sales_status
+       FROM orders WHERE id=:orderId LIMIT 1 FOR UPDATE`,
+      { orderId }
+    )
+    const locked = rows[0]
+    if (!locked) throw httpError(404, "订单不存在")
+    if (!orderBelongsToIdentity({
+      userId: locked.user_id || "",
+      openid: locked.openid || "",
+      phone: locked.phone || ""
+    }, identity)) throw httpError(403, "无权操作该订单")
+    if (locked.delivery_type === "pickup" || locked.pickup_store_id) throw httpError(400, "自提订单必须使用取货码核销")
+    if (locked.status !== "已发货") throw httpError(409, "订单状态已变化，请刷新后重试")
+    if (isOrderRefunded(locked) || isOrderCancelledClosedOrRefunded(locked)) throw httpError(409, "当前订单状态不能确认收货")
+    const [result] = await connection.query(
+      `UPDATE orders SET status='已完成', completed_at=COALESCE(completed_at,NOW())
+       WHERE id=:orderId AND status='已发货' AND delivery_type<>'pickup'`,
+      { orderId }
+    )
+    if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "订单状态已变化，请刷新后重试")
+    await connection.query(
+      `INSERT INTO order_state_audit
+        (order_id, old_order_status, new_order_status, action_source, operator_id, reason, created_at)
+       VALUES (:orderId, '已发货', '已完成', 'user_confirm_receipt', :operatorId, '用户确认收货', NOW())`,
+      { orderId, operatorId: identity.userId || identity.openid || "user" }
+    )
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+  await confirmOrderRewards(orderId)
+  return (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+}
+
+async function completeDeliveryOrderByAdmin(orderId) {
+  const current = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!current) throw httpError(404, "订单不存在")
+  if (isPickupOrder(current)) throw httpError(400, "自提订单必须使用取货码核销")
+  if (isOrderRefunded(current) || isOrderCancelledClosedOrRefunded(current)) throw httpError(409, "当前订单状态不能完成")
+  if (current.status === "已完成") return current
+  if (current.status !== "已发货") throw httpError(409, "只有已发货订单可以确认完成")
+  if (!pool) {
+    const next = { ...current, status: "已完成", completedAt: formatDateTime(new Date()) }
+    await saveOrders([next])
+    await recordOrderStateAudit(current, next, {
+      source: "admin_confirm_delivery",
+      operatorId: "admin",
+      reason: "管理员确认配送订单完成"
+    })
+    return next
+  }
+  const result = await query(
+    `UPDATE orders SET status='已完成', completed_at=COALESCE(completed_at,NOW())
+     WHERE id=:orderId AND status='已发货' AND delivery_type<>'pickup'`,
+    { orderId }
+  )
+  if (Number(result.affectedRows || 0) !== 1) throw httpError(409, "订单状态已变化，请刷新后重试")
+  await query(
+    `INSERT INTO order_state_audit
+      (order_id, old_order_status, new_order_status, action_source, operator_id, reason, created_at)
+     VALUES (:orderId, '已发货', '已完成', 'admin_confirm_delivery', 'admin', '管理员确认配送订单完成', NOW())`,
+    { orderId }
+  )
+  await confirmOrderRewards(orderId)
+  return (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
 }
 
 function isValidReferrerStore(store) {
@@ -5932,6 +6350,41 @@ async function sendPickupArrivedNotice(orderId) {
   } catch (error) {
     console.warn("[pickup-subscribe] send error", { orderId, message: error.message })
     return { ok: false, message: error.message || "订阅消息发送失败" }
+  }
+}
+
+async function sendQuoteReadyNotice(orderId) {
+  const templateId = WECHAT_QUOTE_TEMPLATE_ID
+  const order = (await getOrders({ keyword: orderId })).find(item => item.id === orderId)
+  if (!order) return { ok: false, message: "订单不存在" }
+  if (!templateId) return { ok: false, skipped: true, message: "未配置报价订阅消息模板" }
+  if (!order.openid) return { ok: false, skipped: true, message: "订单缺少用户 openid" }
+  const trimValue = (value, max = 20) => Array.from(String(value || "").replace(/\s+/g, " ").trim()).slice(0, max).join("")
+  const body = JSON.stringify({
+    touser: order.openid,
+    template_id: templateId,
+    page: "pages/orders/orders",
+    data: {
+      thing1: { value: trimValue(order.productName || "定制商品") },
+      amount2: { value: `${money(order.amount)}元` },
+      time3: { value: formatChinaDatetime(order.paymentExpiresAt || order.payment_expires_at || "") },
+      thing4: { value: "报价已确认，请及时完成支付" }
+    }
+  })
+  try {
+    const accessToken = await getAccessToken()
+    const result = await requestJson(`https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${accessToken}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      timeout: 12000
+    }, body)
+    const data = result.data || {}
+    if (data.errcode === 0) return { ok: true, message: "报价订阅消息已发送" }
+    console.warn("[quote-subscribe] send failed", { orderId, errcode: data.errcode, errmsg: data.errmsg })
+    return { ok: false, message: data.errmsg || "报价订阅消息发送失败" }
+  } catch (error) {
+    console.warn("[quote-subscribe] send error", { orderId, message: error.message })
+    return { ok: false, message: error.message || "报价订阅消息发送失败" }
   }
 }
 
@@ -6517,7 +6970,7 @@ async function createOrder(data) {
     amount: orderAmount,
     status: isQuoteOrder ? "待客服确认" : "待支付",
     paymentStatus: isQuoteOrder ? "待报价" : "待支付",
-    paymentExpiresAt: isQuoteOrder ? null : paymentExpiresAt(),
+    paymentExpiresAt: isQuoteOrder ? paymentExpiresAt(new Date(), QUOTE_REQUEST_TIMEOUT_MINUTES) : paymentExpiresAt(),
     stockReservedAt: null,
     stockReleasedAt: null,
     address: data.address,
@@ -6674,7 +7127,7 @@ async function createOrder(data) {
           )
         }
       }
-      if (finiteOrderInventory && order.paymentExpiresAt) {
+      if (order.paymentExpiresAt) {
         await enqueueOrderPaymentTimeout(connection, {
           orderId: order.id,
           expiresAt: order.paymentExpiresAt
@@ -7013,6 +7466,61 @@ function startOrderPaymentTimeoutWorker() {
     paymentTimeoutMinutes: ORDER_PAYMENT_TIMEOUT_MINUTES,
     maxAttempts: ORDER_PAYMENT_TIMEOUT_MAX_ATTEMPTS
   })
+}
+
+async function runOrderAutoCompleteWorker() {
+  if (!pool || orderAutoCompleteWorkerRunning) return
+  orderAutoCompleteWorkerRunning = true
+  try {
+    const rows = await query(
+      `SELECT id FROM orders
+       WHERE delivery_type<>'pickup'
+         AND status='已发货'
+         AND shipped_at IS NOT NULL
+         AND shipped_at <= DATE_SUB(NOW(), INTERVAL ${ORDER_AUTO_COMPLETE_DAYS} DAY)
+         AND (payment_status='已支付' OR paid_at IS NOT NULL)
+         AND COALESCE(refund_status,'') NOT IN ('待审核','退款处理中','退款成功','部分退款成功')
+         AND COALESCE(after_sales_status,'') NOT IN ('requested','refund_pending','remake','reship','refunded')
+       ORDER BY shipped_at ASC
+       LIMIT 100`
+    )
+    for (const row of rows) {
+      const result = await query(
+        `UPDATE orders SET status='已完成', completed_at=COALESCE(completed_at,NOW())
+         WHERE id=:orderId AND delivery_type<>'pickup' AND status='已发货'
+           AND COALESCE(refund_status,'') NOT IN ('待审核','退款处理中','退款成功','部分退款成功')
+           AND COALESCE(after_sales_status,'') NOT IN ('requested','refund_pending','remake','reship','refunded')`,
+        { orderId: row.id }
+      )
+      if (Number(result.affectedRows || 0) !== 1) continue
+      await query(
+        `INSERT INTO order_state_audit
+          (order_id, old_order_status, new_order_status, action_source, operator_id, reason, created_at)
+         VALUES (:orderId, '已发货', '已完成', 'delivery_auto_complete', 'system', :reason, NOW())`,
+        { orderId: row.id, reason: `发货满 ${ORDER_AUTO_COMPLETE_DAYS} 天自动完成` }
+      )
+      await confirmOrderRewards(row.id)
+      console.log("[order-auto-complete] completed", { orderId: row.id, days: ORDER_AUTO_COMPLETE_DAYS })
+    }
+  } finally {
+    orderAutoCompleteWorkerRunning = false
+  }
+}
+
+async function runOrderAutoCompleteWorkerSafe() {
+  try {
+    await runOrderAutoCompleteWorker()
+  } catch (error) {
+    console.error("[order-auto-complete] worker error", { message: String(error.message || error).slice(0, 300) })
+  }
+}
+
+function startOrderAutoCompleteWorker() {
+  if (orderAutoCompleteWorkerTimer) return
+  setTimeout(() => runOrderAutoCompleteWorkerSafe(), 5000).unref()
+  orderAutoCompleteWorkerTimer = setInterval(() => runOrderAutoCompleteWorkerSafe(), 60 * 60 * 1000)
+  orderAutoCompleteWorkerTimer.unref()
+  console.log("[order-auto-complete] worker ready", { days: ORDER_AUTO_COMPLETE_DAYS })
 }
 
 function isWecomOrderNotificationEnabled() {
@@ -9405,10 +9913,16 @@ async function initDb() {
   await ensureColumn("products", "detail_text", "TEXT")
   await ensureColumn("products", "product_type", "VARCHAR(20) DEFAULT 'custom'")
   await ensureColumn("products", "model_candidate_id", "VARCHAR(60)")
+  await ensureColumn("products", "model_source_platform", "VARCHAR(40)")
   await ensureColumn("products", "model_source_url", "VARCHAR(500)")
   await ensureColumn("products", "model_author_name", "VARCHAR(100)")
+  await ensureColumn("products", "model_license_code", "VARCHAR(60)")
+  await ensureColumn("products", "model_license_url", "VARCHAR(500)")
+  await ensureColumn("products", "model_attribution", "TEXT")
   await ensureColumn("products", "model_authorization_status", "VARCHAR(40)")
   await ensureColumn("products", "model_authorization_note", "TEXT")
+  await ensureColumn("products", "model_sync_score", "DECIMAL(10,2) DEFAULT 0")
+  await ensureColumn("products", "model_synced_at", "VARCHAR(40)")
   await query(`CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(32) PRIMARY KEY,
     customer_name VARCHAR(50) NOT NULL,
@@ -10727,6 +11241,17 @@ async function handle(req, res) {
     return
   }
 
+  if (req.method === "GET" && url.pathname === "/api/public-config") {
+    sendJson(res, 200, {
+      ok: true,
+      data: {
+        quoteTemplateId: WECHAT_QUOTE_TEMPLATE_ID || "",
+        pickupTemplateId: WECHAT_PICKUP_TEMPLATE_ID || ""
+      }
+    })
+    return
+  }
+
   if ((req.method === "GET" || req.method === "HEAD") && (url.pathname.startsWith("/uploads/") || url.pathname.startsWith("/cms/uploads/"))) {
     const assetPath = url.pathname.startsWith("/cms/uploads/")
       ? url.pathname.replace("/cms/uploads/", "")
@@ -11191,6 +11716,18 @@ async function handle(req, res) {
     }
     const orderId = decodeURIComponent(url.pathname.split("/")[3])
     sendJson(res, 200, { ok: true, data: await applyAfterSalesRequest({ ...body, ...identity, orderId }) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/confirm-receipt$/) && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const identity = await resolveIdentityFromRequest(req, body)
+    if (!hasRequestIdentity(identity)) {
+      sendJson(res, 401, { ok: false, message: "请先完成微信登录" })
+      return
+    }
+    const orderId = decodeURIComponent(url.pathname.split("/")[3])
+    sendJson(res, 200, { ok: true, data: await confirmDeliveryReceipt(orderId, identity) })
     return
   }
 
@@ -11732,6 +12269,16 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/admin/makerworld/sync-status" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, data: publicMakerworldSyncStatus() })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/sync" && req.method === "POST") {
+    sendJson(res, 200, { ok: true, data: await runMakerworldCatalogSync() })
+    return
+  }
+
   if (url.pathname === "/api/admin/overview" && req.method === "GET") {
     const [home, orders, customers, products, rewards, relations, visits, orderRecommendEvents] = await Promise.all([getHome(), getOrders(), getCustomers(), getProducts(), processRewardState(), getPromotionRelations(), getPromotionVisits(), getOrderRecommendationEvents()])
     const orderAmount = orders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
@@ -11810,6 +12357,24 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/quote$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await applyAdminQuote(orderId, JSON.parse((await readBody(req)).toString() || "{}")) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+\/complete$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await completeDeliveryOrderByAdmin(orderId) })
+    return
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/orders\/[^/]+$/) && req.method === "PATCH") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[4])
+    sendJson(res, 200, { ok: true, data: await patchAdminOrder(orderId, JSON.parse((await readBody(req)).toString() || "{}")) })
+    return
+  }
+
   if (url.pathname === "/api/admin/orders" && req.method === "PUT") {
     const incoming = JSON.parse((await readBody(req)).toString() || "[]")
     if (!Array.isArray(incoming)) throw httpError(400, "订单数据格式不正确")
@@ -11817,20 +12382,9 @@ async function handle(req, res) {
     for (const next of incoming) {
       const previous = previousOrders.find(item => item.id === next.id)
       if (!previous) throw httpError(400, "后台订单接口仅允许编辑已有订单，不能创建或导入新订单")
-      assertAdminTransition(previous, next)
     }
-    const saved = await saveOrders(incoming)
-    for (const next of incoming) {
-      const previous = previousOrders.find(item => item.id === next.id)
-      if (!previous) continue
-      if (previous.status !== next.status || previous.pickupStatus !== next.pickupStatus || previous.refundStatus !== next.refundStatus) {
-        await recordOrderStateAudit(previous, next, {
-          source: "admin_order_edit",
-          operatorId: "admin",
-          reason: "后台编辑订单"
-        })
-      }
-    }
+    const saved = []
+    for (const next of incoming) saved.push(await patchAdminOrder(next.id, next))
     sendJson(res, 200, { ok: true, data: saved })
     return
   }
@@ -12537,10 +13091,12 @@ initDb().then(async () => {
   }
   if (process.env.MYSQL_TEST_DISABLE_WORKERS !== "true") {
     startOrderPaymentTimeoutWorker()
+    startOrderAutoCompleteWorker()
     startPaymentFinanceWorker()
     startWecomOrderNotificationWorker()
     startWechatFulfillmentWorker()
     startRefundSyncWorker()
+    startMakerworldCatalogSyncWorker()
   } else {
     console.log("[isolated-mysql] background workers disabled for deterministic acceptance")
   }

@@ -45,6 +45,7 @@ async function main() {
   const startAt = argument("--start-at", "")
   const endAt = argument("--end-at", "")
   const timeoutMinutes = paymentTimeoutMinutes()
+  const quoteTimeoutMinutes = positiveInteger(process.env.QUOTE_REQUEST_TIMEOUT_MINUTES, 1440, 7 * 24 * 60)
   if (apply && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
     throw new Error("安全拒绝：生产环境仅允许 dry-run；不得执行 --apply")
   }
@@ -62,7 +63,7 @@ async function main() {
   })
   try {
     const [rows] = await pool.query(
-      `SELECT DISTINCT o.id, o.created_at,
+      `SELECT DISTINCT o.id, o.created_at, o.status, o.payment_status,
               EXISTS(
                 SELECT 1 FROM order_payment_facts f
                 WHERE f.order_id=o.id AND f.payment_state='SUCCESS' AND f.amount_verified=1
@@ -73,8 +74,10 @@ async function main() {
        LEFT JOIN order_inventory_releases r ON r.order_item_id=oi.id
        LEFT JOIN order_payment_timeout_jobs j ON j.order_id=o.id
        WHERE o.payment_expires_at IS NULL
-         AND o.status IN ('待支付','未支付','unpaid','pending_payment')
-         AND o.payment_status IN ('待支付','未支付','unpaid','pending_payment')
+         AND (
+           (o.status IN ('待支付','未支付','unpaid','pending_payment') AND o.payment_status IN ('待支付','未支付','unpaid','pending_payment'))
+           OR (o.status IN ('待客服确认','pending_quote') AND o.payment_status IN ('待报价','quote_pending'))
+         )
          AND o.transaction_id IS NULL
          AND o.paid_at IS NULL
          AND r.order_item_id IS NULL
@@ -90,24 +93,27 @@ async function main() {
     let updated = 0
     if (apply) {
       for (const row of safe) {
+        const expiryMinutes = ["待报价", "quote_pending"].includes(String(row.payment_status || "")) ? quoteTimeoutMinutes : timeoutMinutes
         const connection = await pool.getConnection()
         try {
           await connection.beginTransaction()
           const [result] = await connection.query(
             `UPDATE orders
-             SET payment_expires_at=DATE_ADD(COALESCE(created_at,NOW()), INTERVAL ${timeoutMinutes} MINUTE),
+             SET payment_expires_at=DATE_ADD(COALESCE(created_at,NOW()), INTERVAL ${expiryMinutes} MINUTE),
                  stock_reserved_at=COALESCE(stock_reserved_at, created_at, NOW())
              WHERE id=:orderId
                AND payment_expires_at IS NULL
-               AND status IN ('待支付','未支付','unpaid','pending_payment')
-               AND payment_status IN ('待支付','未支付','unpaid','pending_payment')
+               AND (
+                 (status IN ('待支付','未支付','unpaid','pending_payment') AND payment_status IN ('待支付','未支付','unpaid','pending_payment'))
+                 OR (status IN ('待客服确认','pending_quote') AND payment_status IN ('待报价','quote_pending'))
+               )
                AND transaction_id IS NULL AND paid_at IS NULL`,
             { orderId: row.id }
           )
           if (Number(result.affectedRows || 0) === 1) {
             await enqueueOrderPaymentTimeout(connection, {
               orderId: row.id,
-              expiresAt: new Date(new Date(String(row.created_at).replace(" ", "T")).getTime() + timeoutMinutes * 60 * 1000)
+              expiresAt: new Date(new Date(String(row.created_at).replace(" ", "T")).getTime() + expiryMinutes * 60 * 1000)
             })
             updated += 1
           }
@@ -128,6 +134,7 @@ async function main() {
       updated,
       limit,
       timeoutMinutes,
+      quoteTimeoutMinutes,
       sampleOrderSuffixes: safe.slice(0, 5).map(row => maskedOrder(row.id)),
       runId: crypto.randomUUID()
     }, null, 2))

@@ -110,14 +110,19 @@ Page({
     reviewMode: isReviewMode(),
     paymentEnabled: isPaymentEnabled(),
     promotionEnabled: isPromotionEnabled(),
-    storeFeaturesEnabled: isStoreFeaturesEnabled()
+    storeFeaturesEnabled: isStoreFeaturesEnabled(),
+    quoteTemplateId: ""
   },
 
   onLoad(options) {
     applyTheme(this)
+    this.loadPublicConfig()
     const mode = options.mode || ""
     const category = decodeURIComponent(options.category || "")
-    const cartItems = safeJson(options.cartItems, [])
+    const cartKey = decodeURIComponent(options.cartKey || "")
+    const storedCartItems = cartKey ? (wx.getStorageSync(cartKey) || []) : []
+    if (cartKey) wx.removeStorageSync(cartKey)
+    const cartItems = storedCartItems.length ? storedCartItems : safeJson(options.cartItems, [])
     if (Array.isArray(cartItems) && cartItems.length) {
       const cartTotalQuantity = cartItems.reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1)), 0)
       this.initCheckout({
@@ -146,7 +151,31 @@ Page({
   onShow() {
     applyTheme(this)
     this.applyPendingPickupSelection()
-    if (this.data.product) this.verifyCheckoutAuth()
+    if (this.data.product) this.verifyCheckoutAuth().catch(() => {})
+  },
+
+  loadPublicConfig() {
+    request("/api/public-config", { timeout: 5000 }).then(config => {
+      this.setData({ quoteTemplateId: config.quoteTemplateId || "" })
+    }).catch(() => {})
+  },
+
+  requestQuoteSubscribe() {
+    const templateId = this.data.quoteTemplateId
+    if (!templateId || !wx.requestSubscribeMessage) return Promise.resolve()
+    return new Promise(resolve => {
+      wx.requestSubscribeMessage({
+        tmplIds: [templateId],
+        success: result => {
+          console.log("[quote-subscribe] checkout result", { accepted: result[templateId] === "accept" })
+          resolve()
+        },
+        fail: error => {
+          console.log("[quote-subscribe] checkout failed", { errMsg: error.errMsg || "" })
+          resolve()
+        }
+      })
+    })
   },
 
   initCheckout(product, mode, category, options = {}) {
@@ -193,7 +222,7 @@ Page({
         "form.customRequest": "我已上传照片，请根据照片沟通定制方案。"
       })
     }
-    setTimeout(() => this.verifyCheckoutAuth(), 120)
+    setTimeout(() => this.verifyCheckoutAuth().catch(() => {}), 120)
   },
 
   verifyCheckoutAuth(showPrompt = true) {
@@ -596,7 +625,8 @@ Page({
   submitOrder() {
     if (this.data.paying) return
     this.setData({ paying: true })
-    this.verifyCheckoutAuth(false).then(() => {
+    const subscribe = this.isQuoteOrder() ? this.requestQuoteSubscribe() : Promise.resolve()
+    subscribe.then(() => this.verifyCheckoutAuth(false)).then(() => {
       if (!this.validate()) throw Object.assign(new Error("请检查订单信息"), { validationOnly: true })
       return this.createAndPayOrder()
     }).catch(error => {
@@ -610,7 +640,14 @@ Page({
   },
 
   createAndPayOrder() {
-    if (this.data.pendingOrderId) return this.pay(this.data.pendingOrderId)
+    if (this.data.pendingOrderId) {
+      if (!this.data.paymentEnabled || this.isQuoteOrder()) {
+        this.setData({ pendingOrderId: "" })
+        wx.switchTab({ url: "/pages/orders/orders" })
+        return Promise.resolve(null)
+      }
+      return this.pay(this.data.pendingOrderId)
+    }
     wx.setStorageSync("memberPhone", this.data.form.phone)
     wx.setStorageSync("memberName", this.data.form.customerName)
     const referrerStore = this.data.storeFeaturesEnabled ? getReferrerStoreMeta() : {}
@@ -653,6 +690,7 @@ Page({
       if (!orderId) throw new Error(order.message || "订单创建失败")
       this.setData({ pendingOrderId: orderId })
       if (!this.data.paymentEnabled) {
+        this.setData({ pendingOrderId: "" })
         wx.showModal({
           title: "订单已提交",
           content: "客服会尽快联系你确认付款方式和配送安排。",
@@ -662,6 +700,7 @@ Page({
         return null
       }
       if (this.isQuoteOrder() || order.paymentStatus === "待报价" || order.status === "待客服确认") {
+        this.setData({ pendingOrderId: "" })
         wx.showModal({
           title: "需求已提交",
           content: "已提交需求，客服确认报价后会联系你。",

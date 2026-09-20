@@ -59,6 +59,17 @@ CREATE TABLE IF NOT EXISTS products (
   first_reward DECIMAL(10,2) DEFAULT 0,
   second_reward DECIMAL(10,2) DEFAULT 0,
   sort_order INT DEFAULT 0,
+  model_candidate_id VARCHAR(60),
+  model_source_platform VARCHAR(40),
+  model_source_url VARCHAR(500),
+  model_author_name VARCHAR(100),
+  model_license_code VARCHAR(60),
+  model_license_url VARCHAR(500),
+  model_attribution TEXT,
+  model_authorization_status VARCHAR(40),
+  model_authorization_note TEXT,
+  model_sync_score DECIMAL(10,2) DEFAULT 0,
+  model_synced_at VARCHAR(40),
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 )
 ```
@@ -78,6 +89,11 @@ CREATE TABLE IF NOT EXISTS products (
 - `detail_text`：详情文字。
 - `categories`：一级/二级类目数组。
 - `status`：`on/off`。
+- `model_candidate_id`：外部模型唯一 ID，用于幂等去重。
+- `model_source_*`、`model_author_name`：模型来源平台、原始链接和作者。
+- `model_license_*`、`model_attribution`：许可证及前台署名信息。
+- `model_authorization_*`：后台权利核验状态和说明。
+- `model_sync_score`、`model_synced_at`：候选热度评分和最近同步时间。
 - `stock`：库存。
 - `is_hot`：首页热门推荐。
 - `promotion_hot`：推广页热门商品。
@@ -340,4 +356,3 @@ CREATE INDEX idx_products_sort_order ON products(sort_order);
 CREATE INDEX idx_customers_phone ON customers(phone);
 CREATE INDEX idx_reward_records_order_id ON reward_records(order_id);
 ```
-

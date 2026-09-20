@@ -29,8 +29,25 @@ WECHAT_API_V3_KEY=your_32_char_api_v3_key
 WECHAT_PAY_NOTIFY_URL=https://your-domain.com/api/pay/notify
 WECHAT_PAY_PUBLIC_KEY_ID=PUB_KEY_ID_xxx
 WECHAT_PAY_PUBLIC_KEY_PATH=/absolute/path/to/wechatpay_public_key.pem
+WECHAT_QUOTE_TEMPLATE_ID=your_quote_subscription_template_id
 
 PAY_MOCK=true
+ORDER_PAYMENT_TIMEOUT_MINUTES=30
+QUOTE_REQUEST_TIMEOUT_MINUTES=1440
+ORDER_AUTO_COMPLETE_DAYS=10
+
+MAKERWORLD_SYNC_ENABLED=false
+MAKERWORLD_FEED_URL=https://makerworld.com.cn/your-authorized-feed.json
+MAKERWORLD_FEED_TOKEN=
+MAKERWORLD_FEED_ALLOWED_HOSTS=makerworld.com.cn
+MAKERWORLD_SYNC_INTERVAL_MINUTES=360
+MAKERWORLD_SYNC_LIMIT=20
+MAKERWORLD_AUTO_PUBLISH=false
+MAKERWORLD_ALLOWED_LICENSES=PUBLIC_DOMAIN,CC0,CC_BY_4_0,CC_BY_3_0
+MAKERWORLD_MEDIA_ALLOWED_HOSTS=127.0.0.1
+MAKERWORLD_DEFAULT_PRICE=0
+MAKERWORLD_DEFAULT_COST_PRICE=0
+MAKERWORLD_DEFAULT_STOCK=0
 ```
 
 ## 2. 生产环境示例
@@ -60,8 +77,25 @@ WECHAT_API_V3_KEY=your_32_char_api_v3_key
 WECHAT_PAY_NOTIFY_URL=https://api.feichangjiandan.xyz/api/pay/notify
 WECHAT_PAY_PUBLIC_KEY_ID=PUB_KEY_ID_xxx
 WECHAT_PAY_PUBLIC_KEY_PATH=/secure/path/wechatpay_public_key.pem
+WECHAT_QUOTE_TEMPLATE_ID=your_quote_subscription_template_id
 
 PAY_MOCK=false
+ORDER_PAYMENT_TIMEOUT_MINUTES=30
+QUOTE_REQUEST_TIMEOUT_MINUTES=1440
+ORDER_AUTO_COMPLETE_DAYS=10
+
+MAKERWORLD_SYNC_ENABLED=false
+MAKERWORLD_FEED_URL=https://makerworld.com.cn/your-authorized-feed.json
+MAKERWORLD_FEED_TOKEN=
+MAKERWORLD_FEED_ALLOWED_HOSTS=makerworld.com.cn
+MAKERWORLD_SYNC_INTERVAL_MINUTES=360
+MAKERWORLD_SYNC_LIMIT=20
+MAKERWORLD_AUTO_PUBLISH=false
+MAKERWORLD_ALLOWED_LICENSES=PUBLIC_DOMAIN,CC0,CC_BY_4_0,CC_BY_3_0
+MAKERWORLD_MEDIA_ALLOWED_HOSTS=api.feichangjiandan.xyz
+MAKERWORLD_DEFAULT_PRICE=0
+MAKERWORLD_DEFAULT_COST_PRICE=0
+MAKERWORLD_DEFAULT_STOCK=0
 ```
 
 ## 3. 变量说明
@@ -110,6 +144,7 @@ PAY_MOCK=false
 - `WECHAT_PAY_NOTIFY_URL`
 - `WECHAT_PAY_PUBLIC_KEY_ID`
 - `WECHAT_PAY_PUBLIC_KEY_PATH`
+- `WECHAT_QUOTE_TEMPLATE_ID`：报价完成订阅消息模板 ID；模板字段需对应商品、金额、支付截止时间和提示。
 
 证书和私钥文件必须放在服务器安全目录，不能放入小程序包或公开目录。
 
@@ -119,6 +154,22 @@ PAY_MOCK=false
 - `PAY_MOCK=false`：生产必须使用。
 
 生产环境如果 `PAY_MOCK=true`，服务会拒绝启动。
+
+### 订单时效
+
+- `ORDER_PAYMENT_TIMEOUT_MINUTES`：确认报价或普通下单后的支付时限，默认 30 分钟。
+- `QUOTE_REQUEST_TIMEOUT_MINUTES`：待报价需求的最长保留时间，默认 1440 分钟（24 小时），过期会关闭订单并释放有限库存。
+- `ORDER_AUTO_COMPLETE_DAYS`：配送订单发货后自动完成天数，默认 10 天；存在售后或退款时不会自动完成。
+
+### MakerWorld 模型目录同步
+
+- `MAKERWORLD_FEED_URL` 必须是 MakerWorld 官方或已获得书面授权的数据接口，返回 JSON；禁止填写模型网页或绕过 Cloudflare 的抓取代理。
+- `MAKERWORLD_FEED_ALLOWED_HOSTS` 是数据源域名白名单。若使用已授权的自有中间层，需要显式添加其域名。
+- `MAKERWORLD_SYNC_ENABLED` 开启定时同步；后台商品管理页也可手动执行一次。
+- `MAKERWORLD_AUTO_PUBLISH=false` 是推荐默认值，所有候选先进入下架草稿。
+- 自动上架还要求候选许可证在白名单内，并由数据源明确给出 `commercialUseAllowed=true`、`listingMediaReuseAllowed=true` 和 `sourceVerified=true`。
+- `MAKERWORLD_MEDIA_ALLOWED_HOSTS` 限制自动上架可使用的图片域名；该域名还必须加入微信小程序下载域名。推荐由取得授权的自有 CDN 托管展示图。
+- 系统只同步目录元数据，不下载或再分发 STL/3MF 模型文件。接口格式见 `docs/makerworld-catalog-sync.md`。
 
 ## 4. 修改后是否需要重启
 
@@ -141,4 +192,3 @@ npm start
 ```bash
 node cms/server.js
 ```
-

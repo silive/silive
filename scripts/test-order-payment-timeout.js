@@ -25,6 +25,11 @@ assert.strictEqual(paymentTimeoutMinutes("45"), 45)
 assert.strictEqual(paymentTimeoutMinutes("999999"), 24 * 60)
 assert.strictEqual(paymentExpiresAt(now, 30).toISOString(), "2026-08-03T12:30:00.000Z")
 assert.strictEqual(isPendingPaymentOrder(expiredFiniteOrder), true)
+assert.strictEqual(isPendingPaymentOrder({
+  ...expiredFiniteOrder,
+  status: "待客服确认",
+  paymentStatus: "待报价"
+}), true)
 assert.strictEqual(isExpired(expiredFiniteOrder, now), true)
 assert.deepStrictEqual(timeoutCandidateDecision(expiredFiniteOrder, false, now), { action: "CLOSE" })
 assert.deepStrictEqual(
@@ -58,5 +63,7 @@ assert.match(server, /startOrderPaymentTimeoutWorker\(\)/)
 assert.match(timeoutModule, /sourceType: "payment_timeout"/)
 assert.match(timeoutModule, /releaseRemaining: true/)
 assert.match(timeoutModule, /payment_status='支付超时关闭'/)
+assert.match(timeoutModule, /待客服确认/)
+assert.match(timeoutModule, /ON DUPLICATE KEY UPDATE/)
 
 console.log("order payment timeout tests passed")

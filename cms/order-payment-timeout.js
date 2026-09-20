@@ -5,6 +5,8 @@ const { releaseOrderInventory } = require("./inventory-ledger")
 
 const ORDER_PAYMENT_TIMEOUT_MAX_ATTEMPTS = 12
 const PENDING_PAYMENT_VALUES = new Set(["待支付", "未支付", "unpaid", "pending_payment"])
+const PENDING_QUOTE_ORDER_VALUES = new Set(["待客服确认", "pending_quote"])
+const PENDING_QUOTE_PAYMENT_VALUES = new Set(["待报价", "quote_pending"])
 const TERMINAL_ORDER_VALUES = new Set([
   "已取消", "取消", "已关闭", "关闭", "作废", "已退款", "退款中", "退款处理中",
   "cancelled", "canceled", "closed", "void", "refunded", "refund_processing", "paid_after_cancel"
@@ -32,7 +34,9 @@ function normalized(value) {
 function isPendingPaymentOrder(order = {}) {
   const status = normalized(order.status)
   const paymentStatus = normalized(order.payment_status || order.paymentStatus)
-  if (!PENDING_PAYMENT_VALUES.has(status) || !PENDING_PAYMENT_VALUES.has(paymentStatus)) return false
+  const pendingPayment = PENDING_PAYMENT_VALUES.has(status) && PENDING_PAYMENT_VALUES.has(paymentStatus)
+  const pendingQuote = PENDING_QUOTE_ORDER_VALUES.has(status) && PENDING_QUOTE_PAYMENT_VALUES.has(paymentStatus)
+  if (!pendingPayment && !pendingQuote) return false
   return !order.transaction_id && !order.transactionId && !order.paid_at && !order.paidAt
 }
 
@@ -74,9 +78,12 @@ async function enqueueOrderPaymentTimeout(connection, options = {}) {
   const expiresAt = options.expiresAt
   if (!connection || !orderId || !expiresAt) throw new Error("支付超时任务参数不完整")
   const [result] = await connection.query(
-    `INSERT IGNORE INTO order_payment_timeout_jobs
+    `INSERT INTO order_payment_timeout_jobs
       (order_id, status, attempt_count, available_at, created_at, updated_at)
-     VALUES (:orderId, 'PENDING', 0, :expiresAt, NOW(), NOW())`,
+     VALUES (:orderId, 'PENDING', 0, :expiresAt, NOW(), NOW())
+     ON DUPLICATE KEY UPDATE
+       status='PENDING', attempt_count=0, available_at=VALUES(available_at),
+       processed_at=NULL, locked_at=NULL, locked_by=NULL, last_error=NULL, updated_at=NOW()`,
     { orderId, expiresAt }
   )
   return Number(result.affectedRows || 0) === 1
@@ -198,8 +205,8 @@ async function closeOrderForPaymentTimeout(options = {}) {
              ELSE stock_released_at
            END
        WHERE id=:orderId
-         AND status IN ('待支付','未支付','unpaid','pending_payment')
-         AND payment_status IN ('待支付','未支付','unpaid','pending_payment')
+         AND status IN ('待支付','未支付','unpaid','pending_payment','待客服确认','pending_quote')
+         AND payment_status IN ('待支付','未支付','unpaid','pending_payment','待报价','quote_pending')
          AND transaction_id IS NULL
          AND paid_at IS NULL
          AND payment_expires_at IS NOT NULL

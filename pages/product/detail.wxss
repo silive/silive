@@ -175,6 +175,47 @@
   font-weight: 800;
 }
 
+.provenance-panel {
+  margin-top: 24rpx;
+}
+
+.provenance-row {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 14rpx;
+  color: #374151;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.provenance-label {
+  width: 112rpx;
+  flex: 0 0 auto;
+  color: #6b7280;
+}
+
+.provenance-attribution {
+  margin-top: 18rpx;
+  color: #6b7280;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+
+.source-copy-btn {
+  width: 100%;
+  margin-top: 20rpx;
+  border: 2rpx solid #ff7a00;
+  border-radius: 999rpx;
+  background: #fff9f3;
+  color: #e94b00;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.source-copy-btn::after {
+  border: 0;
+}
+
 .price {
   color: #FF4D00;
   font-size: 56rpx;

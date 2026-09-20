@@ -345,6 +345,7 @@ Page({
     afterSalesTypes: ["退款", "退货退款", "补发", "重新制作"],
     submittingRefund: false,
     payLoadingOrderId: "",
+    confirmLoadingOrderId: "",
     reviewMode: isReviewMode(),
     paymentEnabled: isPaymentEnabled()
   },
@@ -383,10 +384,12 @@ Page({
       hasOpenid: !!loginState.openid
     })
     this.setData({ loading: true, orderLoadMessage: "" })
-    Promise.all([
-      loginState.loggedIn ? request("/api/orders") : Promise.resolve([]),
-      request("/api/products")
-    ]).then(([orders, products]) => {
+    const ordersRequest = loginState.loggedIn ? request("/api/orders") : Promise.resolve([])
+    const productsRequest = request("/api/products").catch(error => {
+      console.warn("[orders-products-load]", error && error.message || "商品推荐加载失败")
+      return []
+    })
+    Promise.all([ordersRequest, productsRequest]).then(([orders, products]) => {
       console.log("[orders-load]", {
         loggedIn: !!loginState.loggedIn,
         orderCount: Array.isArray(orders) ? orders.length : 0,
@@ -521,6 +524,12 @@ Page({
       method: "POST",
       data: { orderId: order.id }
     })).then(payData => {
+      if (payData.mock) {
+        return request("/api/pay/mock-success", {
+          method: "POST",
+          data: { orderId: order.id }
+        })
+      }
       if (!payData.timeStamp || !payData.nonceStr || !payData.package || !payData.paySign) {
         throw new Error(payData.message || "支付配置暂未完成，请联系商家确认订单")
       }
@@ -585,10 +594,29 @@ Page({
 
   confirmReceive(event) {
     const order = this.data.recentOrders[event.currentTarget.dataset.index]
+    if (!order) {
+      wx.showToast({ title: "订单不存在", icon: "none" })
+      return
+    }
     wx.showModal({
       title: "确认收货",
-      content: order ? "如需确认收货，请先联系商家处理。" : "订单不存在",
-      showCancel: false
+      content: "确认已经收到商品吗？确认后订单将完成，并开始计算售后期限。",
+      confirmText: "确认收货",
+      success: result => {
+        if (!result.confirm) return
+        this.setData({ confirmLoadingOrderId: order.id })
+        request(`/api/orders/${encodeURIComponent(order.id)}/confirm-receipt`, {
+          method: "POST",
+          data: {}
+        }).then(() => {
+          wx.showToast({ title: "已确认收货", icon: "success" })
+          this.loadPage()
+        }).catch(error => {
+          wx.showToast({ title: error.message || "确认收货失败", icon: "none" })
+        }).finally(() => {
+          this.setData({ confirmLoadingOrderId: "" })
+        })
+      }
     })
   },
 

@@ -53,6 +53,15 @@
     </view>
   </view>
 
+  <view wx:if="{{product.modelProvenance}}" class="panel provenance-panel" style="{{cardStyle}}">
+    <view class="panel-title">模型来源与许可</view>
+    <view class="provenance-row"><text class="provenance-label">来源</text><text>{{product.modelProvenance.platform}}</text></view>
+    <view wx:if="{{product.modelProvenance.author}}" class="provenance-row"><text class="provenance-label">作者</text><text>{{product.modelProvenance.author}}</text></view>
+    <view wx:if="{{product.modelProvenance.licenseText}}" class="provenance-row"><text class="provenance-label">许可证</text><text>{{product.modelProvenance.licenseText}}</text></view>
+    <view wx:if="{{product.modelProvenance.displayText}}" class="provenance-attribution" style="{{mutedTextStyle}}">{{product.modelProvenance.displayText}}</view>
+    <button wx:if="{{product.modelProvenance.sourceUrl}}" class="source-copy-btn" bindtap="copyModelSource">复制原模型链接</button>
+  </view>
+
   <view class="panel note-panel" style="{{cardStyle}}">
     <view class="panel-title">注意事项</view>
     <view class="detail-text" style="{{mutedTextStyle}}">定制商品会在制作前确认方案；图片越清晰，成品效果越稳定。如需加急或特殊尺寸，可先联系客服确认。</view>

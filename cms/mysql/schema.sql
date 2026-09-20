@@ -33,6 +33,17 @@ CREATE TABLE IF NOT EXISTS products (
   first_reward DECIMAL(10,2) DEFAULT 0,
   second_reward DECIMAL(10,2) DEFAULT 0,
   sort_order INT DEFAULT 0,
+  model_candidate_id VARCHAR(60),
+  model_source_platform VARCHAR(40),
+  model_source_url VARCHAR(500),
+  model_author_name VARCHAR(100),
+  model_license_code VARCHAR(60),
+  model_license_url VARCHAR(500),
+  model_attribution TEXT,
+  model_authorization_status VARCHAR(40),
+  model_authorization_note TEXT,
+  model_sync_score DECIMAL(10,2) DEFAULT 0,
+  model_synced_at VARCHAR(40),
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 

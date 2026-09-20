@@ -16,14 +16,21 @@ for (const field of [
   "firstReward",
   "secondReward",
   "modelCandidateId",
+  "modelSourcePlatform",
   "modelSourceUrl",
   "modelAuthorName",
+  "modelLicenseCode",
+  "modelLicenseUrl",
+  "modelAttribution",
   "modelAuthorizationStatus",
   "modelAuthorizationNote",
+  "modelSyncScore",
+  "modelSyncedAt",
   "inventoryVersion"
 ]) {
   assert.match(publicProduct, new RegExp(`\\b${field}\\b`))
 }
+assert.match(publicProduct, /modelProvenance/)
 assert.match(server, /filter\(isPublicProduct\)\.map\(publicProductView\)/)
 assert.match(server, /!product \|\| !isPublicProduct\(product\)/)
 

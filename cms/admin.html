@@ -644,6 +644,16 @@
             <div id="productImportPreview"></div>
             <div id="productImportReport"></div>
           </div>
+          <div class="bulk-panel">
+            <div class="item-head">
+              <div>
+                <h3>MakerWorld 优秀模型同步</h3>
+                <div class="upload-help">仅接入经授权的 JSON 数据源。系统按热度评分去重同步；默认生成下架草稿，只有许可证白名单且明确允许商用、图片复用并完成权利核验时才可自动上架。</div>
+              </div>
+              <button class="secondary" id="runMakerworldSyncBtn">立即同步</button>
+            </div>
+            <div id="makerworldSyncStatus" class="upload-help">正在读取同步配置...</div>
+          </div>
           <div class="list" id="productEditor"></div>
         </div>
         </div>
@@ -926,6 +936,7 @@
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
     let productImportToken = ""
+    let makerworldSyncStatus = {}
     let categorySearch = ""
     let activityProductSearch = {}
     let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
@@ -2016,6 +2027,28 @@
       </table></div>`
       updateSelectedProductCount()
     }
+    function renderMakerworldSyncStatus() {
+      const status = makerworldSyncStatus || {}
+      const report = status.lastReport || {}
+      const configText = !status.feedConfigured
+        ? "待配置授权数据源"
+        : status.feedReady ? `数据源：${status.feedHost || "已配置"}` : "数据源配置不符合 HTTPS/域名白名单要求"
+      const modeText = status.autoPublish ? "合规候选自动上架" : "全部先进入下架草稿"
+      const lastText = status.lastCompletedAt
+        ? `上次完成：${new Date(status.lastCompletedAt).toLocaleString()}；新增 ${report.created || 0}，更新 ${report.updated || 0}，自动上架 ${report.autoPublished || 0}，草稿 ${report.drafts || 0}`
+        : "尚未执行同步"
+      const errorText = status.lastError ? `；最近错误：${status.lastError}` : ""
+      $("makerworldSyncStatus").innerHTML = `${escapeHtml(configText)}；${escapeHtml(modeText)}；许可证白名单：${escapeHtml((status.allowedLicenses || []).join("、") || "未配置")}；图片域名：${escapeHtml((status.allowedMediaHosts || []).join("、") || "未配置")}<br>${escapeHtml(lastText + errorText)}`
+      $("runMakerworldSyncBtn").disabled = !!status.running || !status.feedReady
+      $("runMakerworldSyncBtn").textContent = status.running ? "同步中..." : "立即同步"
+    }
+    async function runMakerworldSync(button) {
+      await withButtonLoading(button, "同步中...", async () => {
+        const report = await api("/api/admin/makerworld/sync", "POST", {})
+        setStatus(`MakerWorld 同步完成：新增 ${report.created || 0}，更新 ${report.updated || 0}，自动上架 ${report.autoPublished || 0}，草稿 ${report.drafts || 0}`)
+        await loadAll()
+      })
+    }
     function renderProductFilters() {
       if (!$("productCategoryFilter")) return
       $("productSearch").value = productFilters.keyword
@@ -2186,11 +2219,16 @@
           </div><div class="upload-help">勾选“首页推荐”后显示在首页推荐商品区域，最多显示 6 个，按排序值排序。</div></div>
           ${item.modelCandidateId ? `<div class="drawer-section"><h4>模型来源与授权</h4><div class="form-grid">
             <label>来源记录ID<input data-key="modelCandidateId" value="${escapeHtml(item.modelCandidateId)}" disabled></label>
+            <label>来源平台<input data-key="modelSourcePlatform" value="${escapeHtml(item.modelSourcePlatform || "MakerWorld")}" disabled></label>
             <label>作者<input data-key="modelAuthorName" value="${escapeHtml(item.modelAuthorName || "")}"></label>
             <label>来源链接<input data-key="modelSourceUrl" value="${escapeHtml(item.modelSourceUrl || "")}"></label>
+            <label>许可证代码<input data-key="modelLicenseCode" value="${escapeHtml(item.modelLicenseCode || "")}"></label>
+            <label>许可证链接<input data-key="modelLicenseUrl" value="${escapeHtml(item.modelLicenseUrl || "")}"></label>
             <label>授权状态<input data-key="modelAuthorizationStatus" value="${escapeHtml(item.modelAuthorizationStatus || "")}"></label>
+            <label>同步评分<input value="${escapeHtml(item.modelSyncScore || "0")}" disabled></label>
+            <label>署名文案<textarea data-key="modelAttribution">${escapeHtml(item.modelAttribution || "")}</textarea></label>
             <label>授权备注<textarea data-key="modelAuthorizationNote">${escapeHtml(item.modelAuthorizationNote || "")}</textarea></label>
-          </div><div class="upload-help">来源链接、作者和授权状态主要用于后台追踪，前台默认不展示。授权状态非线下已授权/平台允许商用时，发布前请再次确认。</div></div>` : ""}
+          </div><div class="upload-help">作者、来源、许可证和署名文案会在小程序商品详情展示。自动同步不会下载或再分发模型文件；授权状态不合格的候选会自动保持下架。</div></div>` : ""}
         </div>
         <div class="drawer-pane" data-drawer-pane="media">
           <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
@@ -2255,6 +2293,7 @@
     function openOrderDrawer(index) {
       const order = orders[index]
       if (!order) return
+      const pendingQuote = order.status === "待客服确认" && order.paymentStatus === "待报价"
       const originalImages = normalizeMediaList(order.originalImageUrls || order.originalImageUrl)
       const afterSalesImages = normalizeMediaList(order.afterSalesImages || order.refundImageUrl)
       const orderItems = Array.isArray(order.items) ? order.items : []
@@ -2265,30 +2304,30 @@
       $("drawerBody").innerHTML = `
         <div class="drawer-section"><h4>订单信息</h4><div class="form-grid">
           <label>订单号<input value="${escapeHtml(order.id)}" disabled></label>
-          <label>商品名称<input data-order-key="productName" value="${escapeHtml(order.productName)}"></label>
-          <label>金额<input data-order-key="amount" value="${escapeHtml(order.amount)}"></label>
-          <label>支付状态<input data-order-key="paymentStatus" value="${escapeHtml(order.paymentStatus || "待支付")}"></label>
+          <label>商品名称<input value="${escapeHtml(order.productName)}" disabled></label>
+          <label>${pendingQuote ? "确认报价金额" : "金额"}<input ${pendingQuote ? 'id="quoteAmount"' : "disabled"} value="${escapeHtml(order.amount)}" inputmode="decimal"></label>
+          <label>支付状态<input value="${escapeHtml(order.paymentStatus || "待支付")}" disabled></label>
           <label>统一履约状态<input value="${escapeHtml(order.displayStatusText || order.status || "处理中")}" disabled></label>
           <label>微信履约同步<input value="${escapeHtml(order.wechatFulfillmentStatus || "未同步")}" disabled></label>
-          <label>发货状态<select data-order-key="status">
+          <label>发货状态<select disabled>
             ${["待支付", "待发货", "制作中", "已发货", "已完成", "退款中", "已退款"].map(status => `<option ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}
           </select></label>
-          <label>下单时间<input data-order-key="createdAt" value="${escapeHtml(order.createdAtText || order.createdAt)}"></label>
+          <label>下单时间<input value="${escapeHtml(order.createdAtText || order.createdAt)}" disabled></label>
         </div></div>
         <div class="drawer-section"><h4>客户与地址</h4><div class="form-grid">
           <label>客户<input data-order-key="customerName" value="${escapeHtml(order.customerName)}"></label>
-          <label>电话<input data-order-key="phone" value="${escapeHtml(order.phone)}"></label>
+          <label>电话<input value="${escapeHtml(order.phone)}" disabled></label>
           <label>收货地址<textarea data-order-key="address">${escapeHtml(order.address)}</textarea></label>
           <label>定制要求<textarea data-order-key="customRequest">${escapeHtml(order.customRequest || order.remark || "")}</textarea></label>
         </div></div>
         <div class="drawer-section"><h4>定制预览稿</h4>
           <div class="form-grid">
-            <label>所属类目<input data-order-key="category" value="${escapeHtml(order.category || "")}"></label>
-            <label>自由定制单<select data-order-key="isCustomOrder">
+            <label>所属类目<input value="${escapeHtml(order.category || "")}" disabled></label>
+            <label>自由定制单<select disabled>
               <option value="false" ${String(order.isCustomOrder) === "true" ? "" : "selected"}>否</option>
               <option value="true" ${String(order.isCustomOrder) === "true" ? "selected" : ""}>是</option>
             </select></label>
-            <label>客户原图<input data-order-key="originalImageUrl" value="${escapeHtml(order.originalImageUrl || "")}"></label>
+            <label>客户原图<input value="${escapeHtml(order.originalImageUrl || "")}" disabled></label>
             <label>AI预览图<input data-order-key="aiPreviewUrl" value="${escapeHtml(order.aiPreviewUrl || "")}"></label>
             <label>最终确认稿<input data-order-key="finalDesignUrl" value="${escapeHtml(order.finalDesignUrl || "")}"></label>
           </div>
@@ -2304,22 +2343,22 @@
           </div>
         </div>
         <div class="drawer-section"><h4>自提与门店收益</h4><div class="form-grid">
-          <label>配送方式<select data-order-key="deliveryType">
+          <label>配送方式<select disabled>
             <option value="delivery" ${order.deliveryType === "pickup" ? "" : "selected"}>同城配送 / 快递</option>
             <option value="pickup" ${order.deliveryType === "pickup" ? "selected" : ""}>到店自提</option>
           </select></label>
-          <label>自提门店ID<input data-order-key="pickupStoreId" value="${escapeHtml(order.pickupStoreId || "")}"></label>
+          <label>自提门店ID<input value="${escapeHtml(order.pickupStoreId || "")}" disabled></label>
           ${canShowPickupCode(order)
-            ? `<label>取货码<input data-order-key="pickupCode" value="${escapeHtml(order.pickupCode || "")}"></label>`
+            ? `<label>取货码<input value="${escapeHtml(order.pickupCode || "")}" disabled></label>`
             : `<label>取货码<input value="未支付，取货码暂不可用" disabled></label>`}
-          <label>自提状态<select data-order-key="pickupStatus">
+          <label>自提状态<select disabled>
             ${["none", "preparing", "arrived_store", "picked_up"].map(status => `<option value="${status}" ${order.pickupStatus === status ? "selected" : ""}>${({ none: "无", preparing: "配送到门店中", arrived_store: "已到店/待自提", picked_up: "已自提" })[status]}</option>`).join("")}
           </select></label>
-          <label>推广门店ID<input data-order-key="referrerStoreId" value="${escapeHtml(order.referrerStoreId || "")}"></label>
+          <label>推广门店ID<input value="${escapeHtml(order.referrerStoreId || "")}" disabled></label>
           <label>订单来源<input value="${escapeHtml(order.storeOrderTypeText || (order.referrerStoreId ? "外部顾客" : "-"))}" disabled></label>
           <label>门店操作人<input value="${escapeHtml(order.isStoreMemberOrder ? `${order.storeOperatorRoleText || ""} ${order.storeOperatorPhoneTail || "未知"}` : "-")}" disabled></label>
-          <label>推广佣金<input data-order-key="referralCommission" value="${escapeHtml(order.referralCommission || "0.00")}"></label>
-          <label>自提服务费<input data-order-key="pickupServiceFee" value="${escapeHtml(order.pickupServiceFee || "0.00")}"></label>
+          <label>推广佣金<input value="${escapeHtml(order.referralCommission || "0.00")}" disabled></label>
+          <label>自提服务费<input value="${escapeHtml(order.pickupServiceFee || "0.00")}" disabled></label>
           <label>服务费状态<input value="${escapeHtml(({
             ESTIMATED: "预计服务费",
             PAYABLE: "待结算服务费",
@@ -2328,7 +2367,7 @@
             CHARGEBACK: "服务费已扣回",
             NONE: "无服务费"
           })[order.serviceFeeStatus] || "待确认")}" disabled></label>
-          <label>结算状态<select data-order-key="storeSettlementStatus">
+          <label>结算状态<select disabled>
             <option value="pending_confirm" ${!order.storeSettlementStatus || order.storeSettlementStatus === "pending_confirm" ? "selected" : ""}>待确认</option>
             <option value="unsettled" ${order.storeSettlementStatus === "unsettled" ? "selected" : ""}>未结算</option>
             <option value="settled" ${order.storeSettlementStatus === "settled" ? "selected" : ""}>已结算</option>
@@ -2343,7 +2382,7 @@
         <div class="drawer-section"><h4>物流信息</h4><div class="form-grid">
           <label>快递公司<input data-order-key="shippingCompany" value="${escapeHtml(order.shippingCompany)}" placeholder="例如：顺丰速运"></label>
           <label>快递单号<input data-order-key="trackingNumber" value="${escapeHtml(order.trackingNumber)}" placeholder="填写后可一键标记发货"></label>
-        </div><div class="toolbar" style="margin-top:12px"><button class="secondary" data-action="ship-order" data-index="${index}">一键标记已发货</button></div></div>
+        </div><div class="toolbar" style="margin-top:12px"><button class="secondary" data-action="ship-order" data-index="${index}">一键标记已发货</button>${order.status === "已发货" && order.deliveryType !== "pickup" ? `<button class="secondary" data-action="complete-delivery-order" data-index="${index}">管理员确认完成</button>` : ""}</div></div>
         <div class="drawer-section"><h4>售后审核</h4><div class="form-grid">
           <label>售后状态<input value="${escapeHtml(afterSalesText(order))}" disabled></label>
           <label>售后类型<input data-order-key="afterSalesType" value="${escapeHtml(order.afterSalesType || order.refundType || "")}"></label>
@@ -2397,7 +2436,7 @@
           <p class="muted">退款成功后系统会将未结算推广奖励标记失效；已结算奖励需人工线下处理。</p>
         </div>
       `
-      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button><button class="primary" data-action="save-order-drawer">保存订单</button>`
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button>${pendingQuote ? '<button class="primary" data-action="confirm-order-quote">确认报价并开放支付</button>' : ''}<button class="primary" data-action="save-order-drawer">保存订单资料</button>`
       drawerDirty = false
       $("detailDrawer").classList.add("show")
     }
@@ -2413,8 +2452,10 @@
     }
     function saveOrderDrawer() {
       collectOrderDrawer()
+      const order = orders[drawerIndex]
+      if (!order) return
       setStatus("保存中...")
-      api("/api/admin/orders", "PUT", allOrders)
+      api(`/api/admin/orders/${encodeURIComponent(order.id)}`, "PATCH", editableOrderPayload(order))
         .then(() => loadAll())
         .then(() => {
           setStatus("订单已保存")
@@ -2422,6 +2463,25 @@
           closeDrawer(true)
         })
         .catch(error => setStatus(error.message))
+    }
+    function editableOrderPayload(order) {
+      return ["customerName", "address", "customRequest", "remark", "aiPreviewUrl", "finalDesignUrl"]
+        .reduce((result, key) => ({ ...result, [key]: order[key] || "" }), {})
+    }
+    function confirmOrderQuote(button) {
+      const order = orders[drawerIndex]
+      const amount = $("quoteAmount")?.value
+      if (!order || !amount || Number(amount) <= 0) {
+        setStatus("请输入正确的报价金额")
+        return
+      }
+      return withButtonLoading(button, "报价确认中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/quote`, "POST", { amount })
+        .then(() => loadAll())
+        .then(() => {
+          setStatus("报价已确认，用户现在可以支付")
+          drawerDirty = false
+          closeDrawer(true)
+        }))
     }
     function orderStageCount(status) {
       if (status === "售后中") return allOrders.filter(isAfterSalesActive).length
@@ -2939,7 +2999,7 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldStatusData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
@@ -2950,7 +3010,8 @@
         api(`/api/admin/store-settlements${settlementQuery ? `?${settlementQuery}` : ""}`),
         api("/api/admin/sales-agents"),
         api(`/api/admin/store-leads${storeLeadQuery ? `?${storeLeadQuery}` : ""}`),
-        api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`)
+        api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`),
+        api("/api/admin/makerworld/sync-status")
       ])
       const rewardQuery = new URLSearchParams(Object.fromEntries(Object.entries(rewardFilters).filter(([, value]) => value))).toString()
       const [relationData, rewardData] = await Promise.all([
@@ -2971,11 +3032,13 @@
       rewards = rewardData.records || rewardData
       rewardDataSummary = rewardData.summary || {}
       settings = settingData
+      makerworldSyncStatus = makerworldStatusData
       rebuildCategoryOptions()
       renderOverview(overview)
       renderHome()
       renderHelpArticles()
       renderProducts()
+      renderMakerworldSyncStatus()
       renderCategoryManager()
       renderOrders()
       renderCustomers()
@@ -3027,13 +3090,10 @@
       }
       if (currentView === "orders") {
         collectOrderDrawer()
-        document.querySelectorAll("select[data-order-status]").forEach(select => {
-          orders[Number(select.dataset.orderStatus)].status = select.value
-        })
-        document.querySelectorAll("[data-order-field]").forEach(input => {
-          orders[Number(input.dataset.orderField)][input.dataset.key] = input.value
-        })
-        await api("/api/admin/orders", "PUT", allOrders)
+        const order = orders[drawerIndex]
+        if (drawerMode === "order" && order) {
+          await api(`/api/admin/orders/${encodeURIComponent(order.id)}`, "PATCH", editableOrderPayload(order))
+        }
       }
       if (currentView === "relations") {
         document.querySelectorAll("[data-relation]").forEach(input => {
@@ -3105,6 +3165,10 @@
       renderProducts()
       openProductDrawer(0)
     })
+    $("runMakerworldSyncBtn").addEventListener("click", event => runMakerworldSync(event.currentTarget).catch(error => {
+      setStatus(error.message || "MakerWorld 同步失败")
+      loadAll().catch(() => {})
+    }))
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
     })
@@ -3570,6 +3634,13 @@
       }
       if (event.target.dataset.action === "save-product-drawer") saveProductDrawer(event.target)
       if (event.target.dataset.action === "save-order-drawer") saveOrderDrawer()
+      if (event.target.dataset.action === "confirm-order-quote") confirmOrderQuote(event.target)
+      if (event.target.dataset.action === "complete-delivery-order") {
+        const order = orders[Number(event.target.dataset.index)]
+        if (!order || !confirm("确认该配送订单已经完成？")) return
+        withButtonLoading(event.target, "确认中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/complete`, "POST", {})
+          .then(() => loadAll()).then(() => setStatus("订单已完成")))
+      }
       if (event.target.dataset.action === "save-store-drawer") saveStoreDrawer()
       if (event.target.dataset.action === "add-store-member") {
         const body = $("storeMemberRows")
@@ -3988,7 +4059,8 @@
       setStatus("最终确认稿上传中...")
       uploadImage(event.target.files[0]).then(url => {
         if (orders[index]) orders[index].finalDesignUrl = url
-        return api("/api/admin/orders", "PUT", allOrders)
+        if (!orders[index]) throw new Error("订单不存在")
+        return api(`/api/admin/orders/${encodeURIComponent(orders[index].id)}`, "PATCH", { finalDesignUrl: url })
       }).then(() => loadAll()).then(() => setStatus("最终确认稿已替换"))
         .catch(error => setStatus(error.message))
     })

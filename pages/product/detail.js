@@ -103,6 +103,13 @@ function normalizeProduct(product) {
   const seed = hashNumber(product.id || product.name)
   const soldCount = Number(product.soldCount || product.sales || product.saleCount || 0) || 120 + (seed % 420)
   const viewCount = Number(product.viewCount || product.views || 0) || soldCount * 4 + 360 + (seed % 680)
+  const provenance = product.modelProvenance && typeof product.modelProvenance === "object" ? product.modelProvenance : null
+  const licenseLabels = {
+    PUBLIC_DOMAIN: "Public Domain",
+    CC0: "CC0",
+    CC_BY_4_0: "CC BY 4.0",
+    CC_BY_3_0: "CC BY 3.0"
+  }
   return {
     ...product,
     categories,
@@ -123,6 +130,11 @@ function normalizeProduct(product) {
     soldCount,
     viewCount,
     originalPrice: product.originalPrice || product.marketPrice || product.originPrice || "",
+    modelProvenance: provenance ? {
+      ...provenance,
+      licenseText: licenseLabels[provenance.licenseCode] || provenance.licenseCode || "",
+      displayText: provenance.attribution || [provenance.author, provenance.platform, licenseLabels[provenance.licenseCode] || provenance.licenseCode].filter(Boolean).join(" · ")
+    } : null,
     isNormalProduct: String(product.productType || product.orderType || "").toLowerCase() === "normal" ||
       String(product.needCustom || "").toLowerCase() === "false" ||
       categories.some(item => ["日用好货", "潮玩手办", "食品饮料", "日用百货"].some(keyword => String(item).includes(keyword)))
@@ -280,6 +292,15 @@ Page({
     this.setData({
       visibleDetailImages: detailImages,
       detailImagesExpanded: true
+    })
+  },
+
+  copyModelSource() {
+    const sourceUrl = this.data.product?.modelProvenance?.sourceUrl || ""
+    if (!sourceUrl) return
+    wx.setClipboardData({
+      data: sourceUrl,
+      success: () => wx.showToast({ title: "来源链接已复制", icon: "success" })
     })
   },
 

@@ -47,6 +47,24 @@ function isDevelopEnv() {
 const API_HOSTS = isDevelopEnv() ? DEV_API_HOSTS : PROD_API_HOSTS
 const BASE_URL = API_HOSTS[0]
 
+function isMutationMethod(method) {
+  return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase())
+}
+
+function canMutateHost(host, method) {
+  if (!isDevelopEnv() || !isMutationMethod(method)) return true
+  if (String(host || "").replace(/\/$/, "") !== PROD_API_HOST) return true
+  try {
+    return wx.getStorageSync("ALLOW_PROD_API_MUTATION") === true
+  } catch (error) {
+    return false
+  }
+}
+
+function productionMutationError() {
+  return new Error("开发环境已阻止写入生产数据。如确需联调，请先显式开启 ALLOW_PROD_API_MUTATION。")
+}
+
 function getActiveApiHost() {
   try {
     if (isDevelopEnv()) return BASE_URL
@@ -99,6 +117,10 @@ function request(path, options = {}) {
     const host = hosts[index]
     if (!host) {
       reject(new Error(`接口不可访问：${tried.join("、") || "未配置API域名"}。请检查域名解析、HTTPS证书、request合法域名或切换备用API。`))
+      return
+    }
+    if (!canMutateHost(host, method)) {
+      reject(productionMutationError())
       return
     }
     const url = apiUrl(path, host)
@@ -180,6 +202,10 @@ function uploadFileWithFallback(path, options = {}) {
     const host = hosts[index]
     if (!host) {
       reject(new Error("上传接口不可访问，请检查API域名或切换备用API"))
+      return
+    }
+    if (!canMutateHost(host, "POST")) {
+      reject(productionMutationError())
       return
     }
     const header = authHeader(options.header || options.headers || {})

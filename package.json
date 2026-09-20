@@ -15,6 +15,7 @@
     "backfill:order-payment-expiry": "node scripts/backfill-order-payment-expiry.js",
     "test:order-chain": "node scripts/test-order-chain.js",
     "test:order-payment-timeout": "node scripts/test-order-payment-timeout.js",
+    "test:makerworld-catalog-sync": "node scripts/test-makerworld-catalog-sync.js",
     "test:security-p0": "node scripts/test-security-p0.js",
     "test:order-domain": "node scripts/test-order-domain.js",
     "test:security-session-promotion": "node scripts/test-security-session-promotion.js",

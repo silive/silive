@@ -71,7 +71,9 @@ Page({
       wx.showToast({ title: "请选择商品", icon: "none" })
       return
     }
-    wx.navigateTo({ url: `/pages/checkout/checkout?cartItems=${encodeURIComponent(JSON.stringify(selected))}` })
+    const cartKey = `checkoutCart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    wx.setStorageSync(cartKey, selected)
+    wx.navigateTo({ url: `/pages/checkout/checkout?cartKey=${encodeURIComponent(cartKey)}` })
   },
 
   goShopping() {
