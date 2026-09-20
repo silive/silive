@@ -16,6 +16,7 @@
     "test:order-chain": "node scripts/test-order-chain.js",
     "test:order-payment-timeout": "node scripts/test-order-payment-timeout.js",
     "test:makerworld-catalog-sync": "node scripts/test-makerworld-catalog-sync.js",
+    "test:makerworld-batch-import": "node scripts/test-makerworld-batch-import.js",
     "test:security-p0": "node scripts/test-security-p0.js",
     "test:order-domain": "node scripts/test-order-domain.js",
     "test:security-session-promotion": "node scripts/test-security-session-promotion.js",

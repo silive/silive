@@ -27,13 +27,36 @@ function makerworldModelId(candidate = {}) {
   return match ? match[1] : ""
 }
 
-function isMakerWorldUrl(value) {
+function canonicalizeMakerWorldUrl(value) {
   try {
-    const url = new URL(value)
-    return url.protocol === "https:" && (url.hostname === "makerworld.com.cn" || url.hostname.endsWith(".makerworld.com.cn")) && /\/models\/\d+/i.test(url.pathname)
+    const submittedUrl = text(value).replace(/[\])}>,.;。，；！？]+$/g, "")
+    const url = new URL(submittedUrl)
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "")
+    if (!["makerworld.com.cn", "makerworld.com"].includes(hostname)) return null
+    const match = url.pathname.match(/\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?models\/(\d+)(?:-([^/?#]+))?/i)
+    if (!match) return null
+    const modelId = match[1]
+    const slug = text(match[2]).replace(/\/+$/g, "").slice(0, 300)
+    return {
+      modelId,
+      submittedUrl,
+      canonicalUrl: `https://${hostname}/zh/models/${modelId}${slug ? `-${slug}` : ""}`
+    }
   } catch (error) {
-    return false
+    return null
   }
+}
+
+function extractMakerWorldUrls(value) {
+  const input = String(value == null ? "" : value)
+  const matches = input.match(/https?:\/\/[^\s<>"']+/gi) || []
+  return matches
+    .map(item => item.replace(/^[([]+|[\])}>,.;。，；！？]+$/g, ""))
+    .filter(item => /(?:^|\/\/)(?:www\.)?makerworld\.com(?:\.cn)?\//i.test(item))
+}
+
+function isMakerWorldUrl(value) {
+  return !!canonicalizeMakerWorldUrl(value)
 }
 
 function candidateScore(candidate = {}) {
@@ -47,7 +70,9 @@ function candidateScore(candidate = {}) {
 }
 
 function normalizeCandidate(candidate = {}) {
-  const sourceUrl = text(candidate.sourceUrl || candidate.url)
+  const submittedSourceUrl = text(candidate.submittedSourceUrl || candidate.originalSourceUrl || candidate.sourceUrl || candidate.url)
+  const canonical = canonicalizeMakerWorldUrl(candidate.sourceUrl || candidate.url)
+  const sourceUrl = canonical?.canonicalUrl || text(candidate.sourceUrl || candidate.url)
   const modelId = makerworldModelId(candidate)
   const licenseRaw = text(candidate.licenseRaw || candidate.licenseText || candidate.license || candidate.licenseName || candidate.licenseCode)
   const licenseCode = normalizeLicense(candidate.licenseCode || licenseRaw)
@@ -57,9 +82,12 @@ function normalizeCandidate(candidate = {}) {
   return {
     modelId,
     sourceUrl,
+    submittedSourceUrl,
     title,
     summary: text(candidate.summary || candidate.description || candidate.intro),
     author,
+    authorId: text(candidate.authorId || candidate.creatorId),
+    authorUrl: text(candidate.authorUrl || candidate.creatorUrl),
     licenseCode,
     licenseRaw,
     licenseUrl: text(candidate.licenseUrl),
@@ -90,15 +118,15 @@ function buildProduct(candidate, options = {}) {
   const item = decision.candidate
   return {
     id: stableProductId(item.modelId || item.sourceUrl),
-    name: item.title || "MakerWorld 待审核模型",
+    name: (item.title || `MakerWorld 模型 ${item.modelId}`).slice(0, 100),
     intro: item.summary.slice(0, 255),
-    detailText: item.summary,
+    detailText: item.summary.slice(0, 30000),
     price: String(options.defaultPrice || "0"),
     costPrice: String(options.defaultCostPrice || "0"),
     badge: "new",
     cover: "keyring",
-    imageUrl: item.imageUrl,
-    galleryImages: item.galleryImages,
+    imageUrl: item.imageUrl.slice(0, 500),
+    galleryImages: item.galleryImages.map(url => url.slice(0, 1000)),
     detailImages: [],
     videoUrl: "",
     productType: "normal",
@@ -114,7 +142,10 @@ function buildProduct(candidate, options = {}) {
     modelCandidateId: item.modelId,
     modelSourcePlatform: "MakerWorld",
     modelSourceUrl: item.sourceUrl,
-    modelAuthorName: item.author,
+    modelSourceOriginalUrl: (item.submittedSourceUrl || item.sourceUrl).slice(0, 1000),
+    modelAuthorName: item.author.slice(0, 100),
+    modelAuthorId: item.authorId.slice(0, 100),
+    modelAuthorUrl: item.authorUrl.slice(0, 500),
     modelLicenseCode: item.licenseCode,
     modelLicenseRaw: item.licenseRaw,
     modelLicenseUrl: item.licenseUrl,
@@ -122,7 +153,11 @@ function buildProduct(candidate, options = {}) {
     modelAuthorizationStatus: "pending_review",
     modelAuthorizationNote: "",
     modelSyncScore: String(item.score),
-    modelSyncedAt: new Date().toISOString(),
+    modelSyncedAt: text(candidate.fetchedAt) || new Date().toISOString(),
+    modelFetchedAt: text(candidate.fetchedAt) || new Date().toISOString(),
+    modelImportedAt: text(candidate.importedAt) || new Date().toISOString(),
+    modelInfoStatus: text(candidate.infoStatus) || "complete",
+    modelInfoNote: text(candidate.infoNote),
     sortOrder: String(options.sortOrder || 999)
   }
 }
@@ -155,13 +190,19 @@ function planSync(payload, existingProducts = [], options = {}) {
         ...existing,
         modelSourcePlatform: generated.modelSourcePlatform,
         modelSourceUrl: generated.modelSourceUrl,
+        modelSourceOriginalUrl: generated.modelSourceOriginalUrl,
         modelAuthorName: generated.modelAuthorName,
+        modelAuthorId: generated.modelAuthorId,
+        modelAuthorUrl: generated.modelAuthorUrl,
         modelLicenseCode: generated.modelLicenseCode,
         modelLicenseRaw: generated.modelLicenseRaw,
         modelLicenseUrl: generated.modelLicenseUrl,
         modelAttribution: generated.modelAttribution,
         modelSyncScore: generated.modelSyncScore,
         modelSyncedAt: generated.modelSyncedAt,
+        modelFetchedAt: generated.modelFetchedAt,
+        modelInfoStatus: generated.modelInfoStatus,
+        modelInfoNote: generated.modelInfoNote,
         modelAuthorizationStatus: existing.modelAuthorizationStatus || "pending_review",
         modelAuthorizationNote: existing.modelAuthorizationNote || "",
         status: existing.modelAuthorizationStatus === "approved" ? existing.status : "off"
@@ -178,7 +219,9 @@ function planSync(payload, existingProducts = [], options = {}) {
 
 module.exports = {
   buildProduct,
+  canonicalizeMakerWorldUrl,
   candidateScore,
+  extractMakerWorldUrls,
   feedCandidates,
   importDecision,
   isMakerWorldUrl,

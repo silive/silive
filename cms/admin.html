@@ -647,10 +647,19 @@
           <div class="bulk-panel">
             <div class="item-head">
               <div>
-                <h3>MakerWorld 优秀模型同步</h3>
-                <div class="upload-help">系统按热度评分去重同步。所有取得基础信息的模型均进入下架的“待人工审核”，许可证、版权和商用信息只作参考，不参与导入判定。</div>
+                <h3>MakerWorld 自动同步</h3>
+                <div class="upload-help">自动同步需要单独配置 JSON 数据源；不影响下方的单链接和批量手工导入。</div>
               </div>
               <button class="secondary" id="runMakerworldSyncBtn">立即同步</button>
+            </div>
+            <div id="makerworldSyncStatus" class="upload-help">正在读取同步配置...</div>
+          </div>
+          <div class="bulk-panel">
+            <div class="item-head">
+              <div>
+                <h3>MakerWorld 手工导入</h3>
+                <div class="upload-help">所有有效模型均以“下架 + 待人工审核”保存。许可证、版权和商用信息只作参考。</div>
+              </div>
             </div>
             <div class="bulk-row">
               <input id="makerworldImportUrl" placeholder="MakerWorld 模型链接（必填）">
@@ -659,7 +668,17 @@
               <input id="makerworldImportLicense" placeholder="原始许可证文字（可选，仅供参考）">
               <button class="secondary" id="importMakerworldDraftBtn">导入待审核</button>
             </div>
-            <div id="makerworldSyncStatus" class="upload-help">正在读取同步配置...</div>
+            <h3 style="margin-top:20px">批量导入 MakerWorld 链接</h3>
+            <div class="upload-help">可每行一个、空格分隔或直接粘贴整段文字；自动提取其中的 MakerWorld URL，每批最多 100 个。</div>
+            <textarea id="makerworldBatchUrls" rows="7" placeholder="粘贴 MakerWorld 模型链接或包含链接的文字..."></textarea>
+            <div class="bulk-row">
+              <button class="primary" id="importMakerworldBatchBtn">批量导入</button>
+              <button class="secondary" id="retryMakerworldFailedBtn" disabled>重新导入失败项</button>
+              <button class="secondary" id="copyMakerworldFailedBtn" disabled>一键复制失败链接</button>
+            </div>
+            <div id="makerworldBatchSummary" class="upload-help">等待批量导入。</div>
+            <div id="makerworldBatchResults"></div>
+            <div id="makerworldBatchHistory"></div>
           </div>
           <div class="list" id="productEditor"></div>
         </div>
@@ -944,6 +963,8 @@
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
     let productImportToken = ""
     let makerworldSyncStatus = {}
+    let makerworldBatchResult = null
+    let makerworldImportBatches = []
     let categorySearch = ""
     let activityProductSearch = {}
     let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
@@ -1446,9 +1467,9 @@
       if (!allowedExts.includes(ext) || !allowedTypes.includes(file.type)) throw new Error("图片格式不支持，请选择jpg/jpeg/png/webp")
       if (file.size > 10 * 1024 * 1024) throw new Error("图片超过10MB，请压缩后上传")
     }
-    async function api(path, method = "GET", body) {
+    async function api(path, method = "GET", body, timeoutMs = 12000) {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 12000)
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       const options = { method, headers: { "Content-Type": "application/json" }, cache: "no-store" }
       options.signal = controller.signal
       if (body) options.body = JSON.stringify(body)
@@ -2042,7 +2063,7 @@
       const status = makerworldSyncStatus || {}
       const report = status.lastReport || {}
       const configText = !status.feedConfigured
-        ? "待配置数据源（仍可手动导入）"
+        ? "自动同步数据源未配置，批量手工导入可正常使用"
         : status.feedReady ? `数据源：${status.feedHost || "已配置"}` : "数据源配置不符合 HTTPS/域名白名单要求"
       const modeText = "全部进入待人工审核，不执行许可证自动判定"
       const lastText = status.lastCompletedAt
@@ -2050,7 +2071,7 @@
         : "尚未执行同步"
       const errorText = status.lastError ? `；最近错误：${status.lastError}` : ""
       $("makerworldSyncStatus").innerHTML = `${escapeHtml(configText)}；${escapeHtml(modeText)}<br>${escapeHtml(lastText + errorText)}`
-      $("runMakerworldSyncBtn").disabled = !!status.running || !status.feedReady
+      $("runMakerworldSyncBtn").disabled = !!status.running || !!status.batchRunning || !status.feedReady
       $("runMakerworldSyncBtn").textContent = status.running ? "同步中..." : "立即同步"
     }
     async function runMakerworldSync(button) {
@@ -2078,6 +2099,58 @@
         $("makerworldImportLicense").value = ""
         await loadAll()
       })
+    }
+    function makerworldBatchStatusText(status) {
+      return ({ imported: "导入成功", already_exists: "已存在", fetch_failed: "获取失败", invalid_link: "无效链接", data_incomplete: "数据不完整" })[status] || status || "-"
+    }
+    function makerworldFailedResults() {
+      return (makerworldBatchResult?.results || []).filter(item => ["fetch_failed", "invalid_link"].includes(item.status))
+    }
+    function renderMakerworldBatchResult() {
+      const report = makerworldBatchResult
+      const failed = makerworldFailedResults()
+      $("retryMakerworldFailedBtn").disabled = !failed.length
+      $("copyMakerworldFailedBtn").disabled = !failed.length
+      if (!report) {
+        $("makerworldBatchSummary").textContent = "等待批量导入。"
+        $("makerworldBatchResults").innerHTML = ""
+        return
+      }
+      $("makerworldBatchSummary").textContent = `批次 ${report.id}：总数 ${report.submittedCount || 0}，成功 ${report.successCount || 0}，已存在 ${report.existingCount || 0}，失败 ${report.failedCount || 0}`
+      $("makerworldBatchResults").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
+        <thead><tr><th>序号</th><th>模型标题</th><th>MakerWorld ID</th><th>状态</th><th>结果说明</th></tr></thead>
+        <tbody>${(report.results || []).map(item => `<tr><td>${item.index || "-"}</td><td>${escapeHtml(item.title || "-")}</td><td>${escapeHtml(item.modelId || "-")}</td><td><span class="pill">${escapeHtml(makerworldBatchStatusText(item.status))}</span></td><td>${escapeHtml(item.message || "-")}</td></tr>`).join("")}</tbody>
+      </table></div>`
+    }
+    function renderMakerworldBatchHistory() {
+      $("makerworldBatchHistory").innerHTML = makerworldImportBatches.length ? `<h3 style="margin-top:20px">最近批量导入记录</h3><div class="dense-table-wrap"><table class="dense-table">
+        <thead><tr><th>批次 ID</th><th>开始时间</th><th>完成时间</th><th>提交</th><th>成功</th><th>已存在</th><th>失败</th></tr></thead>
+        <tbody>${makerworldImportBatches.map(item => `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.startedAt ? new Date(item.startedAt).toLocaleString() : "-")}</td><td>${escapeHtml(item.completedAt ? new Date(item.completedAt).toLocaleString() : "-")}</td><td>${item.submittedCount || 0}</td><td>${item.successCount || 0}</td><td>${item.existingCount || 0}</td><td>${item.failedCount || 0}</td></tr>`).join("")}</tbody>
+      </table></div>` : ""
+    }
+    async function importMakerworldBatch(button, text) {
+      const value = String(text == null ? $("makerworldBatchUrls").value : text).trim()
+      if (!value) throw new Error("请粘贴 MakerWorld 模型链接")
+      await withButtonLoading(button, "处理中...", async () => {
+        makerworldBatchResult = await api("/api/admin/makerworld/import-batch", "POST", { text: value }, 180000)
+        if (text == null) $("makerworldBatchUrls").value = ""
+        makerworldImportBatches = await api("/api/admin/makerworld/import-batches?limit=10")
+        renderMakerworldBatchResult()
+        renderMakerworldBatchHistory()
+        setStatus(`MakerWorld 批量导入完成：成功 ${makerworldBatchResult.successCount || 0}，已存在 ${makerworldBatchResult.existingCount || 0}，失败 ${makerworldBatchResult.failedCount || 0}`)
+        await loadAll()
+      })
+    }
+    async function retryMakerworldFailed(button) {
+      const text = makerworldFailedResults().map(item => item.submittedUrl).filter(Boolean).join("\n")
+      if (!text) return
+      await importMakerworldBatch(button, text)
+    }
+    async function copyMakerworldFailed() {
+      const text = makerworldFailedResults().map(item => item.submittedUrl).filter(Boolean).join("\n")
+      if (!text) return
+      await navigator.clipboard.writeText(text)
+      setStatus("已复制失败链接")
     }
     async function reviewMakerworld(button) {
       const decision = button.dataset.decision
@@ -2262,13 +2335,19 @@
             <label>来源记录ID<input data-key="modelCandidateId" value="${escapeHtml(item.modelCandidateId)}" disabled></label>
             <label>来源平台<input data-key="modelSourcePlatform" value="${escapeHtml(item.modelSourcePlatform || "MakerWorld")}" disabled></label>
             <label>作者<input data-key="modelAuthorName" value="${escapeHtml(item.modelAuthorName || "")}"></label>
+            <label>作者 ID<input data-key="modelAuthorId" value="${escapeHtml(item.modelAuthorId || "")}"></label>
+            <label>作者主页<input data-key="modelAuthorUrl" value="${escapeHtml(item.modelAuthorUrl || "")}"></label>
             <label>来源链接<input data-key="modelSourceUrl" value="${escapeHtml(item.modelSourceUrl || "")}"></label>
+            <label>原始提交链接<input value="${escapeHtml(item.modelSourceOriginalUrl || "")}" disabled></label>
             <label>许可证代码<input data-key="modelLicenseCode" value="${escapeHtml(item.modelLicenseCode || "")}"></label>
             <label>原始许可证文字<textarea data-key="modelLicenseRaw">${escapeHtml(item.modelLicenseRaw || "")}</textarea></label>
             <label>许可证链接<input data-key="modelLicenseUrl" value="${escapeHtml(item.modelLicenseUrl || "")}"></label>
             <label>人工审核状态<input value="${escapeHtml(makerworldReviewText(item.modelAuthorizationStatus))}" disabled></label>
             <label>同步评分<input value="${escapeHtml(item.modelSyncScore || "0")}" disabled></label>
-            <label>最近抓取时间<input value="${escapeHtml(item.modelSyncedAt || "")}" disabled></label>
+            <label>抓取时间<input value="${escapeHtml(item.modelFetchedAt || item.modelSyncedAt || "")}" disabled></label>
+            <label>导入时间<input value="${escapeHtml(item.modelImportedAt || "")}" disabled></label>
+            <label>信息状态<input value="${escapeHtml(item.modelInfoStatus === "incomplete" ? "信息待补全" : "已获取")}" disabled></label>
+            <label>信息备注<textarea data-key="modelInfoNote">${escapeHtml(item.modelInfoNote || "")}</textarea></label>
             <label>署名文案<textarea data-key="modelAttribution">${escapeHtml(item.modelAttribution || "")}</textarea></label>
             <label>人工审核备注<textarea data-key="modelAuthorizationNote">${escapeHtml(item.modelAuthorizationNote || "")}</textarea></label>
           </div><div class="upload-help">许可证、版权和商用相关文字只作人工审核参考，不参与导入或同步判定。请使用商品列表中的审核按钮决定是否上架。</div></div>` : ""}
@@ -3042,7 +3121,7 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldStatusData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldStatusData, makerworldBatchData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
@@ -3054,7 +3133,8 @@
         api("/api/admin/sales-agents"),
         api(`/api/admin/store-leads${storeLeadQuery ? `?${storeLeadQuery}` : ""}`),
         api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`),
-        api("/api/admin/makerworld/sync-status")
+        api("/api/admin/makerworld/sync-status"),
+        api("/api/admin/makerworld/import-batches?limit=10")
       ])
       const rewardQuery = new URLSearchParams(Object.fromEntries(Object.entries(rewardFilters).filter(([, value]) => value))).toString()
       const [relationData, rewardData] = await Promise.all([
@@ -3076,12 +3156,15 @@
       rewardDataSummary = rewardData.summary || {}
       settings = settingData
       makerworldSyncStatus = makerworldStatusData
+      makerworldImportBatches = makerworldBatchData
       rebuildCategoryOptions()
       renderOverview(overview)
       renderHome()
       renderHelpArticles()
       renderProducts()
       renderMakerworldSyncStatus()
+      renderMakerworldBatchResult()
+      renderMakerworldBatchHistory()
       renderCategoryManager()
       renderOrders()
       renderCustomers()
@@ -3214,6 +3297,15 @@
     }))
     $("importMakerworldDraftBtn").addEventListener("click", event => importMakerworldDraft(event.currentTarget).catch(error => {
       setStatus(error.message || "MakerWorld 导入失败")
+    }))
+    $("importMakerworldBatchBtn").addEventListener("click", event => importMakerworldBatch(event.currentTarget).catch(error => {
+      setStatus(error.message || "MakerWorld 批量导入失败")
+    }))
+    $("retryMakerworldFailedBtn").addEventListener("click", event => retryMakerworldFailed(event.currentTarget).catch(error => {
+      setStatus(error.message || "MakerWorld 失败项重试失败")
+    }))
+    $("copyMakerworldFailedBtn").addEventListener("click", () => copyMakerworldFailed().catch(error => {
+      setStatus(error.message || "复制失败")
     }))
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")

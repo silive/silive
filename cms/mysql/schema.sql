@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS products (
   model_candidate_id VARCHAR(60),
   model_source_platform VARCHAR(40),
   model_source_url VARCHAR(500),
+  model_source_original_url VARCHAR(1000),
   model_author_name VARCHAR(100),
+  model_author_id VARCHAR(100),
+  model_author_url VARCHAR(500),
   model_license_code VARCHAR(60),
   model_license_raw TEXT,
   model_license_url VARCHAR(500),
@@ -45,7 +48,26 @@ CREATE TABLE IF NOT EXISTS products (
   model_authorization_note TEXT,
   model_sync_score DECIMAL(10,2) DEFAULT 0,
   model_synced_at VARCHAR(40),
+  model_fetched_at VARCHAR(40),
+  model_imported_at VARCHAR(40),
+  model_info_status VARCHAR(40),
+  model_info_note TEXT,
+  INDEX idx_products_model_candidate (model_candidate_id),
+  INDEX idx_products_model_source_url (model_source_url),
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS makerworld_import_batches (
+  id VARCHAR(50) PRIMARY KEY,
+  started_at VARCHAR(40) NOT NULL,
+  completed_at VARCHAR(40),
+  submitted_count INT NOT NULL DEFAULT 0,
+  success_count INT NOT NULL DEFAULT 0,
+  existing_count INT NOT NULL DEFAULT 0,
+  failed_count INT NOT NULL DEFAULT 0,
+  results_json JSON,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_makerworld_batches_started (started_at)
 );
 
 CREATE TABLE IF NOT EXISTS orders (

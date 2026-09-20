@@ -18,7 +18,10 @@ for (const field of [
   "modelCandidateId",
   "modelSourcePlatform",
   "modelSourceUrl",
+  "modelSourceOriginalUrl",
   "modelAuthorName",
+  "modelAuthorId",
+  "modelAuthorUrl",
   "modelLicenseCode",
   "modelLicenseRaw",
   "modelLicenseUrl",
@@ -27,6 +30,10 @@ for (const field of [
   "modelAuthorizationNote",
   "modelSyncScore",
   "modelSyncedAt",
+  "modelFetchedAt",
+  "modelImportedAt",
+  "modelInfoStatus",
+  "modelInfoNote",
   "inventoryVersion"
 ]) {
   assert.match(publicProduct, new RegExp(`\\b${field}\\b`))

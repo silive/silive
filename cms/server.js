@@ -77,7 +77,12 @@ const {
   claimPickupCode,
   generatePickupCodeCandidate
 } = require("./pickup-security")
-const { planSync: planMakerWorldSync } = require("./makerworld-catalog-sync")
+const {
+  buildProduct: buildMakerWorldProduct,
+  canonicalizeMakerWorldUrl,
+  planSync: planMakerWorldSync
+} = require("./makerworld-catalog-sync")
+const { parseMakerWorldHtml, prepareBatchInput } = require("./makerworld-batch-import")
 
 let mysql
 try {
@@ -137,7 +142,7 @@ const productUploadsDir = path.join(uploadsDir, "products")
 const publicLogoFile = path.join(ROOT, "assets", "logo.png")
 const brandQrLogoFile = path.join(ROOT, "assets", "logo-orange.png")
 const BRAND_QR_LOGO_VERSION = "orange-v5-release"
-const seedDir = path.join(__dirname, "data")
+const seedDir = process.env.CMS_DATA_DIR ? path.resolve(process.env.CMS_DATA_DIR) : path.join(__dirname, "data")
 const importTempDir = path.join(seedDir, "import-temp")
 const certDir = path.join(seedDir, "certs")
 const homeFile = path.join(seedDir, "home.json")
@@ -155,6 +160,7 @@ const storeSettlementRecordsFile = path.join(seedDir, "store-settlement-records.
 const salesAgentsFile = path.join(seedDir, "sales-agents.json")
 const storeLeadsFile = path.join(seedDir, "store-leads.json")
 const salesAgentCommissionsFile = path.join(seedDir, "sales-agent-commissions.json")
+const makerworldImportBatchesFile = path.join(seedDir, "makerworld-import-batches.json")
 const sessions = new Map()
 const salesSessions = new Map()
 const userSessions = new Map()
@@ -181,6 +187,7 @@ let wechatFulfillmentWorkerTimer = null
 let refundSyncWorkerRunning = false
 let refundSyncWorkerTimer = null
 let makerworldSyncWorkerRunning = false
+let makerworldImportWorkerRunning = false
 let makerworldSyncWorkerTimer = null
 let makerworldSyncState = {
   running: false,
@@ -621,7 +628,211 @@ function publicMakerworldSyncStatus() {
     feedHost: config.feedHost,
     intervalMinutes: config.intervalMinutes,
     limit: config.limit,
-    reviewMode: "manual"
+    reviewMode: "manual",
+    batchRunning: makerworldImportWorkerRunning
+  }
+}
+
+function fetchMakerworldHtml(sourceUrl, timeoutMs = 5000, redirectsLeft = 2) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(sourceUrl)
+    if (!canonicalizeMakerWorldUrl(sourceUrl)) return reject(new Error("不是有效的 MakerWorld 模型链接"))
+    const req = https.request({
+      hostname: target.hostname,
+      path: `${target.pathname}${target.search}`,
+      method: "GET",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6",
+        "User-Agent": "Mozilla/5.0 (compatible; VerySimpleMakerWorldImporter/1.0)"
+      },
+      timeout: Math.max(1500, Math.min(Number(timeoutMs || 5000), 10000))
+    }, response => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location && redirectsLeft > 0) {
+        response.resume()
+        let redirected
+        try { redirected = new URL(response.headers.location, target).toString() } catch (error) { return reject(new Error("页面重定向地址无效")) }
+        if (!canonicalizeMakerWorldUrl(redirected)) return reject(new Error("页面重定向到非 MakerWorld 地址"))
+        fetchMakerworldHtml(redirected, timeoutMs, redirectsLeft - 1).then(resolve, reject)
+        return
+      }
+      const chunks = []
+      let size = 0
+      response.on("data", chunk => {
+        size += chunk.length
+        if (size > 2 * 1024 * 1024) {
+          req.destroy(new Error("MakerWorld 页面超过 2MB 解析上限"))
+          return
+        }
+        chunks.push(chunk)
+      })
+      response.on("end", () => resolve({
+        statusCode: Number(response.statusCode || 0),
+        headers: response.headers,
+        html: Buffer.concat(chunks).toString("utf8")
+      }))
+    })
+    req.on("timeout", () => req.destroy(new Error("MakerWorld 页面获取超时")))
+    req.on("error", reject)
+    req.end()
+  })
+}
+
+async function fetchMakerworldCandidate(normalized, submittedUrl) {
+  const fetchedAt = new Date().toISOString()
+  const fallback = {
+    modelId: normalized.modelId,
+    sourceUrl: normalized.canonicalUrl,
+    submittedSourceUrl: submittedUrl,
+    title: `MakerWorld 模型 ${normalized.modelId}`,
+    fetchedAt,
+    infoStatus: "incomplete",
+    infoNote: "信息待补全；图片待补全"
+  }
+  try {
+    const response = await fetchMakerworldHtml(normalized.canonicalUrl, Number(process.env.MAKERWORLD_PAGE_TIMEOUT_MS || 5000))
+    const parsed = parseMakerWorldHtml(response.html, normalized.canonicalUrl)
+    if (response.statusCode < 200 || response.statusCode >= 300 || parsed.cloudflareBlocked) {
+      const reason = parsed.cloudflareBlocked || response.statusCode === 403
+        ? `Cloudflare 限制（HTTP ${response.statusCode}）`
+        : `页面返回 HTTP ${response.statusCode}`
+      return { ...fallback, fetchWarning: reason, infoNote: `${fallback.infoNote}；${reason}` }
+    }
+    const missing = []
+    if (!parsed.title) missing.push("标题待补全")
+    if (!parsed.imageUrl) missing.push("图片待补全")
+    return {
+      ...fallback,
+      ...parsed,
+      modelId: normalized.modelId,
+      sourceUrl: normalized.canonicalUrl,
+      submittedSourceUrl: submittedUrl,
+      title: parsed.title || fallback.title,
+      fetchedAt,
+      infoStatus: missing.length ? "incomplete" : "complete",
+      infoNote: missing.join("；")
+    }
+  } catch (error) {
+    return { ...fallback, fetchWarning: error.message || "页面获取失败", infoNote: `${fallback.infoNote}；${error.message || "页面获取失败"}` }
+  }
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length)
+  let cursor = 0
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++
+      results[index] = await worker(items[index], index)
+    }
+  })
+  await Promise.all(runners)
+  return results
+}
+
+async function saveMakerworldImportBatch(batch) {
+  if (!pool) {
+    const records = readJsonFile(makerworldImportBatchesFile, [])
+    const existingIndex = records.findIndex(item => item.id === batch.id)
+    if (existingIndex >= 0) records.splice(existingIndex, 1)
+    records.unshift(batch)
+    writeJsonFile(makerworldImportBatchesFile, records.slice(0, 50))
+    return
+  }
+  await query(
+    `INSERT INTO makerworld_import_batches
+      (id, started_at, completed_at, submitted_count, success_count, existing_count, failed_count, results_json)
+     VALUES (:id, :startedAt, :completedAt, :submittedCount, :successCount, :existingCount, :failedCount, :resultsJson)
+     ON DUPLICATE KEY UPDATE completed_at=VALUES(completed_at), submitted_count=VALUES(submitted_count),
+       success_count=VALUES(success_count), existing_count=VALUES(existing_count), failed_count=VALUES(failed_count),
+       results_json=VALUES(results_json)`,
+    { ...batch, resultsJson: JSON.stringify(batch.results || []) }
+  )
+}
+
+async function getMakerworldImportBatches(limit = 10) {
+  const safeLimit = Math.max(1, Math.min(Number(limit || 10), 50))
+  if (!pool) return readJsonFile(makerworldImportBatchesFile, []).slice(0, safeLimit)
+  const rows = await query(`SELECT * FROM makerworld_import_batches ORDER BY started_at DESC LIMIT ${safeLimit}`)
+  return rows.map(row => ({
+    id: row.id,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    submittedCount: Number(row.submitted_count || 0),
+    successCount: Number(row.success_count || 0),
+    existingCount: Number(row.existing_count || 0),
+    failedCount: Number(row.failed_count || 0),
+    results: parseJsonValue(row.results_json, [])
+  }))
+}
+
+async function runMakerworldBatchImport(inputText) {
+  if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
+  const inputs = prepareBatchInput(inputText, 100)
+  if (!inputs.length) throw httpError(400, "未找到 MakerWorld 链接，请粘贴至少一个模型页链接")
+  makerworldImportWorkerRunning = true
+  const startedAt = new Date().toISOString()
+  const batchId = `MWB${Date.now()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`
+  try {
+    await saveMakerworldImportBatch({ id: batchId, startedAt, completedAt: "", submittedCount: inputs.length, successCount: 0, existingCount: 0, failedCount: 0, results: [] })
+    const products = await getProducts()
+    const byModelId = new Map(products.filter(item => item.modelCandidateId).map(item => [String(item.modelCandidateId), item]))
+    const bySourceUrl = new Map(products.filter(item => item.modelSourceUrl).map(item => [String(item.modelSourceUrl), item]))
+    const firstNewByModelId = new Map()
+    for (const input of inputs) {
+      if (!input.normalized || byModelId.has(input.normalized.modelId) || bySourceUrl.has(input.normalized.canonicalUrl) || firstNewByModelId.has(input.normalized.modelId)) continue
+      firstNewByModelId.set(input.normalized.modelId, input)
+    }
+    const fetchJobs = [...firstNewByModelId.values()]
+    const fetchedCandidates = await mapWithConcurrency(fetchJobs, 10, item => fetchMakerworldCandidate(item.normalized, item.submittedUrl))
+    const fetchedByModelId = new Map(fetchJobs.map((item, index) => [item.normalized.modelId, fetchedCandidates[index]]))
+    const additions = []
+    const results = []
+    for (const input of inputs) {
+      if (!input.normalized) {
+        results.push({ index: input.index, submittedUrl: input.submittedUrl, status: "invalid_link", message: "无效链接：未识别到 MakerWorld model ID" })
+        continue
+      }
+      const existing = byModelId.get(input.normalized.modelId) || bySourceUrl.get(input.normalized.canonicalUrl)
+      if (existing) {
+        results.push({ index: input.index, submittedUrl: input.submittedUrl, canonicalUrl: input.normalized.canonicalUrl, modelId: input.normalized.modelId, title: existing.name, productId: existing.id, status: "already_exists", message: `已存在，商品 ID：${existing.id}` })
+        continue
+      }
+      const candidate = fetchedByModelId.get(input.normalized.modelId) || await fetchMakerworldCandidate(input.normalized, input.submittedUrl)
+      candidate.importedAt = new Date().toISOString()
+      const product = buildMakerWorldProduct(candidate, makerworldSyncConfig())
+      product.status = "off"
+      product.modelAuthorizationStatus = "pending_review"
+      additions.push(product)
+      byModelId.set(input.normalized.modelId, product)
+      bySourceUrl.set(input.normalized.canonicalUrl, product)
+      const incomplete = candidate.infoStatus !== "complete"
+      results.push({
+        index: input.index,
+        submittedUrl: input.submittedUrl,
+        canonicalUrl: input.normalized.canonicalUrl,
+        modelId: input.normalized.modelId,
+        title: product.name,
+        productId: product.id,
+        status: incomplete ? "data_incomplete" : "imported",
+        message: incomplete ? `导入成功；${candidate.infoNote || "信息待补全"}` : "导入成功，已进入待人工审核"
+      })
+    }
+    if (additions.length) await saveProducts([...additions, ...products])
+    const batch = {
+      id: batchId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      submittedCount: results.length,
+      successCount: results.filter(item => ["imported", "data_incomplete"].includes(item.status)).length,
+      existingCount: results.filter(item => item.status === "already_exists").length,
+      failedCount: results.filter(item => ["invalid_link", "fetch_failed"].includes(item.status)).length,
+      results
+    }
+    await saveMakerworldImportBatch(batch)
+    return batch
+  } finally {
+    makerworldImportWorkerRunning = false
   }
 }
 
@@ -635,6 +846,16 @@ async function importMakerworldPayload(payload, config = makerworldSyncConfig())
   const additions = planned.products.filter(item => !existingCandidateIds.has(String(item.modelCandidateId || "")))
   await saveProducts([...additions, ...retained])
   return planned.report
+}
+
+async function runMakerworldSingleImport(payload) {
+  if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
+  makerworldImportWorkerRunning = true
+  try {
+    return await importMakerworldPayload(payload)
+  } finally {
+    makerworldImportWorkerRunning = false
+  }
 }
 
 async function reviewMakerworldProduct(productId, decision, note = "") {
@@ -651,7 +872,7 @@ async function reviewMakerworldProduct(productId, decision, note = "") {
 }
 
 async function runMakerworldCatalogSync() {
-  if (makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 同步正在进行")
+  if (makerworldSyncWorkerRunning || makerworldImportWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
   const config = makerworldSyncConfig()
   if (!config.feedConfigured) throw httpError(400, "尚未配置 MAKERWORLD_FEED_URL 数据源")
   if (!config.feedReady) throw httpError(400, "MakerWorld 数据源必须使用 HTTPS，且域名需在 MAKERWORLD_FEED_ALLOWED_HOSTS 白名单中")
@@ -1948,7 +2169,10 @@ function publicProductView(product = {}) {
     modelCandidateId,
     modelSourcePlatform,
     modelSourceUrl,
+    modelSourceOriginalUrl,
     modelAuthorName,
+    modelAuthorId,
+    modelAuthorUrl,
     modelLicenseCode,
     modelLicenseRaw,
     modelLicenseUrl,
@@ -1957,6 +2181,10 @@ function publicProductView(product = {}) {
     modelAuthorizationNote,
     modelSyncScore,
     modelSyncedAt,
+    modelFetchedAt,
+    modelImportedAt,
+    modelInfoStatus,
+    modelInfoNote,
     inventoryVersion,
     ...publicProduct
   } = product
@@ -2530,7 +2758,10 @@ function normalizeProduct(product, index) {
     modelCandidateId: product.modelCandidateId || product.model_candidate_id || "",
     modelSourcePlatform: product.modelSourcePlatform || product.model_source_platform || "",
     modelSourceUrl: product.modelSourceUrl || product.model_source_url || "",
+    modelSourceOriginalUrl: product.modelSourceOriginalUrl || product.model_source_original_url || "",
     modelAuthorName: product.modelAuthorName || product.model_author_name || "",
+    modelAuthorId: product.modelAuthorId || product.model_author_id || "",
+    modelAuthorUrl: product.modelAuthorUrl || product.model_author_url || "",
     modelLicenseCode: product.modelLicenseCode || product.model_license_code || "",
     modelLicenseRaw: product.modelLicenseRaw || product.model_license_raw || "",
     modelLicenseUrl: product.modelLicenseUrl || product.model_license_url || "",
@@ -2541,6 +2772,10 @@ function normalizeProduct(product, index) {
     modelAuthorizationNote: product.modelAuthorizationNote || product.model_authorization_note || "",
     modelSyncScore: String(product.modelSyncScore || product.model_sync_score || "0"),
     modelSyncedAt: product.modelSyncedAt || product.model_synced_at || "",
+    modelFetchedAt: product.modelFetchedAt || product.model_fetched_at || "",
+    modelImportedAt: product.modelImportedAt || product.model_imported_at || "",
+    modelInfoStatus: product.modelInfoStatus || product.model_info_status || "",
+    modelInfoNote: product.modelInfoNote || product.model_info_note || "",
     sort: String(sortOrder),
     sortOrder: String(sortOrder)
   }
@@ -3869,7 +4104,10 @@ async function getProducts() {
     modelCandidateId: row.model_candidate_id || "",
     modelSourcePlatform: row.model_source_platform || "",
     modelSourceUrl: row.model_source_url || "",
+    modelSourceOriginalUrl: row.model_source_original_url || "",
     modelAuthorName: row.model_author_name || "",
+    modelAuthorId: row.model_author_id || "",
+    modelAuthorUrl: row.model_author_url || "",
     modelLicenseCode: row.model_license_code || "",
     modelLicenseRaw: row.model_license_raw || "",
     modelLicenseUrl: row.model_license_url || "",
@@ -3878,6 +4116,10 @@ async function getProducts() {
     modelAuthorizationNote: row.model_authorization_note || "",
     modelSyncScore: String(row.model_sync_score || "0"),
     modelSyncedAt: row.model_synced_at || "",
+    modelFetchedAt: row.model_fetched_at || "",
+    modelImportedAt: row.model_imported_at || "",
+    modelInfoStatus: row.model_info_status || "",
+    modelInfoNote: row.model_info_note || "",
     sortOrder: String(row.sort_order || "0")
     }
     const normalized = normalizeProduct(product, index)
@@ -5060,16 +5302,20 @@ async function saveProducts(products) {
            detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot,
            promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward,
            second_reward, sort_order, model_candidate_id, model_source_platform, model_source_url,
-           model_author_name, model_license_code, model_license_raw, model_license_url, model_attribution,
+           model_source_original_url, model_author_name, model_author_id, model_author_url,
+           model_license_code, model_license_raw, model_license_url, model_attribution,
            model_authorization_status, model_authorization_note, model_sync_score, model_synced_at,
+           model_fetched_at, model_imported_at, model_info_status, model_info_note,
            inventory_version)
          VALUES
           (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson,
            :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock,
            :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled,
            :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourcePlatform,
-           :modelSourceUrl, :modelAuthorName, :modelLicenseCode, :modelLicenseRaw, :modelLicenseUrl, :modelAttribution,
+           :modelSourceUrl, :modelSourceOriginalUrl, :modelAuthorName, :modelAuthorId, :modelAuthorUrl,
+           :modelLicenseCode, :modelLicenseRaw, :modelLicenseUrl, :modelAttribution,
            :modelAuthorizationStatus, :modelAuthorizationNote, :modelSyncScore, :modelSyncedAt,
+           :modelFetchedAt, :modelImportedAt, :modelInfoStatus, :modelInfoNote,
            :inventoryVersion)
          ON DUPLICATE KEY UPDATE
            name=VALUES(name), intro=VALUES(intro), price=VALUES(price), cost_price=VALUES(cost_price),
@@ -5083,13 +5329,17 @@ async function saveProducts(products) {
            first_reward=VALUES(first_reward), second_reward=VALUES(second_reward),
            sort_order=VALUES(sort_order), model_candidate_id=VALUES(model_candidate_id),
            model_source_platform=VALUES(model_source_platform),
-           model_source_url=VALUES(model_source_url), model_author_name=VALUES(model_author_name),
+           model_source_url=VALUES(model_source_url), model_source_original_url=VALUES(model_source_original_url),
+           model_author_name=VALUES(model_author_name), model_author_id=VALUES(model_author_id),
+           model_author_url=VALUES(model_author_url),
            model_license_code=VALUES(model_license_code), model_license_raw=VALUES(model_license_raw),
            model_license_url=VALUES(model_license_url),
            model_attribution=VALUES(model_attribution),
            model_authorization_status=VALUES(model_authorization_status),
            model_authorization_note=VALUES(model_authorization_note),
            model_sync_score=VALUES(model_sync_score), model_synced_at=VALUES(model_synced_at),
+           model_fetched_at=VALUES(model_fetched_at), model_imported_at=VALUES(model_imported_at),
+           model_info_status=VALUES(model_info_status), model_info_note=VALUES(model_info_note),
            inventory_version=VALUES(inventory_version)`,
         {
           ...product,
@@ -9928,7 +10178,10 @@ async function initDb() {
   await ensureColumn("products", "model_candidate_id", "VARCHAR(60)")
   await ensureColumn("products", "model_source_platform", "VARCHAR(40)")
   await ensureColumn("products", "model_source_url", "VARCHAR(500)")
+  await ensureColumn("products", "model_source_original_url", "VARCHAR(1000)")
   await ensureColumn("products", "model_author_name", "VARCHAR(100)")
+  await ensureColumn("products", "model_author_id", "VARCHAR(100)")
+  await ensureColumn("products", "model_author_url", "VARCHAR(500)")
   await ensureColumn("products", "model_license_code", "VARCHAR(60)")
   await ensureColumn("products", "model_license_raw", "TEXT")
   await ensureColumn("products", "model_license_url", "VARCHAR(500)")
@@ -9937,6 +10190,24 @@ async function initDb() {
   await ensureColumn("products", "model_authorization_note", "TEXT")
   await ensureColumn("products", "model_sync_score", "DECIMAL(10,2) DEFAULT 0")
   await ensureColumn("products", "model_synced_at", "VARCHAR(40)")
+  await ensureColumn("products", "model_fetched_at", "VARCHAR(40)")
+  await ensureColumn("products", "model_imported_at", "VARCHAR(40)")
+  await ensureColumn("products", "model_info_status", "VARCHAR(40)")
+  await ensureColumn("products", "model_info_note", "TEXT")
+  await ensureIndex("products", "idx_products_model_candidate", "INDEX", ["model_candidate_id"])
+  await ensureIndex("products", "idx_products_model_source_url", "INDEX", ["model_source_url"])
+  await query(`CREATE TABLE IF NOT EXISTS makerworld_import_batches (
+    id VARCHAR(50) PRIMARY KEY,
+    started_at VARCHAR(40) NOT NULL,
+    completed_at VARCHAR(40),
+    submitted_count INT NOT NULL DEFAULT 0,
+    success_count INT NOT NULL DEFAULT 0,
+    existing_count INT NOT NULL DEFAULT 0,
+    failed_count INT NOT NULL DEFAULT 0,
+    results_json JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_makerworld_batches_started (started_at)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(32) PRIMARY KEY,
     customer_name VARCHAR(50) NOT NULL,
@@ -12293,10 +12564,21 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/admin/makerworld/import-batches" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, data: await getMakerworldImportBatches(Number(url.searchParams.get("limit") || 10)) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/import-batch" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req, 512 * 1024, "批量链接内容过大")).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await runMakerworldBatchImport(body.text || body.urls || "") })
+    return
+  }
+
   if (url.pathname === "/api/admin/makerworld/import" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const payload = Array.isArray(body) ? body : (Array.isArray(body.items) ? body : { items: [body] })
-    sendJson(res, 200, { ok: true, data: await importMakerworldPayload(payload) })
+    sendJson(res, 200, { ok: true, data: await runMakerworldSingleImport(payload) })
     return
   }
 
