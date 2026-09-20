@@ -42,9 +42,6 @@ MAKERWORLD_FEED_TOKEN=
 MAKERWORLD_FEED_ALLOWED_HOSTS=makerworld.com.cn
 MAKERWORLD_SYNC_INTERVAL_MINUTES=360
 MAKERWORLD_SYNC_LIMIT=20
-MAKERWORLD_AUTO_PUBLISH=false
-MAKERWORLD_ALLOWED_LICENSES=PUBLIC_DOMAIN,CC0,CC_BY_4_0,CC_BY_3_0
-MAKERWORLD_MEDIA_ALLOWED_HOSTS=127.0.0.1
 MAKERWORLD_DEFAULT_PRICE=0
 MAKERWORLD_DEFAULT_COST_PRICE=0
 MAKERWORLD_DEFAULT_STOCK=0
@@ -90,9 +87,6 @@ MAKERWORLD_FEED_TOKEN=
 MAKERWORLD_FEED_ALLOWED_HOSTS=makerworld.com.cn
 MAKERWORLD_SYNC_INTERVAL_MINUTES=360
 MAKERWORLD_SYNC_LIMIT=20
-MAKERWORLD_AUTO_PUBLISH=false
-MAKERWORLD_ALLOWED_LICENSES=PUBLIC_DOMAIN,CC0,CC_BY_4_0,CC_BY_3_0
-MAKERWORLD_MEDIA_ALLOWED_HOSTS=api.feichangjiandan.xyz
 MAKERWORLD_DEFAULT_PRICE=0
 MAKERWORLD_DEFAULT_COST_PRICE=0
 MAKERWORLD_DEFAULT_STOCK=0
@@ -163,12 +157,11 @@ MAKERWORLD_DEFAULT_STOCK=0
 
 ### MakerWorld 模型目录同步
 
-- `MAKERWORLD_FEED_URL` 必须是 MakerWorld 官方或已获得书面授权的数据接口，返回 JSON；禁止填写模型网页或绕过 Cloudflare 的抓取代理。
-- `MAKERWORLD_FEED_ALLOWED_HOSTS` 是数据源域名白名单。若使用已授权的自有中间层，需要显式添加其域名。
+- `MAKERWORLD_FEED_URL` 是返回模型基础信息的 JSON 数据源；它只影响数据获取，不参与版权或许可证审核。
+- `MAKERWORLD_FEED_ALLOWED_HOSTS` 是数据源域名白名单，只用于网络访问安全，与模型许可证无关。
 - `MAKERWORLD_SYNC_ENABLED` 开启定时同步；后台商品管理页也可手动执行一次。
-- `MAKERWORLD_AUTO_PUBLISH=false` 是推荐默认值，所有候选先进入下架草稿。
-- 自动上架还要求候选许可证在白名单内，并由数据源明确给出 `commercialUseAllowed=true`、`listingMediaReuseAllowed=true` 和 `sourceVerified=true`。
-- `MAKERWORLD_MEDIA_ALLOWED_HOSTS` 限制自动上架可使用的图片域名；该域名还必须加入微信小程序下载域名。推荐由取得授权的自有 CDN 托管展示图。
+- 所有同步或手动导入的模型都进入下架的 `pending_review` 状态；程序不根据许可证、版权类型、商用或图片复用字段拒绝导入。
+- 后台专业人员点击“审核通过”后商品才会上架；“审核拒绝”或“待审核”均保持下架。
 - 系统只同步目录元数据，不下载或再分发 STL/3MF 模型文件。接口格式见 `docs/makerworld-catalog-sync.md`。
 
 ## 4. 修改后是否需要重启

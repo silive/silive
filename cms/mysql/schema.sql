@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS products (
   model_source_url VARCHAR(500),
   model_author_name VARCHAR(100),
   model_license_code VARCHAR(60),
+  model_license_raw TEXT,
   model_license_url VARCHAR(500),
   model_attribution TEXT,
   model_authorization_status VARCHAR(40),

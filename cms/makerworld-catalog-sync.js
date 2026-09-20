@@ -2,19 +2,8 @@
 
 const crypto = require("crypto")
 
-const SAFE_LICENSES = new Set([
-  "PUBLIC_DOMAIN",
-  "CC0",
-  "CC_BY_4_0",
-  "CC_BY_3_0"
-])
-
 function text(value) {
   return String(value == null ? "" : value).trim()
-}
-
-function bool(value) {
-  return value === true || ["true", "1", "yes", "是"].includes(text(value).toLowerCase())
 }
 
 function normalizeLicense(value) {
@@ -60,10 +49,10 @@ function candidateScore(candidate = {}) {
 function normalizeCandidate(candidate = {}) {
   const sourceUrl = text(candidate.sourceUrl || candidate.url)
   const modelId = makerworldModelId(candidate)
-  const licenseCode = normalizeLicense(candidate.licenseCode || candidate.license || candidate.licenseName)
+  const licenseRaw = text(candidate.licenseRaw || candidate.licenseText || candidate.license || candidate.licenseName || candidate.licenseCode)
+  const licenseCode = normalizeLicense(candidate.licenseCode || licenseRaw)
   const title = text(candidate.title || candidate.name)
   const author = text(candidate.author || candidate.authorName || candidate.creator)
-  const rights = candidate.rights && typeof candidate.rights === "object" ? candidate.rights : candidate
   const imageUrl = text(candidate.imageUrl || candidate.coverImage || candidate.thumbnailUrl)
   return {
     modelId,
@@ -72,40 +61,22 @@ function normalizeCandidate(candidate = {}) {
     summary: text(candidate.summary || candidate.description || candidate.intro),
     author,
     licenseCode,
+    licenseRaw,
     licenseUrl: text(candidate.licenseUrl),
     attribution: text(candidate.attribution) || [title, author, sourceUrl, licenseCode].filter(Boolean).join(" · "),
     imageUrl,
     galleryImages: (Array.isArray(candidate.galleryImages) ? candidate.galleryImages : []).map(text).filter(Boolean).slice(0, 9),
-    commercialUseAllowed: bool(rights.commercialUseAllowed),
-    listingMediaReuseAllowed: bool(rights.listingMediaReuseAllowed),
-    sourceVerified: bool(rights.sourceVerified),
     score: candidateScore(candidate),
     rawMetrics: candidate.metrics && typeof candidate.metrics === "object" ? candidate.metrics : {}
   }
 }
 
-function autoPublishDecision(candidate, options = {}) {
+function importDecision(candidate) {
   const item = normalizeCandidate(candidate)
-  const allowedLicenses = new Set((options.allowedLicenses || Array.from(SAFE_LICENSES)).map(normalizeLicense))
-  const blockers = []
-  if (!item.modelId || !isMakerWorldUrl(item.sourceUrl)) blockers.push("来源链接不是有效的 MakerWorld 模型页")
-  if (!item.title || !item.author) blockers.push("缺少标题或作者")
-  if (!allowedLicenses.has(item.licenseCode)) blockers.push(`许可证 ${item.licenseCode || "未知"} 不在自动发布白名单`)
-  if (!item.commercialUseAllowed) blockers.push("上游未明确声明允许商用")
-  if (!item.listingMediaReuseAllowed || !item.imageUrl) blockers.push("上游未明确声明允许复用商品图片")
-  const allowedMediaHosts = (options.allowedMediaHosts || []).map(text).filter(Boolean)
-  if (item.imageUrl && allowedMediaHosts.length) {
-    try {
-      const imageHost = new URL(item.imageUrl).hostname.toLowerCase()
-      if (!allowedMediaHosts.some(host => imageHost === host.toLowerCase() || imageHost.endsWith(`.${host.toLowerCase()}`))) {
-        blockers.push("商品图片域名不在已授权媒体白名单")
-      }
-    } catch (error) {
-      blockers.push("商品图片地址无效")
-    }
-  }
-  if (!item.sourceVerified) blockers.push("上游未完成来源与权利核验")
-  return { eligible: blockers.length === 0, blockers, candidate: item }
+  const errors = []
+  if (!item.modelId || !isMakerWorldUrl(item.sourceUrl)) errors.push("来源链接不是有效的 MakerWorld 模型页")
+  if (!item.title) errors.push("缺少模型标题")
+  return { importable: errors.length === 0, errors, candidate: item }
 }
 
 function stableProductId(modelId) {
@@ -115,10 +86,8 @@ function stableProductId(modelId) {
 }
 
 function buildProduct(candidate, options = {}) {
-  const decision = autoPublishDecision(candidate, options)
+  const decision = importDecision(candidate)
   const item = decision.candidate
-  const autoPublish = bool(options.autoPublish)
-  const canPublish = autoPublish && decision.eligible
   return {
     id: stableProductId(item.modelId || item.sourceUrl),
     name: item.title || "MakerWorld 待审核模型",
@@ -134,7 +103,7 @@ function buildProduct(candidate, options = {}) {
     videoUrl: "",
     productType: "normal",
     categories: options.categories || ["潮玩手办", "潮玩手办/新品上架"],
-    status: canPublish ? "on" : "off",
+    status: "off",
     stock: String(options.defaultStock || "0"),
     stockMode: "unlimited",
     isHot: "false",
@@ -147,10 +116,11 @@ function buildProduct(candidate, options = {}) {
     modelSourceUrl: item.sourceUrl,
     modelAuthorName: item.author,
     modelLicenseCode: item.licenseCode,
+    modelLicenseRaw: item.licenseRaw,
     modelLicenseUrl: item.licenseUrl,
     modelAttribution: item.attribution,
-    modelAuthorizationStatus: decision.eligible ? "feed_verified" : "pending_review",
-    modelAuthorizationNote: decision.blockers.join("；"),
+    modelAuthorizationStatus: "pending_review",
+    modelAuthorizationNote: "",
     modelSyncScore: String(item.score),
     modelSyncedAt: new Date().toISOString(),
     sortOrder: String(options.sortOrder || 999)
@@ -169,13 +139,14 @@ function feedCandidates(payload) {
 
 function planSync(payload, existingProducts = [], options = {}) {
   const limit = Math.max(1, Math.min(Number(options.limit || 20), 100))
-  const candidates = feedCandidates(payload).map(normalizeCandidate)
-    .filter(item => item.modelId && isMakerWorldUrl(item.sourceUrl))
+  const receivedCandidates = feedCandidates(payload)
+  const validCandidates = receivedCandidates.map(normalizeCandidate)
+    .filter(item => importDecision(item).importable)
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+  const candidates = validCandidates.slice(0, limit)
   const existingByCandidate = new Map(existingProducts.filter(item => item.modelCandidateId).map(item => [String(item.modelCandidateId), item]))
   const products = []
-  const report = { received: feedCandidates(payload).length, selected: candidates.length, created: 0, updated: 0, autoPublished: 0, drafts: 0, rejected: 0 }
+  const report = { received: receivedCandidates.length, selected: candidates.length, created: 0, updated: 0, pendingReview: 0, skippedForMissingBasics: receivedCandidates.length - validCandidates.length }
   for (const candidate of candidates) {
     const generated = buildProduct(candidate, options)
     const existing = existingByCandidate.get(candidate.modelId)
@@ -186,34 +157,30 @@ function planSync(payload, existingProducts = [], options = {}) {
         modelSourceUrl: generated.modelSourceUrl,
         modelAuthorName: generated.modelAuthorName,
         modelLicenseCode: generated.modelLicenseCode,
+        modelLicenseRaw: generated.modelLicenseRaw,
         modelLicenseUrl: generated.modelLicenseUrl,
         modelAttribution: generated.modelAttribution,
-        modelAuthorizationStatus: generated.modelAuthorizationStatus,
-        modelAuthorizationNote: generated.modelAuthorizationNote,
         modelSyncScore: generated.modelSyncScore,
         modelSyncedAt: generated.modelSyncedAt,
-        status: generated.modelAuthorizationStatus === "feed_verified"
-          ? (bool(options.autoPublish) ? "on" : existing.status)
-          : "off"
+        modelAuthorizationStatus: existing.modelAuthorizationStatus || "pending_review",
+        modelAuthorizationNote: existing.modelAuthorizationNote || "",
+        status: existing.modelAuthorizationStatus === "approved" ? existing.status : "off"
       })
       report.updated += 1
     } else {
       products.push(generated)
       report.created += 1
     }
-    if (generated.status === "on") report.autoPublished += 1
-    else report.drafts += 1
-    if (generated.modelAuthorizationStatus !== "feed_verified") report.rejected += 1
+    if (!existing || !existing.modelAuthorizationStatus || existing.modelAuthorizationStatus === "pending_review") report.pendingReview += 1
   }
   return { products, report }
 }
 
 module.exports = {
-  SAFE_LICENSES,
-  autoPublishDecision,
   buildProduct,
   candidateScore,
   feedCandidates,
+  importDecision,
   isMakerWorldUrl,
   normalizeCandidate,
   normalizeLicense,

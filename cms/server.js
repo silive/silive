@@ -77,10 +77,7 @@ const {
   claimPickupCode,
   generatePickupCodeCandidate
 } = require("./pickup-security")
-const {
-  SAFE_LICENSES: MAKERWORLD_SAFE_LICENSES,
-  planSync: planMakerWorldSync
-} = require("./makerworld-catalog-sync")
+const { planSync: planMakerWorldSync } = require("./makerworld-catalog-sync")
 
 let mysql
 try {
@@ -115,7 +112,6 @@ const ORDER_PAYMENT_TIMEOUT_MINUTES = paymentTimeoutMinutes()
 const QUOTE_REQUEST_TIMEOUT_MINUTES = Math.max(60, Math.min(Number(process.env.QUOTE_REQUEST_TIMEOUT_MINUTES || 1440), 7 * 24 * 60))
 const ORDER_AUTO_COMPLETE_DAYS = Math.max(1, Math.min(Number(process.env.ORDER_AUTO_COMPLETE_DAYS || 10), 30))
 const MAKERWORLD_SYNC_ENABLED = String(process.env.MAKERWORLD_SYNC_ENABLED || "").trim().toLowerCase() === "true"
-const MAKERWORLD_AUTO_PUBLISH = String(process.env.MAKERWORLD_AUTO_PUBLISH || "").trim().toLowerCase() === "true"
 const MAKERWORLD_SYNC_INTERVAL_MINUTES = Math.max(60, Math.min(Number(process.env.MAKERWORLD_SYNC_INTERVAL_MINUTES || 360), 7 * 24 * 60))
 const STORAGE_MODE = String(process.env.STORAGE_MODE || "mysql").trim().toLowerCase()
 const PORT = Number(process.env.PORT || 3000)
@@ -601,21 +597,12 @@ function makerworldSyncConfig() {
       feedReady = parsed.protocol === "https:" && allowedHosts.some(host => feedHost === host || feedHost.endsWith(`.${host}`))
     } catch (error) {}
   }
-  const allowedLicenses = String(process.env.MAKERWORLD_ALLOWED_LICENSES || Array.from(MAKERWORLD_SAFE_LICENSES).join(","))
-    .split(",").map(item => item.trim()).filter(Boolean)
-  let defaultMediaHost = ""
-  try { defaultMediaHost = new URL(PUBLIC_BASE_URL).hostname } catch (error) {}
-  const allowedMediaHosts = String(process.env.MAKERWORLD_MEDIA_ALLOWED_HOSTS || defaultMediaHost)
-    .split(",").map(item => item.trim().toLowerCase()).filter(Boolean)
   return {
     enabled: MAKERWORLD_SYNC_ENABLED,
-    autoPublish: MAKERWORLD_AUTO_PUBLISH,
     feedConfigured: !!feedUrl,
     feedReady,
     feedHost,
     allowedHosts,
-    allowedLicenses,
-    allowedMediaHosts,
     intervalMinutes: MAKERWORLD_SYNC_INTERVAL_MINUTES,
     limit: Math.max(1, Math.min(Number(process.env.MAKERWORLD_SYNC_LIMIT || 20), 100)),
     defaultPrice: String(process.env.MAKERWORLD_DEFAULT_PRICE || "0"),
@@ -629,21 +616,44 @@ function publicMakerworldSyncStatus() {
   return {
     ...makerworldSyncState,
     enabled: config.enabled,
-    autoPublish: config.autoPublish,
     feedConfigured: config.feedConfigured,
     feedReady: config.feedReady,
     feedHost: config.feedHost,
     intervalMinutes: config.intervalMinutes,
     limit: config.limit,
-    allowedLicenses: config.allowedLicenses,
-    allowedMediaHosts: config.allowedMediaHosts
+    reviewMode: "manual"
   }
+}
+
+async function importMakerworldPayload(payload, config = makerworldSyncConfig()) {
+  const current = await getProducts()
+  const planned = planMakerWorldSync(payload, current, config)
+  if (!planned.report.selected) throw httpError(400, "没有可导入的模型，请检查模型标题和 MakerWorld 来源链接")
+  const syncedByCandidate = new Map(planned.products.map(item => [String(item.modelCandidateId), item]))
+  const retained = current.map(item => syncedByCandidate.get(String(item.modelCandidateId || "")) || item)
+  const existingCandidateIds = new Set(current.map(item => String(item.modelCandidateId || "")).filter(Boolean))
+  const additions = planned.products.filter(item => !existingCandidateIds.has(String(item.modelCandidateId || "")))
+  await saveProducts([...additions, ...retained])
+  return planned.report
+}
+
+async function reviewMakerworldProduct(productId, decision, note = "") {
+  const action = String(decision || "").trim().toLowerCase()
+  if (!['approved', 'rejected', 'pending_review'].includes(action)) throw httpError(400, "审核状态无效")
+  const products = await getProducts()
+  const product = products.find(item => String(item.id) === String(productId))
+  if (!product || !product.modelCandidateId) throw httpError(404, "MakerWorld 模型不存在")
+  product.modelAuthorizationStatus = action
+  product.modelAuthorizationNote = String(note || product.modelAuthorizationNote || "").trim()
+  product.status = action === "approved" ? "on" : "off"
+  await saveProducts(products)
+  return (await getProducts()).find(item => String(item.id) === String(productId))
 }
 
 async function runMakerworldCatalogSync() {
   if (makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 同步正在进行")
   const config = makerworldSyncConfig()
-  if (!config.feedConfigured) throw httpError(400, "尚未配置经授权的 MAKERWORLD_FEED_URL")
+  if (!config.feedConfigured) throw httpError(400, "尚未配置 MAKERWORLD_FEED_URL 数据源")
   if (!config.feedReady) throw httpError(400, "MakerWorld 数据源必须使用 HTTPS，且域名需在 MAKERWORLD_FEED_ALLOWED_HOSTS 白名单中")
   makerworldSyncWorkerRunning = true
   makerworldSyncState = { ...makerworldSyncState, running: true, lastStartedAt: new Date().toISOString(), lastError: "" }
@@ -657,26 +667,20 @@ async function runMakerworldCatalogSync() {
       timeout: Math.max(3000, Math.min(Number(process.env.MAKERWORLD_FEED_TIMEOUT_MS || 10000), 30000))
     })
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`授权数据源返回 HTTP ${response.statusCode}`)
+      throw new Error(`数据源返回 HTTP ${response.statusCode}`)
     }
     if (!response.data || typeof response.data !== "object") {
-      throw new Error("授权数据源没有返回 JSON")
+      throw new Error("数据源没有返回 JSON")
     }
-    const current = await getProducts()
-    const planned = planMakerWorldSync(response.data, current, config)
-    const syncedByCandidate = new Map(planned.products.map(item => [String(item.modelCandidateId), item]))
-    const retained = current.map(item => syncedByCandidate.get(String(item.modelCandidateId || "")) || item)
-    const existingCandidateIds = new Set(current.map(item => String(item.modelCandidateId || "")).filter(Boolean))
-    const additions = planned.products.filter(item => !existingCandidateIds.has(String(item.modelCandidateId || "")))
-    await saveProducts([...additions, ...retained])
+    const report = await importMakerworldPayload(response.data, config)
     makerworldSyncState = {
       ...makerworldSyncState,
       running: false,
       lastCompletedAt: new Date().toISOString(),
       lastError: "",
-      lastReport: planned.report
+      lastReport: report
     }
-    return planned.report
+    return report
   } catch (error) {
     makerworldSyncState = { ...makerworldSyncState, running: false, lastError: error.message || "同步失败" }
     throw error
@@ -1932,6 +1936,7 @@ function publicProductView(product = {}) {
     sourceUrl: product.modelSourceUrl,
     author: product.modelAuthorName,
     licenseCode: product.modelLicenseCode,
+    licenseRaw: product.modelLicenseRaw,
     licenseUrl: product.modelLicenseUrl,
     attribution: product.modelAttribution
   } : null
@@ -1945,6 +1950,7 @@ function publicProductView(product = {}) {
     modelSourceUrl,
     modelAuthorName,
     modelLicenseCode,
+    modelLicenseRaw,
     modelLicenseUrl,
     modelAttribution,
     modelAuthorizationStatus,
@@ -2465,11 +2471,13 @@ function modelPublicationStatus(product = {}) {
   const sourcePlatform = String(product.modelSourcePlatform || product.model_source_platform || "").toLowerCase()
   const isMakerworld = sourcePlatform === "makerworld" || /https:\/\/([^/]+\.)?makerworld\.com\.cn\//i.test(sourceUrl)
   if (!isMakerworld || requested !== "on") return requested
-  const authorization = String(product.modelAuthorizationStatus || product.model_authorization_status || "").toLowerCase()
-  if (["creator_permission", "written_permission", "merchant_owned"].includes(authorization)) return requested
-  const license = String(product.modelLicenseCode || product.model_license_code || "").toUpperCase()
-  if (authorization === "feed_verified" && MAKERWORLD_SAFE_LICENSES.has(license)) return requested
-  return "off"
+  const reviewStatus = String(product.modelAuthorizationStatus || product.model_authorization_status || "").toLowerCase()
+  return reviewStatus === "approved" ? requested : "off"
+}
+
+function normalizeModelReviewStatus(value) {
+  const status = String(value || "").trim().toLowerCase()
+  return ["approved", "rejected", "pending_review"].includes(status) ? status : "pending_review"
 }
 
 function normalizeProduct(product, index) {
@@ -2524,9 +2532,12 @@ function normalizeProduct(product, index) {
     modelSourceUrl: product.modelSourceUrl || product.model_source_url || "",
     modelAuthorName: product.modelAuthorName || product.model_author_name || "",
     modelLicenseCode: product.modelLicenseCode || product.model_license_code || "",
+    modelLicenseRaw: product.modelLicenseRaw || product.model_license_raw || "",
     modelLicenseUrl: product.modelLicenseUrl || product.model_license_url || "",
     modelAttribution: product.modelAttribution || product.model_attribution || "",
-    modelAuthorizationStatus: product.modelAuthorizationStatus || product.model_authorization_status || "",
+    modelAuthorizationStatus: (product.modelCandidateId || product.model_candidate_id)
+      ? normalizeModelReviewStatus(product.modelAuthorizationStatus || product.model_authorization_status)
+      : "",
     modelAuthorizationNote: product.modelAuthorizationNote || product.model_authorization_note || "",
     modelSyncScore: String(product.modelSyncScore || product.model_sync_score || "0"),
     modelSyncedAt: product.modelSyncedAt || product.model_synced_at || "",
@@ -3860,6 +3871,7 @@ async function getProducts() {
     modelSourceUrl: row.model_source_url || "",
     modelAuthorName: row.model_author_name || "",
     modelLicenseCode: row.model_license_code || "",
+    modelLicenseRaw: row.model_license_raw || "",
     modelLicenseUrl: row.model_license_url || "",
     modelAttribution: row.model_attribution || "",
     modelAuthorizationStatus: row.model_authorization_status || "",
@@ -5048,7 +5060,7 @@ async function saveProducts(products) {
            detail_images, detail_text, product_type, categories, status, stock, stock_mode, is_hot,
            promotion_hot, ai_preview_enabled, ai_preview_type, reward_enabled, first_reward,
            second_reward, sort_order, model_candidate_id, model_source_platform, model_source_url,
-           model_author_name, model_license_code, model_license_url, model_attribution,
+           model_author_name, model_license_code, model_license_raw, model_license_url, model_attribution,
            model_authorization_status, model_authorization_note, model_sync_score, model_synced_at,
            inventory_version)
          VALUES
@@ -5056,7 +5068,7 @@ async function saveProducts(products) {
            :videoUrl, :detailImagesJson, :detailText, :productType, :categoriesJson, :status, :stock,
            :stockMode, :isHot, :promotionHot, :aiPreviewEnabled, :aiPreviewType, :rewardEnabled,
            :firstReward, :secondReward, :sortOrder, :modelCandidateId, :modelSourcePlatform,
-           :modelSourceUrl, :modelAuthorName, :modelLicenseCode, :modelLicenseUrl, :modelAttribution,
+           :modelSourceUrl, :modelAuthorName, :modelLicenseCode, :modelLicenseRaw, :modelLicenseUrl, :modelAttribution,
            :modelAuthorizationStatus, :modelAuthorizationNote, :modelSyncScore, :modelSyncedAt,
            :inventoryVersion)
          ON DUPLICATE KEY UPDATE
@@ -5072,7 +5084,8 @@ async function saveProducts(products) {
            sort_order=VALUES(sort_order), model_candidate_id=VALUES(model_candidate_id),
            model_source_platform=VALUES(model_source_platform),
            model_source_url=VALUES(model_source_url), model_author_name=VALUES(model_author_name),
-           model_license_code=VALUES(model_license_code), model_license_url=VALUES(model_license_url),
+           model_license_code=VALUES(model_license_code), model_license_raw=VALUES(model_license_raw),
+           model_license_url=VALUES(model_license_url),
            model_attribution=VALUES(model_attribution),
            model_authorization_status=VALUES(model_authorization_status),
            model_authorization_note=VALUES(model_authorization_note),
@@ -9917,6 +9930,7 @@ async function initDb() {
   await ensureColumn("products", "model_source_url", "VARCHAR(500)")
   await ensureColumn("products", "model_author_name", "VARCHAR(100)")
   await ensureColumn("products", "model_license_code", "VARCHAR(60)")
+  await ensureColumn("products", "model_license_raw", "TEXT")
   await ensureColumn("products", "model_license_url", "VARCHAR(500)")
   await ensureColumn("products", "model_attribution", "TEXT")
   await ensureColumn("products", "model_authorization_status", "VARCHAR(40)")
@@ -12276,6 +12290,23 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/makerworld/sync" && req.method === "POST") {
     sendJson(res, 200, { ok: true, data: await runMakerworldCatalogSync() })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/import" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const payload = Array.isArray(body) ? body : (Array.isArray(body.items) ? body : { items: [body] })
+    sendJson(res, 200, { ok: true, data: await importMakerworldPayload(payload) })
+    return
+  }
+
+  const makerworldReviewMatch = url.pathname.match(/^\/api\/admin\/makerworld\/products\/([^/]+)\/review$/)
+  if (makerworldReviewMatch && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, {
+      ok: true,
+      data: await reviewMakerworldProduct(decodeURIComponent(makerworldReviewMatch[1]), body.decision, body.note)
+    })
     return
   }
 

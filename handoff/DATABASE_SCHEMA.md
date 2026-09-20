@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS products (
   model_source_url VARCHAR(500),
   model_author_name VARCHAR(100),
   model_license_code VARCHAR(60),
+  model_license_raw TEXT,
   model_license_url VARCHAR(500),
   model_attribution TEXT,
   model_authorization_status VARCHAR(40),
@@ -91,7 +92,7 @@ CREATE TABLE IF NOT EXISTS products (
 - `status`：`on/off`。
 - `model_candidate_id`：外部模型唯一 ID，用于幂等去重。
 - `model_source_*`、`model_author_name`：模型来源平台、原始链接和作者。
-- `model_license_*`、`model_attribution`：许可证及前台署名信息。
+- `model_license_*`、`model_attribution`：许可证原始文字、规范化参考值及前台署名信息，仅供人工审核参考。
 - `model_authorization_*`：后台权利核验状态和说明。
 - `model_sync_score`、`model_synced_at`：候选热度评分和最近同步时间。
 - `stock`：库存。

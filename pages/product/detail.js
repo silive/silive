@@ -132,7 +132,7 @@ function normalizeProduct(product) {
     originalPrice: product.originalPrice || product.marketPrice || product.originPrice || "",
     modelProvenance: provenance ? {
       ...provenance,
-      licenseText: licenseLabels[provenance.licenseCode] || provenance.licenseCode || "",
+      licenseText: provenance.licenseRaw || licenseLabels[provenance.licenseCode] || provenance.licenseCode || "",
       displayText: provenance.attribution || [provenance.author, provenance.platform, licenseLabels[provenance.licenseCode] || provenance.licenseCode].filter(Boolean).join(" · ")
     } : null,
     isNormalProduct: String(product.productType || product.orderType || "").toLowerCase() === "normal" ||

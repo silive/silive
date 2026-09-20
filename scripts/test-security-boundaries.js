@@ -20,6 +20,7 @@ for (const field of [
   "modelSourceUrl",
   "modelAuthorName",
   "modelLicenseCode",
+  "modelLicenseRaw",
   "modelLicenseUrl",
   "modelAttribution",
   "modelAuthorizationStatus",

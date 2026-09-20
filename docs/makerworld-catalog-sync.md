@@ -2,17 +2,14 @@
 
 ## 边界
 
-同步器只接收 MakerWorld 官方或已取得书面授权的 JSON 数据源，不包含网页爬虫，也不会绕过 Cloudflare。系统不下载、不托管、不再分发 STL/3MF 文件。
+同步器接收包含 MakerWorld 模型基础信息的 JSON 数据源，不包含绕过 Cloudflare 的逻辑。系统不下载、不托管 STL/3MF 文件。
 
-默认只创建下架草稿。开启 `MAKERWORLD_AUTO_PUBLISH=true` 后，仍需同时满足：
+所有成功取得基础信息的模型都创建或更新为下架的“待人工审核”。导入只要求：
 
 - 来源是 `https://makerworld.com.cn/.../models/{id}`；
-- 许可证属于 `PUBLIC_DOMAIN`、`CC0`、`CC_BY_4_0`、`CC_BY_3_0` 之一；
-- 数据源明确声明允许商用、允许复用商品展示图片并完成来源权利核验；
-- 标题、作者、主图和署名信息完整。
-- 主图域名位于 `MAKERWORLD_MEDIA_ALLOWED_HOSTS` 白名单，并已加入微信小程序下载域名。
+- 有模型标题。
 
-`Standard Digital File License`、任何 `NC`（非商用）许可证以及权利状态不明确的模型都会保持下架。已同步商品若后续变为不合格，会自动下架。
+许可证、版权、商用、图片复用、来源权利核验等字段都只作为参考资料保存，不参与导入、同步或保存判定。无论原始许可证文字是 `Standard Digital File License`、`Non-Commercial` 或未知，模型都会进入 `pending_review`。只有后台人工点击“审核通过”后才会上架。
 
 ## JSON 格式
 
@@ -49,11 +46,11 @@
 }
 ```
 
-热度评分综合下载、点赞、助力、打印实例和评分，仅用于候选排序，不代表授权状态。
+`license`、`licenseUrl`、`attribution` 和 `rights` 可原样传入作为人工审核参考；缺失这些字段不会导致导入失败。热度评分综合下载、点赞、助力、打印实例和评分，仅用于候选排序。
 
 ## 启用步骤
 
-1. 向 MakerWorld/Bambu Lab 获取接口或书面许可，并确认模型文件、成品销售、图片复用和署名规则。
-2. 配置 `.env` 中的 `MAKERWORLD_FEED_URL`、Token 和域名白名单。
-3. 保持 `MAKERWORLD_AUTO_PUBLISH=false`，先在后台“商品管理 → MakerWorld 优秀模型同步”手动同步并核对草稿。
-4. 确认图片、定价、生产可行性和署名展示无误后，再按需开启自动上架。
+1. 配置 `.env` 中的 `MAKERWORLD_FEED_URL`、Token 和数据源域名白名单；这些配置只负责数据获取。
+2. 在后台“商品管理 → MakerWorld 优秀模型同步”执行同步，或填写模型链接和标题手动导入。
+3. 专业人员查看来源、作者、抓取时间及原始许可证文字，点击“审核通过”“审核拒绝”或“待审核”。
+4. 只有“审核通过”会立即上架；同步任务本身永远不会自动上架。

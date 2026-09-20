@@ -648,9 +648,16 @@
             <div class="item-head">
               <div>
                 <h3>MakerWorld 优秀模型同步</h3>
-                <div class="upload-help">仅接入经授权的 JSON 数据源。系统按热度评分去重同步；默认生成下架草稿，只有许可证白名单且明确允许商用、图片复用并完成权利核验时才可自动上架。</div>
+                <div class="upload-help">系统按热度评分去重同步。所有取得基础信息的模型均进入下架的“待人工审核”，许可证、版权和商用信息只作参考，不参与导入判定。</div>
               </div>
               <button class="secondary" id="runMakerworldSyncBtn">立即同步</button>
+            </div>
+            <div class="bulk-row">
+              <input id="makerworldImportUrl" placeholder="MakerWorld 模型链接（必填）">
+              <input id="makerworldImportTitle" placeholder="模型标题（必填）">
+              <input id="makerworldImportAuthor" placeholder="作者（可选）">
+              <input id="makerworldImportLicense" placeholder="原始许可证文字（可选，仅供参考）">
+              <button class="secondary" id="importMakerworldDraftBtn">导入待审核</button>
             </div>
             <div id="makerworldSyncStatus" class="upload-help">正在读取同步配置...</div>
           </div>
@@ -2012,7 +2019,7 @@
       renderProductFilters()
       const filtered = getFilteredProducts()
       $("productEditor").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
-          <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>首页</th><th>操作按钮</th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>模型审核</th><th>首页</th><th>操作按钮</th></tr></thead>
         <tbody>${filtered.map(({ item, index }) => `
           <tr class="${selectedProducts.has(index) ? "selected" : ""}">
             <td><input class="product-select" type="checkbox" data-select-product="${index}" ${selectedProducts.has(index) ? "checked" : ""}></td>
@@ -2021,32 +2028,66 @@
             <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
             <td><strong>${formatMoney(item.price)}</strong></td>
             <td><span class="pill">${productStatusText(item.status)}</span></td>
+            <td>${item.modelCandidateId ? `<span class="pill">${makerworldReviewText(item.modelAuthorizationStatus)}</span><div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}">审核通过</button><button class="secondary" data-action="makerworld-review" data-decision="pending_review" data-id="${escapeHtml(item.id)}">待审核</button><button class="danger" data-action="makerworld-review" data-decision="rejected" data-id="${escapeHtml(item.id)}">拒绝</button></div>` : `<span class="table-sub">-</span>`}</td>
             <td>${String(item.isHot) === "true" ? `<span class="mini-tag">首页推荐</span>` : `<span class="table-sub">-</span>`}</td>
             <td><div class="table-actions"><button class="secondary" data-action="edit-product" data-index="${index}">编辑</button><button class="danger" data-action="remove-product" data-index="${index}">删除</button></div></td>
           </tr>`).join("")}</tbody>
       </table></div>`
       updateSelectedProductCount()
     }
+    function makerworldReviewText(value) {
+      return ({ approved: "审核通过", rejected: "审核拒绝", pending_review: "待人工审核" })[String(value || "pending_review")] || "待人工审核"
+    }
     function renderMakerworldSyncStatus() {
       const status = makerworldSyncStatus || {}
       const report = status.lastReport || {}
       const configText = !status.feedConfigured
-        ? "待配置授权数据源"
+        ? "待配置数据源（仍可手动导入）"
         : status.feedReady ? `数据源：${status.feedHost || "已配置"}` : "数据源配置不符合 HTTPS/域名白名单要求"
-      const modeText = status.autoPublish ? "合规候选自动上架" : "全部先进入下架草稿"
+      const modeText = "全部进入待人工审核，不执行许可证自动判定"
       const lastText = status.lastCompletedAt
-        ? `上次完成：${new Date(status.lastCompletedAt).toLocaleString()}；新增 ${report.created || 0}，更新 ${report.updated || 0}，自动上架 ${report.autoPublished || 0}，草稿 ${report.drafts || 0}`
+        ? `上次完成：${new Date(status.lastCompletedAt).toLocaleString()}；新增 ${report.created || 0}，更新 ${report.updated || 0}，待审核 ${report.pendingReview || 0}`
         : "尚未执行同步"
       const errorText = status.lastError ? `；最近错误：${status.lastError}` : ""
-      $("makerworldSyncStatus").innerHTML = `${escapeHtml(configText)}；${escapeHtml(modeText)}；许可证白名单：${escapeHtml((status.allowedLicenses || []).join("、") || "未配置")}；图片域名：${escapeHtml((status.allowedMediaHosts || []).join("、") || "未配置")}<br>${escapeHtml(lastText + errorText)}`
+      $("makerworldSyncStatus").innerHTML = `${escapeHtml(configText)}；${escapeHtml(modeText)}<br>${escapeHtml(lastText + errorText)}`
       $("runMakerworldSyncBtn").disabled = !!status.running || !status.feedReady
       $("runMakerworldSyncBtn").textContent = status.running ? "同步中..." : "立即同步"
     }
     async function runMakerworldSync(button) {
       await withButtonLoading(button, "同步中...", async () => {
         const report = await api("/api/admin/makerworld/sync", "POST", {})
-        setStatus(`MakerWorld 同步完成：新增 ${report.created || 0}，更新 ${report.updated || 0}，自动上架 ${report.autoPublished || 0}，草稿 ${report.drafts || 0}`)
+        setStatus(`MakerWorld 同步完成：新增 ${report.created || 0}，更新 ${report.updated || 0}，待审核 ${report.pendingReview || 0}`)
         await loadAll()
+      })
+    }
+    async function importMakerworldDraft(button) {
+      const sourceUrl = $("makerworldImportUrl").value.trim()
+      const title = $("makerworldImportTitle").value.trim()
+      if (!sourceUrl || !title) throw new Error("请填写 MakerWorld 模型链接和标题")
+      await withButtonLoading(button, "导入中...", async () => {
+        const report = await api("/api/admin/makerworld/import", "POST", {
+          sourceUrl,
+          title,
+          author: $("makerworldImportAuthor").value.trim(),
+          licenseRaw: $("makerworldImportLicense").value.trim()
+        })
+        setStatus(`已导入待审核：新增 ${report.created || 0}，更新 ${report.updated || 0}`)
+        $("makerworldImportUrl").value = ""
+        $("makerworldImportTitle").value = ""
+        $("makerworldImportAuthor").value = ""
+        $("makerworldImportLicense").value = ""
+        await loadAll()
+      })
+    }
+    async function reviewMakerworld(button) {
+      const decision = button.dataset.decision
+      const productId = button.dataset.id
+      const label = makerworldReviewText(decision)
+      if (!confirm(`确认将该模型设置为“${label}”？${decision === "approved" ? "审核通过后会立即上架。" : "商品会保持下架。"}`)) return
+      await withButtonLoading(button, "处理中...", async () => {
+        await api(`/api/admin/makerworld/products/${encodeURIComponent(productId)}/review`, "POST", { decision })
+        await loadAll()
+        setStatus(`模型已设置为：${label}`)
       })
     }
     function renderProductFilters() {
@@ -2217,18 +2258,20 @@
             ${field("标签", item.badge, "badge")}
             ${field("所属分类", item.categories, "categories")}
           </div><div class="upload-help">勾选“首页推荐”后显示在首页推荐商品区域，最多显示 6 个，按排序值排序。</div></div>
-          ${item.modelCandidateId ? `<div class="drawer-section"><h4>模型来源与授权</h4><div class="form-grid">
+          ${item.modelCandidateId ? `<div class="drawer-section"><h4>模型来源与人工审核</h4><div class="form-grid">
             <label>来源记录ID<input data-key="modelCandidateId" value="${escapeHtml(item.modelCandidateId)}" disabled></label>
             <label>来源平台<input data-key="modelSourcePlatform" value="${escapeHtml(item.modelSourcePlatform || "MakerWorld")}" disabled></label>
             <label>作者<input data-key="modelAuthorName" value="${escapeHtml(item.modelAuthorName || "")}"></label>
             <label>来源链接<input data-key="modelSourceUrl" value="${escapeHtml(item.modelSourceUrl || "")}"></label>
             <label>许可证代码<input data-key="modelLicenseCode" value="${escapeHtml(item.modelLicenseCode || "")}"></label>
+            <label>原始许可证文字<textarea data-key="modelLicenseRaw">${escapeHtml(item.modelLicenseRaw || "")}</textarea></label>
             <label>许可证链接<input data-key="modelLicenseUrl" value="${escapeHtml(item.modelLicenseUrl || "")}"></label>
-            <label>授权状态<input data-key="modelAuthorizationStatus" value="${escapeHtml(item.modelAuthorizationStatus || "")}"></label>
+            <label>人工审核状态<input value="${escapeHtml(makerworldReviewText(item.modelAuthorizationStatus))}" disabled></label>
             <label>同步评分<input value="${escapeHtml(item.modelSyncScore || "0")}" disabled></label>
+            <label>最近抓取时间<input value="${escapeHtml(item.modelSyncedAt || "")}" disabled></label>
             <label>署名文案<textarea data-key="modelAttribution">${escapeHtml(item.modelAttribution || "")}</textarea></label>
-            <label>授权备注<textarea data-key="modelAuthorizationNote">${escapeHtml(item.modelAuthorizationNote || "")}</textarea></label>
-          </div><div class="upload-help">作者、来源、许可证和署名文案会在小程序商品详情展示。自动同步不会下载或再分发模型文件；授权状态不合格的候选会自动保持下架。</div></div>` : ""}
+            <label>人工审核备注<textarea data-key="modelAuthorizationNote">${escapeHtml(item.modelAuthorizationNote || "")}</textarea></label>
+          </div><div class="upload-help">许可证、版权和商用相关文字只作人工审核参考，不参与导入或同步判定。请使用商品列表中的审核按钮决定是否上架。</div></div>` : ""}
         </div>
         <div class="drawer-pane" data-drawer-pane="media">
           <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
@@ -3169,6 +3212,9 @@
       setStatus(error.message || "MakerWorld 同步失败")
       loadAll().catch(() => {})
     }))
+    $("importMakerworldDraftBtn").addEventListener("click", event => importMakerworldDraft(event.currentTarget).catch(error => {
+      setStatus(error.message || "MakerWorld 导入失败")
+    }))
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
     })
@@ -3697,6 +3743,9 @@
           selectedProducts.clear()
           return saveProductsAndRefresh("商品已删除")
         })
+      }
+      if (event.target.dataset.action === "makerworld-review") {
+        reviewMakerworld(event.target).catch(error => setStatus(error.message || "模型审核失败"))
       }
       if (event.target.dataset.bulk) openBulkCategory(event.target.dataset.bulk)
       if (event.target.dataset.action === "bulk-on") applyBulkStatus("on")
