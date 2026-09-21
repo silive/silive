@@ -9,7 +9,9 @@
 - 来源是 `https://makerworld.com.cn/.../models/{id}`；
 - 有模型标题。
 
-后台批量链接导入只要求链接中能够识别 MakerWorld model ID。页面标题、作者或图片获取失败时，系统使用 `MakerWorld 模型 {model_id}` 作为临时标题并标记“信息待补全/图片待补全”，不会阻止保存。
+后台批量链接导入只要求链接中能够识别 MakerWorld model ID。系统优先从拓竹区域元数据接口获取真实标题、主图、预览图、作者和许可证，再以模型页 HTML 作为后备。已存在但标记为“信息待补全”的记录会在重新导入时自动补全，不会重复创建商品。
+
+如果模型已删除、区域不可用或元数据接口未返回该 ID，系统仍使用 `MakerWorld 模型 {model_id}` 作为临时标题并标记“信息待补全/图片待补全”。价格、模型克重和打印时间当前由审核人员填写，不在本次导入中自动计价。
 
 许可证、版权、商用、图片复用、来源权利核验等字段都只作为参考资料保存，不参与导入、同步或保存判定。无论原始许可证文字是 `Standard Digital File License`、`Non-Commercial` 或未知，模型都会进入 `pending_review`。只有后台人工点击“审核通过”后才会上架。
 
@@ -64,4 +66,4 @@
 - 优先按 model ID 去重，其次按去除查询参数、片段、语言差异和末尾斜杠后的 canonical URL 去重。
 - 单条页面请求默认 5 秒超时，并发最多 10 条；失败后降级创建待审核记录。
 - 批次记录查询：`GET /api/admin/makerworld/import-batches?limit=10`。
-- 页面可能返回 Cloudflare 403，此时仅影响标题、作者、图片等自动补全，不影响链接和 model ID 入库。
+- 页面可能返回 Cloudflare 403，此时会先使用 `api.bambulab.cn`/`api.bambulab.com` 的区域元数据接口。只有元数据接口和页面都无法取得模型时才标记待补全。

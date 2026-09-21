@@ -186,8 +186,15 @@ function planSync(payload, existingProducts = [], options = {}) {
     const generated = buildProduct(candidate, options)
     const existing = existingByCandidate.get(candidate.modelId)
     if (existing) {
+      const shouldEnrichMetadata = String(existing.modelInfoStatus || "").toLowerCase() !== "complete" ||
+        !text(existing.imageUrl) || /^MakerWorld 模型 \d+$/i.test(text(existing.name))
       products.push({
         ...existing,
+        name: shouldEnrichMetadata && generated.name ? generated.name : existing.name,
+        intro: shouldEnrichMetadata && generated.intro ? generated.intro : existing.intro,
+        detailText: shouldEnrichMetadata && generated.detailText ? generated.detailText : existing.detailText,
+        imageUrl: shouldEnrichMetadata && generated.imageUrl ? generated.imageUrl : existing.imageUrl,
+        galleryImages: shouldEnrichMetadata && generated.galleryImages.length ? generated.galleryImages : existing.galleryImages,
         modelSourcePlatform: generated.modelSourcePlatform,
         modelSourceUrl: generated.modelSourceUrl,
         modelSourceOriginalUrl: generated.modelSourceOriginalUrl,

@@ -82,7 +82,7 @@ const {
   canonicalizeMakerWorldUrl,
   planSync: planMakerWorldSync
 } = require("./makerworld-catalog-sync")
-const { parseMakerWorldHtml, prepareBatchInput } = require("./makerworld-batch-import")
+const { parseMakerWorldApiDesign, parseMakerWorldHtml, prepareBatchInput } = require("./makerworld-batch-import")
 
 let mysql
 try {
@@ -689,6 +689,42 @@ async function fetchMakerworldCandidate(normalized, submittedUrl) {
     infoStatus: "incomplete",
     infoNote: "信息待补全；图片待补全"
   }
+  let apiWarning = ""
+  try {
+    const metadataApiHost = new URL(normalized.canonicalUrl).hostname.endsWith(".com.cn") ? "api.bambulab.cn" : "api.bambulab.com"
+    const response = await requestJson(`https://${metadataApiHost}/v1/design-service/design/${encodeURIComponent(normalized.modelId)}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6",
+        "User-Agent": "BambuNetworkAgent/01.09.05.01"
+      },
+      timeout: Math.max(1500, Math.min(Number(process.env.MAKERWORLD_PAGE_TIMEOUT_MS || 5000), 10000))
+    })
+    const designPayload = response.data?.data && typeof response.data.data === "object" ? response.data.data : response.data
+    if (response.statusCode >= 200 && response.statusCode < 300 && designPayload && typeof designPayload === "object" && String(designPayload.id || "") === String(normalized.modelId)) {
+      const parsed = parseMakerWorldApiDesign(response.data, normalized.canonicalUrl)
+      const missing = []
+      if (!parsed.title) missing.push("标题待补全")
+      if (!parsed.imageUrl) missing.push("图片待补全")
+      return {
+        ...fallback,
+        ...parsed,
+        modelId: normalized.modelId,
+        sourceUrl: normalized.canonicalUrl,
+        submittedSourceUrl: submittedUrl,
+        title: parsed.title || fallback.title,
+        fetchedAt,
+        infoStatus: missing.length ? "incomplete" : "complete",
+        infoNote: missing.join("；")
+      }
+    }
+    apiWarning = response.statusCode >= 200 && response.statusCode < 300
+      ? "元数据 API 未返回对应模型"
+      : `元数据 API 返回 HTTP ${response.statusCode}`
+  } catch (error) {
+    apiWarning = error.message || "元数据 API 获取失败"
+  }
   try {
     const response = await fetchMakerworldHtml(normalized.canonicalUrl, Number(process.env.MAKERWORLD_PAGE_TIMEOUT_MS || 5000))
     const parsed = parseMakerWorldHtml(response.html, normalized.canonicalUrl)
@@ -696,7 +732,7 @@ async function fetchMakerworldCandidate(normalized, submittedUrl) {
       const reason = parsed.cloudflareBlocked || response.statusCode === 403
         ? `Cloudflare 限制（HTTP ${response.statusCode}）`
         : `页面返回 HTTP ${response.statusCode}`
-      return { ...fallback, fetchWarning: reason, infoNote: `${fallback.infoNote}；${reason}` }
+      return { ...fallback, fetchWarning: reason, infoNote: `${fallback.infoNote}；${apiWarning ? `${apiWarning}；` : ""}${reason}` }
     }
     const missing = []
     if (!parsed.title) missing.push("标题待补全")
@@ -713,7 +749,8 @@ async function fetchMakerworldCandidate(normalized, submittedUrl) {
       infoNote: missing.join("；")
     }
   } catch (error) {
-    return { ...fallback, fetchWarning: error.message || "页面获取失败", infoNote: `${fallback.infoNote}；${error.message || "页面获取失败"}` }
+    const pageWarning = error.message || "页面获取失败"
+    return { ...fallback, fetchWarning: pageWarning, infoNote: `${fallback.infoNote}；${apiWarning ? `${apiWarning}；` : ""}${pageWarning}` }
   }
 }
 
@@ -766,6 +803,30 @@ async function getMakerworldImportBatches(limit = 10) {
   }))
 }
 
+function makerworldProductNeedsMetadata(product = {}) {
+  return String(product.modelInfoStatus || "").toLowerCase() !== "complete" ||
+    !String(product.imageUrl || "").trim() ||
+    /^MakerWorld 模型 \d+$/i.test(String(product.name || "").trim())
+}
+
+function refreshMakerworldProductMetadata(product, candidate, config) {
+  const generated = buildMakerWorldProduct(candidate, config)
+  if (candidate.title) product.name = generated.name
+  if (candidate.summary) {
+    product.intro = generated.intro
+    product.detailText = generated.detailText
+  }
+  if (generated.imageUrl) product.imageUrl = generated.imageUrl
+  if (generated.galleryImages.length) product.galleryImages = generated.galleryImages
+  for (const key of [
+    "modelSourcePlatform", "modelSourceUrl", "modelSourceOriginalUrl", "modelAuthorName", "modelAuthorId",
+    "modelAuthorUrl", "modelLicenseCode", "modelLicenseRaw", "modelLicenseUrl", "modelAttribution",
+    "modelSyncScore", "modelSyncedAt", "modelFetchedAt", "modelInfoStatus", "modelInfoNote"
+  ]) product[key] = generated[key]
+  product.status = product.modelAuthorizationStatus === "approved" ? product.status : "off"
+  return product
+}
+
 async function runMakerworldBatchImport(inputText) {
   if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
   const inputs = prepareBatchInput(inputText, 100)
@@ -778,15 +839,18 @@ async function runMakerworldBatchImport(inputText) {
     const products = await getProducts()
     const byModelId = new Map(products.filter(item => item.modelCandidateId).map(item => [String(item.modelCandidateId), item]))
     const bySourceUrl = new Map(products.filter(item => item.modelSourceUrl).map(item => [String(item.modelSourceUrl), item]))
-    const firstNewByModelId = new Map()
+    const firstFetchByModelId = new Map()
     for (const input of inputs) {
-      if (!input.normalized || byModelId.has(input.normalized.modelId) || bySourceUrl.has(input.normalized.canonicalUrl) || firstNewByModelId.has(input.normalized.modelId)) continue
-      firstNewByModelId.set(input.normalized.modelId, input)
+      if (!input.normalized || firstFetchByModelId.has(input.normalized.modelId)) continue
+      const existing = byModelId.get(input.normalized.modelId) || bySourceUrl.get(input.normalized.canonicalUrl)
+      if (existing && !makerworldProductNeedsMetadata(existing)) continue
+      firstFetchByModelId.set(input.normalized.modelId, input)
     }
-    const fetchJobs = [...firstNewByModelId.values()]
+    const fetchJobs = [...firstFetchByModelId.values()]
     const fetchedCandidates = await mapWithConcurrency(fetchJobs, 10, item => fetchMakerworldCandidate(item.normalized, item.submittedUrl))
     const fetchedByModelId = new Map(fetchJobs.map((item, index) => [item.normalized.modelId, fetchedCandidates[index]]))
     const additions = []
+    let existingMetadataChanged = false
     const results = []
     for (const input of inputs) {
       if (!input.normalized) {
@@ -795,7 +859,14 @@ async function runMakerworldBatchImport(inputText) {
       }
       const existing = byModelId.get(input.normalized.modelId) || bySourceUrl.get(input.normalized.canonicalUrl)
       if (existing) {
-        results.push({ index: input.index, submittedUrl: input.submittedUrl, canonicalUrl: input.normalized.canonicalUrl, modelId: input.normalized.modelId, title: existing.name, productId: existing.id, status: "already_exists", message: `已存在，商品 ID：${existing.id}` })
+        const candidate = fetchedByModelId.get(input.normalized.modelId)
+        const shouldRefresh = candidate && makerworldProductNeedsMetadata(existing)
+        if (shouldRefresh) {
+          refreshMakerworldProductMetadata(existing, candidate, makerworldSyncConfig())
+          existingMetadataChanged = true
+        }
+        const refreshed = shouldRefresh && !makerworldProductNeedsMetadata(existing)
+        results.push({ index: input.index, submittedUrl: input.submittedUrl, canonicalUrl: input.normalized.canonicalUrl, modelId: input.normalized.modelId, title: existing.name, productId: existing.id, status: "already_exists", message: `已存在，商品 ID：${existing.id}${refreshed ? "；标题和图片已补全" : ""}` })
         continue
       }
       const candidate = fetchedByModelId.get(input.normalized.modelId) || await fetchMakerworldCandidate(input.normalized, input.submittedUrl)
@@ -818,7 +889,7 @@ async function runMakerworldBatchImport(inputText) {
         message: incomplete ? `导入成功；${candidate.infoNote || "信息待补全"}` : "导入成功，已进入待人工审核"
       })
     }
-    if (additions.length) await saveProducts([...additions, ...products])
+    if (additions.length || existingMetadataChanged) await saveProducts([...additions, ...products])
     const batch = {
       id: batchId,
       startedAt,
@@ -852,7 +923,30 @@ async function runMakerworldSingleImport(payload) {
   if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
   makerworldImportWorkerRunning = true
   try {
-    return await importMakerworldPayload(payload)
+    const items = Array.isArray(payload) ? payload : (Array.isArray(payload?.items) ? payload.items : [payload])
+    const enriched = await mapWithConcurrency(items, 5, async item => {
+      const normalized = canonicalizeMakerWorldUrl(item?.sourceUrl || item?.url || "")
+      if (!normalized) return item
+      const fetched = await fetchMakerworldCandidate(normalized, item.sourceUrl || item.url)
+      const preferInput = key => String(item?.[key] || "").trim() ? item[key] : fetched[key]
+      return {
+        ...fetched,
+        ...item,
+        modelId: normalized.modelId,
+        sourceUrl: normalized.canonicalUrl,
+        submittedSourceUrl: item?.sourceUrl || item?.url,
+        title: preferInput("title"),
+        summary: preferInput("summary"),
+        author: preferInput("author"),
+        authorId: preferInput("authorId"),
+        authorUrl: preferInput("authorUrl"),
+        imageUrl: preferInput("imageUrl"),
+        galleryImages: Array.isArray(item?.galleryImages) && item.galleryImages.length ? item.galleryImages : fetched.galleryImages,
+        licenseRaw: preferInput("licenseRaw"),
+        licenseCode: preferInput("licenseCode")
+      }
+    })
+    return await importMakerworldPayload({ items: enriched })
   } finally {
     makerworldImportWorkerRunning = false
   }

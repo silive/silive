@@ -663,13 +663,13 @@
             </div>
             <div class="bulk-row">
               <input id="makerworldImportUrl" placeholder="MakerWorld 模型链接（必填）">
-              <input id="makerworldImportTitle" placeholder="模型标题（必填）">
+              <input id="makerworldImportTitle" placeholder="模型标题（可选，默认自动获取）">
               <input id="makerworldImportAuthor" placeholder="作者（可选）">
               <input id="makerworldImportLicense" placeholder="原始许可证文字（可选，仅供参考）">
               <button class="secondary" id="importMakerworldDraftBtn">导入待审核</button>
             </div>
             <h3 style="margin-top:20px">批量导入 MakerWorld 链接</h3>
-            <div class="upload-help">可每行一个、空格分隔或直接粘贴整段文字；自动提取其中的 MakerWorld URL，每批最多 100 个。</div>
+            <div class="upload-help">可每行一个、空格分隔或直接粘贴整段文字；自动获取标题、主图和预览图，每批最多 100 个。价格、克重和打印时间暂由审核人员填写。</div>
             <textarea id="makerworldBatchUrls" rows="7" placeholder="粘贴 MakerWorld 模型链接或包含链接的文字..."></textarea>
             <div class="bulk-row">
               <button class="primary" id="importMakerworldBatchBtn">批量导入</button>
@@ -2084,7 +2084,7 @@
     async function importMakerworldDraft(button) {
       const sourceUrl = $("makerworldImportUrl").value.trim()
       const title = $("makerworldImportTitle").value.trim()
-      if (!sourceUrl || !title) throw new Error("请填写 MakerWorld 模型链接和标题")
+      if (!sourceUrl) throw new Error("请填写 MakerWorld 模型链接")
       await withButtonLoading(button, "导入中...", async () => {
         const report = await api("/api/admin/makerworld/import", "POST", {
           sourceUrl,

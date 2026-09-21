@@ -68,6 +68,16 @@ function firstText(...values) {
   return ""
 }
 
+function plainText(value) {
+  return decodeHtml(String(value == null ? "" : value)
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/p\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " "))
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .trim()
+}
+
 function imageList(value) {
   const list = Array.isArray(value) ? value : [value]
   return list.map(item => typeof item === "object" ? (item.url || item.contentUrl) : item)
@@ -106,6 +116,47 @@ function parseMakerWorldHtml(html, sourceUrl) {
   }
 }
 
+function parseMakerWorldApiDesign(payload, sourceUrl) {
+  const design = payload && typeof payload === "object" && payload.data && typeof payload.data === "object"
+    ? payload.data
+    : payload
+  if (!design || typeof design !== "object") throw new Error("MakerWorld API 返回格式无效")
+  const creator = design.designCreator && typeof design.designCreator === "object" ? design.designCreator : {}
+  const pictures = []
+  const addPicture = value => {
+    const url = firstText(typeof value === "object" ? (value.url || value.coverUrl) : value)
+    if (/^https:\/\//i.test(url) && !pictures.includes(url)) pictures.push(url)
+  }
+  addPicture(design.coverUrl)
+  const extension = design.designExtension && typeof design.designExtension === "object" ? design.designExtension : {}
+  ;(Array.isArray(extension.design_pictures) ? extension.design_pictures : []).forEach(addPicture)
+  for (const instance of (Array.isArray(design.instances) ? design.instances : []).slice(0, 5)) {
+    addPicture(instance?.cover)
+    ;(Array.isArray(instance?.pictures) ? instance.pictures : []).slice(0, 3).forEach(addPicture)
+  }
+  const handle = firstText(creator.handle)
+  const authorUrl = handle ? `https://makerworld.com.cn/zh/@${encodeURIComponent(handle)}` : ""
+  const licenseInfo = design.licenseDescriptionInfo && typeof design.licenseDescriptionInfo === "object" ? design.licenseDescriptionInfo : {}
+  return {
+    sourceUrl,
+    title: firstText(design.titleTranslated, design.title),
+    summary: plainText(firstText(design.summaryTranslated, design.summary)),
+    author: firstText(creator.name),
+    authorId: firstText(creator.uid),
+    authorUrl,
+    imageUrl: pictures[0] || "",
+    galleryImages: pictures.slice(1, 10),
+    licenseRaw: firstText(licenseInfo.description, licenseInfo.name, licenseInfo.title, design.license),
+    licenseCode: firstText(design.license),
+    metrics: {
+      downloads: Number(design.downloadCount || 0),
+      likes: Number(design.likeCount || 0),
+      boosts: Number(design.boostInfo?.boostCount || 0),
+      makes: Number(design.printCount || 0)
+    }
+  }
+}
+
 function prepareBatchInput(value, maximum = 100) {
   const extracted = extractMakerWorldUrls(value)
   if (extracted.length > maximum) {
@@ -122,6 +173,7 @@ function prepareBatchInput(value, maximum = 100) {
 
 module.exports = {
   decodeHtml,
+  parseMakerWorldApiDesign,
   parseMakerWorldHtml,
   prepareBatchInput
 }

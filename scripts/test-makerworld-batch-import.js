@@ -8,6 +8,7 @@ const {
   extractMakerWorldUrls
 } = require("../cms/makerworld-catalog-sync")
 const {
+  parseMakerWorldApiDesign,
   parseMakerWorldHtml,
   prepareBatchInput
 } = require("../cms/makerworld-batch-import")
@@ -45,6 +46,23 @@ assert.strictEqual(parsed.author, "南波万")
 assert.strictEqual(parsed.imageUrl, "https://images.example/main.jpg")
 assert.strictEqual(parsed.galleryImages[0], "https://images.example/second.jpg")
 assert.strictEqual(parsed.licenseRaw, "Standard Digital File License")
+
+const apiParsed = parseMakerWorldApiDesign({
+  id: 127261,
+  title: "Pokemon-Ditto",
+  titleTranslated: "宝可梦-百变怪",
+  summary: "<p>模型描述</p>",
+  coverUrl: "https://makerworld.bblmw.cn/design/main.jpg",
+  license: "BY-ND",
+  designCreator: { uid: 1842975531, name: "SnapPrint3D", handle: "GLB_SnapPrint3D" },
+  designExtension: { design_pictures: [{ url: "https://makerworld.bblmw.cn/design/second.jpg" }] },
+  instances: [{ cover: "https://makerworld.bblmw.cn/instance/cover.webp", pictures: [{ url: "https://makerworld.bblmw.cn/instance/detail.webp" }] }]
+}, normal)
+assert.strictEqual(apiParsed.title, "宝可梦-百变怪")
+assert.strictEqual(apiParsed.imageUrl, "https://makerworld.bblmw.cn/design/main.jpg")
+assert.deepStrictEqual(apiParsed.galleryImages.slice(0, 2), ["https://makerworld.bblmw.cn/design/second.jpg", "https://makerworld.bblmw.cn/instance/cover.webp"])
+assert.strictEqual(apiParsed.authorId, "1842975531")
+assert.strictEqual(apiParsed.licenseRaw, "BY-ND")
 
 const incomplete = parseMakerWorldHtml("<html><head></head><body></body></html>", normal)
 assert.strictEqual(incomplete.title, "")
