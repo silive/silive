@@ -83,6 +83,13 @@ const {
   planSync: planMakerWorldSync
 } = require("./makerworld-catalog-sync")
 const { parseMakerWorldApiDesign, parseMakerWorldHtml, prepareBatchInput } = require("./makerworld-batch-import")
+const {
+  FALLBACK_CATEGORIES: MAKERWORLD_RANKING_FALLBACK_CATEGORIES,
+  RANKING_SORTS: MAKERWORLD_RANKING_SORTS,
+  prepareRankingRequest,
+  rankingCategories,
+  rankingDesignUrls
+} = require("./makerworld-ranked-import")
 
 let mysql
 try {
@@ -189,6 +196,8 @@ let refundSyncWorkerTimer = null
 let makerworldSyncWorkerRunning = false
 let makerworldImportWorkerRunning = false
 let makerworldSyncWorkerTimer = null
+let makerworldRankingOptionsCache = null
+let makerworldRankingOptionsCachedAt = 0
 let makerworldSyncState = {
   running: false,
   lastStartedAt: "",
@@ -630,6 +639,65 @@ function publicMakerworldSyncStatus() {
     limit: config.limit,
     reviewMode: "manual",
     batchRunning: makerworldImportWorkerRunning
+  }
+}
+
+async function getMakerworldRankingOptions() {
+  const now = Date.now()
+  if (makerworldRankingOptionsCache && now - makerworldRankingOptionsCachedAt < 10 * 60 * 1000) {
+    return makerworldRankingOptionsCache
+  }
+  let categories = MAKERWORLD_RANKING_FALLBACK_CATEGORIES
+  try {
+    const response = await requestJson("https://api.bambulab.cn/v1/search-service/homepage/nav", {
+      headers: { Accept: "application/json", "User-Agent": "BambuNetworkAgent/01.09.05.01" },
+      timeout: 10000
+    })
+    if (response.statusCode >= 200 && response.statusCode < 300) categories = rankingCategories(response.data)
+  } catch (error) {
+    console.warn("[makerworld-ranking-options] using fallback categories", { message: error.message })
+  }
+  makerworldRankingOptionsCache = { categories, sorts: MAKERWORLD_RANKING_SORTS }
+  makerworldRankingOptionsCachedAt = now
+  return makerworldRankingOptionsCache
+}
+
+async function runMakerworldRankedImport(input = {}) {
+  const options = await getMakerworldRankingOptions()
+  let request
+  try {
+    request = prepareRankingRequest(input, options.categories)
+  } catch (error) {
+    throw httpError(400, error.message)
+  }
+  const queryString = new URLSearchParams({
+    navKey: request.categoryKey,
+    orderBy: request.orderBy,
+    offset: "0",
+    limit: String(request.limit)
+  }).toString()
+  const response = await requestJson(`https://api.bambulab.cn/v1/search-service/select/design2?${queryString}`, {
+    headers: { Accept: "application/json", "User-Agent": "BambuNetworkAgent/01.09.05.01" },
+    timeout: 15000
+  })
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw httpError(502, `MakerWorld 榜单接口返回 HTTP ${response.statusCode}`)
+  }
+  const urls = rankingDesignUrls(response.data, request.limit)
+  if (!urls.length) throw httpError(502, "MakerWorld 榜单没有返回可导入的模型")
+  const report = await runMakerworldBatchImport(urls.join("\n"))
+  const category = options.categories.find(item => item.key === request.categoryKey)
+  const sort = options.sorts.find(item => item.key === request.orderBy)
+  return {
+    ...report,
+    ranking: {
+      categoryKey: request.categoryKey,
+      categoryLabel: category?.label || request.categoryKey,
+      orderBy: request.orderBy,
+      orderLabel: sort?.label || request.orderBy,
+      requestedCount: request.limit,
+      receivedCount: urls.length
+    }
   }
 }
 
@@ -12660,6 +12728,17 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/makerworld/import-batches" && req.method === "GET") {
     sendJson(res, 200, { ok: true, data: await getMakerworldImportBatches(Number(url.searchParams.get("limit") || 10)) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/ranking-options" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, data: await getMakerworldRankingOptions() })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/import-ranked" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await runMakerworldRankedImport(body) })
     return
   }
 

@@ -28,10 +28,12 @@ assert.strictEqual(result.report.pendingReview, 2)
 assert.strictEqual(result.products.every(item => item.status === "off"), true)
 assert.strictEqual(result.products.every(item => item.modelAuthorizationStatus === "pending_review"), true)
 assert.strictEqual(result.products[0].modelLicenseRaw, "Standard Digital File License")
+assert.deepStrictEqual(result.products[0].categories, ["3D打印"])
 
 const approvedExisting = planSync({ items: [{ ...model, license: "Non-Commercial / 非商用" }] }, [{
   id: "MW849446",
   name: "Existing",
+  categories: ["潮玩手办", "潮玩手办/桌面摆件"],
   status: "on",
   modelCandidateId: "849446",
   modelAuthorizationStatus: "approved"
@@ -39,5 +41,6 @@ const approvedExisting = planSync({ items: [{ ...model, license: "Non-Commercial
 assert.strictEqual(approvedExisting.products[0].status, "on")
 assert.strictEqual(approvedExisting.products[0].modelAuthorizationStatus, "approved")
 assert.strictEqual(approvedExisting.products[0].modelLicenseRaw, "Non-Commercial / 非商用")
+assert.deepStrictEqual(approvedExisting.products[0].categories, ["潮玩手办", "潮玩手办/桌面摆件"])
 
 console.log("makerworld manual review sync tests passed")

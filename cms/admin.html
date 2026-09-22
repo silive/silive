@@ -661,6 +661,16 @@
                 <div class="upload-help">所有有效模型均以“下架 + 待人工审核”保存。许可证、版权和商用信息只作参考。</div>
               </div>
             </div>
+            <h3>按 MakerWorld 类目导入榜单</h3>
+            <div class="upload-help">选择 MakerWorld 类目、排名方式和前 N 名。系统按榜单顺序获取模型，自动去重，并统一保存到“3D打印”类目等待人工审核。</div>
+            <div class="bulk-row">
+              <label>MakerWorld 类目<select id="makerworldRankingCategory"></select></label>
+              <label>排名方式<select id="makerworldRankingSort"></select></label>
+              <label>导入前 N 名<input id="makerworldRankingLimit" type="number" min="1" max="100" step="1" value="20"></label>
+              <button class="primary" id="importMakerworldRankingBtn">导入榜单</button>
+            </div>
+            <div id="makerworldRankingStatus" class="upload-help">正在读取 MakerWorld 类目...</div>
+            <h3 style="margin-top:20px">单链接导入</h3>
             <div class="bulk-row">
               <input id="makerworldImportUrl" placeholder="MakerWorld 模型链接（必填）">
               <input id="makerworldImportTitle" placeholder="模型标题（可选，默认自动获取）">
@@ -965,6 +975,7 @@
     let makerworldSyncStatus = {}
     let makerworldBatchResult = null
     let makerworldImportBatches = []
+    let makerworldRankingOptions = { categories: [], sorts: [] }
     let categorySearch = ""
     let activityProductSearch = {}
     let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
@@ -2103,6 +2114,31 @@
     function makerworldBatchStatusText(status) {
       return ({ imported: "导入成功", already_exists: "已存在", fetch_failed: "获取失败", invalid_link: "无效链接", data_incomplete: "数据不完整" })[status] || status || "-"
     }
+    function renderMakerworldRankingOptions() {
+      const categories = makerworldRankingOptions.categories || []
+      const sorts = makerworldRankingOptions.sorts || []
+      $("makerworldRankingCategory").innerHTML = categories.map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`).join("")
+      $("makerworldRankingSort").innerHTML = sorts.map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`).join("")
+      $("makerworldRankingStatus").textContent = categories.length
+        ? `已读取 ${categories.length} 个可导入类目；单次最多 100 个。`
+        : "暂时无法读取 MakerWorld 类目。"
+    }
+    async function importMakerworldRanking(button) {
+      const categoryKey = $("makerworldRankingCategory").value
+      const orderBy = $("makerworldRankingSort").value
+      const limit = Number($("makerworldRankingLimit").value)
+      if (!categoryKey || !orderBy) throw new Error("请先选择 MakerWorld 类目和排名方式")
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("导入数量必须是 1 到 100 的整数")
+      await withButtonLoading(button, "导入中...", async () => {
+        makerworldBatchResult = await api("/api/admin/makerworld/import-ranked", "POST", { categoryKey, orderBy, limit }, 180000)
+        makerworldImportBatches = await api("/api/admin/makerworld/import-batches?limit=10")
+        renderMakerworldBatchResult()
+        renderMakerworldBatchHistory()
+        const ranking = makerworldBatchResult.ranking || {}
+        $("makerworldRankingStatus").textContent = `${ranking.categoryLabel || "榜单"} · ${ranking.orderLabel || "排名"}前 ${ranking.requestedCount || limit} 名：成功 ${makerworldBatchResult.successCount || 0}，已存在 ${makerworldBatchResult.existingCount || 0}，失败 ${makerworldBatchResult.failedCount || 0}`
+        await loadAll()
+      })
+    }
     function makerworldFailedResults() {
       return (makerworldBatchResult?.results || []).filter(item => ["fetch_failed", "invalid_link"].includes(item.status))
     }
@@ -3121,7 +3157,7 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldStatusData, makerworldBatchData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldStatusData, makerworldBatchData, makerworldRankingData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
@@ -3134,7 +3170,8 @@
         api(`/api/admin/store-leads${storeLeadQuery ? `?${storeLeadQuery}` : ""}`),
         api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`),
         api("/api/admin/makerworld/sync-status"),
-        api("/api/admin/makerworld/import-batches?limit=10")
+        api("/api/admin/makerworld/import-batches?limit=10"),
+        api("/api/admin/makerworld/ranking-options")
       ])
       const rewardQuery = new URLSearchParams(Object.fromEntries(Object.entries(rewardFilters).filter(([, value]) => value))).toString()
       const [relationData, rewardData] = await Promise.all([
@@ -3157,12 +3194,14 @@
       settings = settingData
       makerworldSyncStatus = makerworldStatusData
       makerworldImportBatches = makerworldBatchData
+      makerworldRankingOptions = makerworldRankingData
       rebuildCategoryOptions()
       renderOverview(overview)
       renderHome()
       renderHelpArticles()
       renderProducts()
       renderMakerworldSyncStatus()
+      renderMakerworldRankingOptions()
       renderMakerworldBatchResult()
       renderMakerworldBatchHistory()
       renderCategoryManager()
@@ -3297,6 +3336,9 @@
     }))
     $("importMakerworldDraftBtn").addEventListener("click", event => importMakerworldDraft(event.currentTarget).catch(error => {
       setStatus(error.message || "MakerWorld 导入失败")
+    }))
+    $("importMakerworldRankingBtn").addEventListener("click", event => importMakerworldRanking(event.currentTarget).catch(error => {
+      setStatus(error.message || "MakerWorld 榜单导入失败")
     }))
     $("importMakerworldBatchBtn").addEventListener("click", event => importMakerworldBatch(event.currentTarget).catch(error => {
       setStatus(error.message || "MakerWorld 批量导入失败")

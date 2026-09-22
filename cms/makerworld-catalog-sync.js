@@ -130,7 +130,7 @@ function buildProduct(candidate, options = {}) {
     detailImages: [],
     videoUrl: "",
     productType: "normal",
-    categories: options.categories || ["潮玩手办", "潮玩手办/新品上架"],
+    categories: options.categories || ["3D打印"],
     status: "off",
     stock: String(options.defaultStock || "0"),
     stockMode: "unlimited",
