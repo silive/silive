@@ -49,5 +49,7 @@ assert.match(admin, /makerworldRankingLimit/)
 assert.match(admin, /data-makerworld-import-tab="batch"/)
 assert.match(admin, /makerworld-history-table/)
 assert.doesNotMatch(admin, /id="runMakerworldSyncBtn"/)
+assert.doesNotMatch(admin, /id="productImportExcel"/)
+assert.doesNotMatch(admin, /id="previewProductImportBtn"/)
 
 console.log("makerworld ranked import tests passed")

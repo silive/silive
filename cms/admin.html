@@ -639,24 +639,6 @@
           <div class="bulk-panel">
             <div class="item-head">
               <div>
-                <h3>批量导入商品</h3>
-                <div class="upload-help">先下载模板填写商品数据，再上传 Excel 与 images.zip。图片不要嵌入 Excel，填写文件名即可自动匹配。</div>
-              </div>
-              <a class="secondary" href="/api/admin/products/import-template" download="product-import-template.xlsx">下载商品导入模板</a>
-            </div>
-            <div class="bulk-row">
-              <label class="checkline">商品 Excel<input id="productImportExcel" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
-              <label class="checkline">图片 ZIP 包<input id="productImportZip" type="file" accept=".zip,application/zip"></label>
-              <button class="secondary" id="previewProductImportBtn">解析并预览</button>
-              <button class="primary" id="confirmProductImportBtn" disabled>确认导入</button>
-            </div>
-            <div id="productImportSummary" class="upload-help">等待上传 Excel 和 images.zip。</div>
-            <div id="productImportPreview"></div>
-            <div id="productImportReport"></div>
-          </div>
-          <div class="bulk-panel">
-            <div class="item-head">
-              <div>
                 <h3>MakerWorld 模型导入</h3>
                 <div class="upload-help">选择一种导入方式即可。所有有效模型均以“下架 + 待人工审核”保存，版权信息仅供人工参考。</div>
               </div>
@@ -988,7 +970,6 @@
     let salesCommissionFilters = { salesAgentId: "", storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
-    let productImportToken = ""
     let makerworldBatchResult = null
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
@@ -1588,74 +1569,6 @@
       const data = await res.json()
       if (!data.ok) throw new Error(data.message || "上传失败，请重试")
       return data.url
-    }
-    async function previewProductImport() {
-      const excel = $("productImportExcel").files?.[0]
-      const zip = $("productImportZip").files?.[0]
-      if (!excel) return setStatus("请先上传商品 Excel")
-      if (!/\.xlsx$/i.test(excel.name)) return setStatus("Excel 只支持 .xlsx")
-      if (excel.size > 5 * 1024 * 1024) return setStatus("Excel 文件超过5MB，请精简后上传")
-      if (zip && !/\.zip$/i.test(zip.name)) return setStatus("图片包只支持 .zip")
-      if (zip && zip.size > 50 * 1024 * 1024) return setStatus("图片ZIP超过50MB，请压缩后上传")
-      const form = new FormData()
-      form.append("excel", excel)
-      if (zip) form.append("zip", zip)
-      setStatus("正在解析导入文件...")
-      $("productImportSummary").textContent = "解析中，请稍候。"
-      $("confirmProductImportBtn").disabled = true
-      productImportToken = ""
-      try {
-        const res = await fetch("/api/admin/products/import-preview", { method: "POST", body: form })
-        if (res.status === 401) return location.href = "/login"
-        const data = await res.json()
-        if (!res.ok || data.ok === false) throw new Error(data.message || "解析失败")
-        productImportToken = data.data.token
-        renderProductImportPreview(data.data)
-        $("confirmProductImportBtn").disabled = data.data.summary.importable === 0
-        setStatus("导入预览已生成")
-      } catch (error) {
-        const message = error.message || "解析失败"
-        $("productImportSummary").innerHTML = `<span style="color:#b42318">解析失败：${escapeHtml(message)}</span>`
-        $("productImportPreview").innerHTML = ""
-        setStatus(message)
-      }
-    }
-    function renderProductImportPreview(data) {
-      const summary = data.summary || {}
-      $("productImportSummary").innerHTML = `总行数 ${summary.total || 0} · 可导入 ${summary.importable || 0} · 错误 ${summary.errors || 0} · 新增 ${summary.creates || 0} · 更新 ${summary.updates || 0}`
-      $("productImportPreview").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
-        <thead><tr><th>行号</th><th>商品名称</th><th>价格</th><th>一级类目</th><th>标签</th><th>状态</th><th>主图</th><th>轮播图</th><th>详情图</th><th>操作类型</th><th>错误原因</th></tr></thead>
-        <tbody>${(data.rows || []).map(row => `<tr class="${row.ok ? "" : "selected"}">
-          <td>${row.rowNumber}</td>
-          <td><div class="table-title">${escapeHtml(row.name)}</div></td>
-          <td>${escapeHtml(row.price)}</td>
-          <td>${escapeHtml(row.primaryCategory)}</td>
-          <td><span class="mini-tag">${escapeHtml(badgeText(row.badge))}</span></td>
-          <td><span class="pill">${productStatusText(row.status)}</span></td>
-          <td>${row.mainImage ? `<img class="table-image" src="${escapeHtml(row.mainImage)}" alt="">` : ""}</td>
-          <td>${row.galleryCount || 0} 张</td>
-          <td>${row.detailCount || 0} 张</td>
-          <td>${escapeHtml(row.action)}</td>
-          <td>${escapeHtml((row.errors || []).join("；"))}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>`
-    }
-    async function confirmProductImport() {
-      if (!productImportToken) return setStatus("请先解析并预览")
-      if (!confirm("确认导入所有可导入商品？失败项不会写入。")) return
-      setStatus("正在导入商品...")
-      try {
-        const report = await api("/api/admin/products/import-confirm", "POST", { token: productImportToken })
-        $("productImportReport").innerHTML = `<div class="upload-help">成功新增 ${report.created} 个商品，成功更新 ${report.updated} 个商品，失败 ${report.failed} 个商品。</div>${report.failures?.length ? `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>行号</th><th>商品名称</th><th>失败原因</th></tr></thead><tbody>${report.failures.map(item => `<tr><td>${item.rowNumber}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.reason)}</td></tr>`).join("")}</tbody></table></div>` : ""}`
-        productImportToken = ""
-        $("confirmProductImportBtn").disabled = true
-        await loadAll()
-        setStatus("商品批量导入完成")
-      } catch (error) {
-        const message = error.message || "导入失败"
-        $("productImportReport").innerHTML = `<div class="upload-help" style="color:#b42318">导入失败：${escapeHtml(message)}</div>`
-        setStatus(message)
-      }
     }
     function mediaManager(label, key, value, kind = "image") {
       const list = normalizeMediaList(value)
@@ -3454,8 +3367,6 @@
       productFilters = { keyword: $("productSearch").value.trim(), category: $("productCategoryFilter").value, status: $("productStatusFilter").value, hot: $("productHotFilter").value }
       renderProducts()
     })
-    $("previewProductImportBtn").addEventListener("click", previewProductImport)
-    $("confirmProductImportBtn").addEventListener("click", confirmProductImport)
     $("resetProductsBtn").addEventListener("click", () => {
       productFilters = { keyword: "", category: "", status: "", hot: "" }
       selectedProducts.clear()
