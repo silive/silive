@@ -90,6 +90,7 @@ const {
   rankingCategories,
   rankingDesignUrls
 } = require("./makerworld-ranked-import")
+const { classifyMakerworldSourceResponse } = require("./makerworld-source-availability")
 
 let mysql
 try {
@@ -196,6 +197,10 @@ let refundSyncWorkerTimer = null
 let makerworldSyncWorkerRunning = false
 let makerworldImportWorkerRunning = false
 let makerworldSyncWorkerTimer = null
+let makerworldAvailabilityWorkerRunning = false
+let makerworldAvailabilityWorkerTimer = null
+let makerworldAvailabilityCursor = 0
+let makerworldAvailabilityState = { lastCheckedAt: "", lastReport: null, lastError: "" }
 let makerworldRankingOptionsCache = null
 let makerworldRankingOptionsCachedAt = 0
 let makerworldSyncState = {
@@ -649,11 +654,18 @@ async function getMakerworldRankingOptions() {
   }
   let categories = MAKERWORLD_RANKING_FALLBACK_CATEGORIES
   try {
-    const response = await requestJson("https://api.bambulab.cn/v1/search-service/homepage/nav", {
-      headers: { Accept: "application/json", "User-Agent": "BambuNetworkAgent/01.09.05.01" },
+    const requestOptions = {
+      headers: { Accept: "application/json", "Accept-Language": "zh-CN,zh;q=0.9", "User-Agent": "BambuNetworkAgent/01.09.05.01" },
       timeout: 10000
-    })
-    if (response.statusCode >= 200 && response.statusCode < 300) categories = rankingCategories(response.data)
+    }
+    const [navResponse, categoryResponse] = await Promise.all([
+      requestJson("https://api.bambulab.cn/v1/search-service/homepage/nav", requestOptions),
+      requestJson("https://api.bambulab.cn/v1/design-service/design/category", requestOptions)
+    ])
+    if (navResponse.statusCode >= 200 && navResponse.statusCode < 300) {
+      const categoryTree = categoryResponse.statusCode >= 200 && categoryResponse.statusCode < 300 ? categoryResponse.data : null
+      categories = rankingCategories(navResponse.data, categoryTree)
+    }
   } catch (error) {
     console.warn("[makerworld-ranking-options] using fallback categories", { message: error.message })
   }
@@ -670,12 +682,16 @@ async function runMakerworldRankedImport(input = {}) {
   } catch (error) {
     throw httpError(400, error.message)
   }
-  const queryString = new URLSearchParams({
-    navKey: request.categoryKey,
+  const selectedCategoryKey = request.subcategoryKey || request.categoryKey
+  const query = {
     orderBy: request.orderBy,
     offset: "0",
     limit: String(request.limit)
-  }).toString()
+  }
+  const numericCategory = selectedCategoryKey.match(/^category_(\d+)$/)
+  if (numericCategory) query.categories = numericCategory[1]
+  else query.navKey = selectedCategoryKey
+  const queryString = new URLSearchParams(query).toString()
   const response = await requestJson(`https://api.bambulab.cn/v1/search-service/select/design2?${queryString}`, {
     headers: { Accept: "application/json", "User-Agent": "BambuNetworkAgent/01.09.05.01" },
     timeout: 15000
@@ -687,12 +703,15 @@ async function runMakerworldRankedImport(input = {}) {
   if (!urls.length) throw httpError(502, "MakerWorld 榜单没有返回可导入的模型")
   const report = await runMakerworldBatchImport(urls.join("\n"))
   const category = options.categories.find(item => item.key === request.categoryKey)
+  const subcategory = (category?.children || []).find(item => item.key === request.subcategoryKey)
   const sort = options.sorts.find(item => item.key === request.orderBy)
   return {
     ...report,
     ranking: {
       categoryKey: request.categoryKey,
       categoryLabel: category?.label || request.categoryKey,
+      subcategoryKey: request.subcategoryKey,
+      subcategoryLabel: subcategory?.label || "",
       orderBy: request.orderBy,
       orderLabel: sort?.label || request.orderBy,
       requestedCount: request.limit,
@@ -896,7 +915,7 @@ function refreshMakerworldProductMetadata(product, candidate, config) {
 }
 
 async function runMakerworldBatchImport(inputText) {
-  if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
+  if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning || makerworldAvailabilityWorkerRunning) throw httpError(409, "MakerWorld 导入、同步或来源检查任务正在进行")
   const inputs = prepareBatchInput(inputText, 100)
   if (!inputs.length) throw httpError(400, "未找到 MakerWorld 链接，请粘贴至少一个模型页链接")
   makerworldImportWorkerRunning = true
@@ -988,7 +1007,7 @@ async function importMakerworldPayload(payload, config = makerworldSyncConfig())
 }
 
 async function runMakerworldSingleImport(payload) {
-  if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
+  if (makerworldImportWorkerRunning || makerworldSyncWorkerRunning || makerworldAvailabilityWorkerRunning) throw httpError(409, "MakerWorld 导入、同步或来源检查任务正在进行")
   makerworldImportWorkerRunning = true
   try {
     const items = Array.isArray(payload) ? payload : (Array.isArray(payload?.items) ? payload.items : [payload])
@@ -1026,6 +1045,9 @@ async function reviewMakerworldProduct(productId, decision, note = "") {
   const products = await getProducts()
   const product = products.find(item => String(item.id) === String(productId))
   if (!product || !product.modelCandidateId) throw httpError(404, "MakerWorld 模型不存在")
+  if (action === "approved" && String(product.modelInfoStatus || "").toLowerCase() === "source_unavailable") {
+    throw httpError(409, "MakerWorld 来源已失效，无法审核上架")
+  }
   product.modelAuthorizationStatus = action
   product.modelAuthorizationNote = String(note || product.modelAuthorizationNote || "").trim()
   product.status = action === "approved" ? "on" : "off"
@@ -1034,7 +1056,7 @@ async function reviewMakerworldProduct(productId, decision, note = "") {
 }
 
 async function runMakerworldCatalogSync() {
-  if (makerworldSyncWorkerRunning || makerworldImportWorkerRunning) throw httpError(409, "MakerWorld 导入或同步任务正在进行")
+  if (makerworldSyncWorkerRunning || makerworldImportWorkerRunning || makerworldAvailabilityWorkerRunning) throw httpError(409, "MakerWorld 导入、同步或来源检查任务正在进行")
   const config = makerworldSyncConfig()
   if (!config.feedConfigured) throw httpError(400, "尚未配置 MAKERWORLD_FEED_URL 数据源")
   if (!config.feedReady) throw httpError(400, "MakerWorld 数据源必须使用 HTTPS，且域名需在 MAKERWORLD_FEED_ALLOWED_HOSTS 白名单中")
@@ -1090,6 +1112,112 @@ function startMakerworldCatalogSyncWorker() {
   setTimeout(() => runMakerworldCatalogSyncSafe(), 5000).unref()
   makerworldSyncWorkerTimer = setInterval(() => runMakerworldCatalogSyncSafe(), config.intervalMinutes * 60 * 1000)
   if (makerworldSyncWorkerTimer.unref) makerworldSyncWorkerTimer.unref()
+}
+
+function makerworldAvailabilityConfig() {
+  return {
+    enabled: String(process.env.MAKERWORLD_AVAILABILITY_CHECK_ENABLED || "true").trim().toLowerCase() !== "false",
+    intervalMinutes: Math.max(30, Math.min(Number(process.env.MAKERWORLD_AVAILABILITY_CHECK_INTERVAL_MINUTES || 360), 1440)),
+    batchLimit: Math.max(1, Math.min(Number(process.env.MAKERWORLD_AVAILABILITY_CHECK_BATCH_LIMIT || 100), 500)),
+    concurrency: Math.max(1, Math.min(Number(process.env.MAKERWORLD_AVAILABILITY_CHECK_CONCURRENCY || 5), 10))
+  }
+}
+
+async function checkMakerworldSourceAvailability(product) {
+  const modelId = String(product.modelCandidateId || "").trim()
+  if (!/^\d+$/.test(modelId)) return { status: "skipped", reason: "缺少有效的 MakerWorld model ID" }
+  let apiHost = "api.bambulab.cn"
+  try {
+    if (!new URL(product.modelSourceUrl || "https://makerworld.com.cn").hostname.endsWith(".com.cn")) apiHost = "api.bambulab.com"
+  } catch (error) {}
+  try {
+    const response = await requestJson(`https://${apiHost}/v1/design-service/design/${encodeURIComponent(modelId)}`, {
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6",
+        "User-Agent": "BambuNetworkAgent/01.09.05.01"
+      },
+      timeout: Math.max(3000, Math.min(Number(process.env.MAKERWORLD_AVAILABILITY_CHECK_TIMEOUT_MS || 8000), 15000))
+    })
+    return classifyMakerworldSourceResponse(response.statusCode, response.data, modelId)
+  } catch (error) {
+    return { status: "uncertain", reason: error.message || "MakerWorld 来源检查失败" }
+  }
+}
+
+async function runMakerworldAvailabilityCheck() {
+  if (makerworldAvailabilityWorkerRunning || makerworldSyncWorkerRunning || makerworldImportWorkerRunning) {
+    throw httpError(409, "MakerWorld 导入、同步或来源检查任务正在进行")
+  }
+  makerworldAvailabilityWorkerRunning = true
+  const checkedAt = new Date().toISOString()
+  try {
+    const config = makerworldAvailabilityConfig()
+    const products = await getProducts()
+    const candidates = products.filter(item => item.modelCandidateId && String(item.modelSourcePlatform || "").toLowerCase() === "makerworld")
+    const count = Math.min(config.batchLimit, candidates.length)
+    const selected = []
+    for (let index = 0; index < count; index += 1) selected.push(candidates[(makerworldAvailabilityCursor + index) % candidates.length])
+    if (candidates.length) makerworldAvailabilityCursor = (makerworldAvailabilityCursor + count) % candidates.length
+    const checks = await mapWithConcurrency(selected, config.concurrency, async product => ({
+      product,
+      result: await checkMakerworldSourceAvailability(product)
+    }))
+    let changed = false
+    let takenOffline = 0
+    let recovered = 0
+    for (const { product, result } of checks) {
+      if (result.status === "unavailable") {
+        if (product.status !== "off" || product.modelInfoStatus !== "source_unavailable" || product.modelInfoNote !== result.reason) changed = true
+        if (product.status !== "off") takenOffline += 1
+        product.status = "off"
+        product.modelInfoStatus = "source_unavailable"
+        product.modelInfoNote = result.reason
+        product.modelFetchedAt = checkedAt
+      } else if (result.status === "available" && product.modelInfoStatus === "source_unavailable") {
+        product.modelInfoStatus = "complete"
+        product.modelInfoNote = "MakerWorld 来源已恢复；商品保持下架，需人工确认后重新上架"
+        product.modelFetchedAt = checkedAt
+        recovered += 1
+        changed = true
+      }
+    }
+    if (changed) await saveProducts(products)
+    const report = {
+      checkedAt,
+      totalCandidates: candidates.length,
+      checkedCount: checks.length,
+      availableCount: checks.filter(item => item.result.status === "available").length,
+      unavailableCount: checks.filter(item => item.result.status === "unavailable").length,
+      uncertainCount: checks.filter(item => item.result.status === "uncertain").length,
+      skippedCount: checks.filter(item => item.result.status === "skipped").length,
+      takenOffline,
+      recovered
+    }
+    makerworldAvailabilityState = { lastCheckedAt: checkedAt, lastReport: report, lastError: "" }
+    return report
+  } catch (error) {
+    makerworldAvailabilityState = { ...makerworldAvailabilityState, lastCheckedAt: checkedAt, lastError: error.message || "来源检查失败" }
+    throw error
+  } finally {
+    makerworldAvailabilityWorkerRunning = false
+  }
+}
+
+async function runMakerworldAvailabilityCheckSafe() {
+  try {
+    await runMakerworldAvailabilityCheck()
+  } catch (error) {
+    if (Number(error.statusCode || 0) !== 409) console.error("[makerworld-availability] failed", { message: error.message })
+  }
+}
+
+function startMakerworldAvailabilityWorker() {
+  const config = makerworldAvailabilityConfig()
+  if (!config.enabled) return
+  setTimeout(() => runMakerworldAvailabilityCheckSafe(), 60 * 1000).unref()
+  makerworldAvailabilityWorkerTimer = setInterval(() => runMakerworldAvailabilityCheckSafe(), config.intervalMinutes * 60 * 1000)
+  if (makerworldAvailabilityWorkerTimer.unref) makerworldAvailabilityWorkerTimer.unref()
 }
 
 function requestBuffer(url, options = {}, body = "") {
@@ -2861,6 +2989,8 @@ function modelPublicationStatus(product = {}) {
   const sourcePlatform = String(product.modelSourcePlatform || product.model_source_platform || "").toLowerCase()
   const isMakerworld = sourcePlatform === "makerworld" || /https:\/\/([^/]+\.)?makerworld\.com\.cn\//i.test(sourceUrl)
   if (!isMakerworld || requested !== "on") return requested
+  const sourceStatus = String(product.modelInfoStatus || product.model_info_status || "").toLowerCase()
+  if (sourceStatus === "source_unavailable") return "off"
   const reviewStatus = String(product.modelAuthorizationStatus || product.model_authorization_status || "").toLowerCase()
   return reviewStatus === "approved" ? requested : "off"
 }
@@ -12721,6 +12851,16 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/admin/makerworld/availability-status" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, data: { ...makerworldAvailabilityState, running: makerworldAvailabilityWorkerRunning, config: makerworldAvailabilityConfig() } })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/check-availability" && req.method === "POST") {
+    sendJson(res, 200, { ok: true, data: await runMakerworldAvailabilityCheck() })
+    return
+  }
+
   if (url.pathname === "/api/admin/makerworld/sync" && req.method === "POST") {
     sendJson(res, 200, { ok: true, data: await runMakerworldCatalogSync() })
     return
@@ -13583,6 +13723,7 @@ initDb().then(async () => {
     startWechatFulfillmentWorker()
     startRefundSyncWorker()
     startMakerworldCatalogSyncWorker()
+    startMakerworldAvailabilityWorker()
   } else {
     console.log("[isolated-mysql] background workers disabled for deterministic acceptance")
   }

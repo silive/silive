@@ -212,6 +212,13 @@
     .makerworld-batch-input { min-height: 108px; max-height: 220px; }
     .makerworld-scroll-result { max-height: 380px; overflow: auto; }
     .makerworld-history-table { max-height: 330px; overflow: auto; }
+    .lead-summary { min-width: 180px; max-width: 300px; }
+    .lead-summary .table-sub { margin-top: 4px; }
+    .lead-warning { color: #b45309; font-weight: 850; }
+    .activity-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .activity-summary .item-title { margin-right: auto; }
+    .settings-section { padding: 16px; margin-top: 14px; border: 1px solid #FFD9BF; border-radius: 14px; background: #FFFDFB; }
+    .settings-section h3 { margin-bottom: 12px; font-size: 16px; }
     .center-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
     .center-tab {
       height: 36px;
@@ -486,6 +493,7 @@
     th, td { padding: 13px 10px; border-bottom: 1px solid #ececec; text-align: left; font-size: 14px; vertical-align: top; }
     th { color: #6B7280; font-size: 12px; }
     .pill { display: inline-flex; min-height: 26px; align-items: center; padding: 0 10px; border-radius: 999px; background: #FFF3E8; color: #E94B00; font-size: 12px; font-weight: 800; }
+    .pill.danger { background: #FDECEC; color: #B42318; }
     .muted { color: #6B7280; }
     @media (max-width: 900px) {
       .app { grid-template-columns: 1fr; }
@@ -531,8 +539,6 @@
         </div>
         <div class="toolbar">
           <span class="status" id="status">正在读取...</span>
-          <button class="secondary" id="reloadBtn">刷新</button>
-          <button class="primary" id="saveBtn">保存当前页</button>
         </div>
       </section>
 
@@ -568,7 +574,7 @@
         </div>
         <div class="subview active" id="subview-homeDecor">
           <div class="panel">
-            <h3>首页文案与客服</h3>
+            <div class="item-head"><h3>首页文案与客服</h3><button class="primary" data-action="save-current">保存页面装修</button></div>
             <div class="form-grid">
               <label>公告文案（可选）<input id="promoText"></label>
               <label>客服电话<input id="contactPhone"></label>
@@ -591,7 +597,7 @@
               <label>售后保障页标题<input id="helpPageTitle" placeholder="售后保障"></label>
               <label>售后保障页副标题<input id="helpPageSubtitle" placeholder="下单流程、定制说明、发货时效与售后政策"></label>
             </div>
-            <div class="upload-help">支持标题、摘要、图片、富文本图文文章；排序越小越靠前，关闭后前台不展示。修改后保存当前页，小程序售后保障页实时读取。</div>
+            <div class="upload-help">支持标题、摘要、图片、富文本图文文章；排序越小越靠前，关闭后前台不展示。修改后点击“保存页面装修”，小程序售后保障页实时读取。</div>
             <div class="list" id="helpArticles"></div>
           </div>
         </div>
@@ -600,6 +606,7 @@
       <section class="view active" id="view-products">
         <div class="center-tabs">
           <button class="center-tab active" data-subview="productList">商品列表</button>
+          <button class="center-tab" data-subview="makerworldImport">模型导入</button>
           <button class="center-tab" data-subview="categoryManager">类目管理</button>
         </div>
         <div class="subview active" id="subview-productList">
@@ -631,7 +638,11 @@
               <button class="secondary" id="resetProductsBtn">重置</button>
             </div>
           </div>
-          <div class="bulk-panel">
+          <div class="list" id="productEditor"></div>
+        </div>
+        </div>
+        <div class="subview" id="subview-makerworldImport">
+          <div class="panel">
             <div class="item-head">
               <div>
                 <h3>MakerWorld 模型导入</h3>
@@ -648,7 +659,8 @@
               <h3>按类目导入榜单</h3>
               <div class="upload-help">选择类目、排名方式和数量，系统自动去重并保存到“3D打印”类目。</div>
               <div class="bulk-row">
-                <label>类目<select id="makerworldRankingCategory"></select></label>
+                <label>一级类目<select id="makerworldRankingCategory"></select></label>
+                <label>二级类目<select id="makerworldRankingSubcategory"></select></label>
                 <label>排名方式<select id="makerworldRankingSort"></select></label>
                 <label>前 N 名<input id="makerworldRankingLimit" type="number" min="1" max="100" step="1" value="20"></label>
                 <button class="primary" id="importMakerworldRankingBtn">导入榜单</button>
@@ -684,8 +696,6 @@
               <div id="makerworldBatchHistory"></div>
             </section>
           </div>
-          <div class="list" id="productEditor"></div>
-        </div>
         </div>
         <div class="subview" id="subview-categoryManager">
           <div class="panel">
@@ -732,7 +742,15 @@
       </section>
 
       <section class="view" id="view-customers">
-        <div class="panel"><h3>客户管理</h3><div id="customersTable"></div></div>
+        <div class="panel">
+          <div class="item-head"><h3>客户管理</h3><button class="secondary" id="exportCustomersBtn">导出当前结果</button></div>
+          <div class="filters" style="grid-template-columns:minmax(240px,1fr) auto auto">
+            <input id="customerKeyword" placeholder="搜索姓名、手机号、微信号或邀请码">
+            <button class="secondary" id="searchCustomerBtn">搜索</button>
+            <button class="secondary" id="resetCustomerBtn">重置</button>
+          </div>
+          <div id="customersTable"></div>
+        </div>
       </section>
 
       <section class="view" id="view-stores">
@@ -759,7 +777,6 @@
           <div class="panel">
             <div class="item-head">
               <h3>门店结算统计</h3>
-              <button class="secondary" id="markSettledBtn">标记选中为已结算</button>
             </div>
             <div class="filters finance-filter-grid">
               <div class="finance-filter-row">
@@ -773,6 +790,11 @@
                 <button class="secondary" id="filterSettlementsBtn">筛选</button>
               </div>
             </div>
+            <div class="product-bulk-toolbar">
+              <span class="product-bulk-count" id="settlementSelectionSummary">已选 0 条</span>
+              <button class="secondary" id="markSettledBtn" disabled>结算已选记录</button>
+              <span class="upload-help" style="margin:0">只处理勾选记录；筛选结果批量结算请使用下方单独按钮。</span>
+            </div>
             <div id="storeSettlementSummary"></div>
             <div id="storeSettlementRecords" style="margin-top:18px"></div>
           </div>
@@ -785,7 +807,7 @@
         </div>
         <div class="subview" id="subview-storeLeadManager">
           <div class="panel">
-            <div class="item-head"><h3>门店线索</h3><button class="secondary" id="filterStoreLeadsBtn">刷新线索</button></div>
+            <div class="item-head"><h3>门店线索</h3><button class="secondary" id="filterStoreLeadsBtn">按状态查询</button></div>
             <div class="filters"><select id="storeLeadStatusFilter"><option value="">全部状态</option><option value="pending">待审核</option><option value="followed">跟进中</option><option value="approved">已通过</option><option value="rejected">已拒绝</option></select></div>
             <div id="storeLeadsTable"></div>
           </div>
@@ -825,13 +847,14 @@
                 <h3>活动管理</h3>
                 <div class="upload-help">支持活动海报、节日活动、新人福利、启用开关、开始结束时间与跳转商品。</div>
               </div>
-              <button class="secondary" id="addActivityBtn">新增活动</button>
+              <div class="toolbar"><button class="secondary" id="addActivityBtn">新增活动</button><button class="primary" data-action="save-current">保存活动设置</button></div>
             </div>
+            <div class="quick-tabs" id="activityQuickTabs"></div>
             <div class="list" id="activityManager"></div>
           </div>
         </div>
         <div class="subview" id="subview-relationManager">
-          <div class="panel"><h3>推广关系管理</h3><div id="relationsTable"></div></div>
+          <div class="panel"><div class="item-head"><h3>推广关系管理</h3><button class="primary" data-action="save-current">保存推广关系</button></div><div id="relationsTable"></div></div>
         </div>
         <div class="subview" id="subview-rewardManager">
           <div class="panel"><h3>个人推广奖励</h3>
@@ -849,22 +872,30 @@
 
       <section class="view" id="view-settings">
         <div class="panel">
-          <h3>系统设置</h3>
-          <div class="form-grid">
-            <label>店铺名称<input id="storeName"></label>
-            <label>后台名称<input id="adminName"></label>
-            <label>客服电话<input id="servicePhone"></label>
-            <label>客服微信号<input id="serviceWechat"></label>
-            <label>企业微信号<input id="workWechatId" placeholder="企业微信号或客服名片说明"></label>
-            <label>企业微信客服链接<input id="settingsWorkWechatUrl" placeholder="可填写小程序客服路径"></label>
-            <label>显示在线客服<select id="showWorkWechat"><option value="true">显示</option><option value="false">隐藏</option></select></label>
-            <label>显示电话联系<select id="showPhone"><option value="true">显示</option><option value="false">隐藏</option></select></label>
-            <label>显示复制微信号<select id="showWechat"><option value="true">显示</option><option value="false">隐藏</option></select></label>
-            <label>发货承诺<input id="deliveryPromise"></label>
-            <label>存储模式<input id="storageMode" value="MySQL 数据库" disabled></label>
+          <div class="item-head"><h3>系统设置</h3><button class="primary" data-action="save-current">保存系统设置</button></div>
+          <div class="settings-section">
+            <h3>店铺基础</h3>
+            <div class="form-grid">
+              <label>店铺名称<input id="storeName"></label>
+              <label>后台名称<input id="adminName"></label>
+              <label>发货承诺<input id="deliveryPromise"></label>
+              <label>存储模式<input id="storageMode" value="MySQL 数据库" disabled></label>
+            </div>
           </div>
-          <div class="upload-help" style="margin-top:14px">微信客服查看说明：小程序客服消息请在微信公众平台查看：微信公众平台 → 客服消息 / 小程序客服。也可绑定客服人员微信，用户点击“联系客服”后消息会进入微信官方客服系统；这里的企业微信号/微信号仅用于展示或复制，不等同于 open-type="contact" 官方客服入口。</div>
-          <div style="margin-top:18px">
+          <div class="settings-section">
+            <h3>客服与联系方式</h3>
+            <div class="form-grid">
+              <label>客服电话<input id="servicePhone"></label>
+              <label>客服微信号<input id="serviceWechat"></label>
+              <label>企业微信号<input id="workWechatId" placeholder="企业微信号或客服名片说明"></label>
+              <label>企业微信客服链接<input id="settingsWorkWechatUrl" placeholder="可填写小程序客服路径"></label>
+              <label>显示在线客服<select id="showWorkWechat"><option value="true">显示</option><option value="false">隐藏</option></select></label>
+              <label>显示电话联系<select id="showPhone"><option value="true">显示</option><option value="false">隐藏</option></select></label>
+              <label>显示复制微信号<select id="showWechat"><option value="true">显示</option><option value="false">隐藏</option></select></label>
+            </div>
+            <div class="upload-help">小程序客服消息请在微信公众平台的“客服消息 / 小程序客服”中查看。这里填写的企业微信号或微信号仅用于展示和复制。</div>
+          </div>
+          <div class="settings-section">
             <h3>新人福利</h3>
             <div class="form-grid">
               <label>是否开启新人福利<select id="newcomerBenefitsEnabled">
@@ -932,6 +963,19 @@
     </div>
   </div>
 
+  <div class="modal-mask" id="financeActionModal">
+    <div class="modal">
+      <h3 id="financeActionTitle">财务操作</h3>
+      <p class="muted" id="financeActionDesc"></p>
+      <div class="drawer-error" id="financeActionError"></div>
+      <div id="financeActionBody"></div>
+      <div class="modal-actions">
+        <button class="secondary" id="cancelFinanceAction">取消</button>
+        <button class="primary" id="confirmFinanceAction">确认执行</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const titles = {
       overview: ["数据总览", "查看经营数据和待处理事项。"],
@@ -965,6 +1009,7 @@
     let salesCommissionFilters = { salesAgentId: "", storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
+    let customerKeyword = ""
     let makerworldBatchResult = null
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
@@ -978,6 +1023,8 @@
     let drawerMode = ""
     let drawerIndex = -1
     let drawerDirty = false
+    let financeAction = null
+    const pageDirtyViews = new Set()
     const pendingProductMediaFiles = new Map()
     const selectedProducts = new Set()
     const defaultCategoryTree = {
@@ -1006,6 +1053,9 @@
     }
     let categoryCatalog = []
     let activities = []
+    let activityFilter = "active"
+    let expandedActivityId = ""
+    const expandedHomeItems = { homeBanners: 0, homeEntries: -1, homeAds: -1 }
     let categoryTree = { ...defaultCategoryTree }
     let categoryOptions = [...Object.keys(categoryTree), ...Object.entries(categoryTree).flatMap(([primary, seconds]) => seconds.map(second => `${primary}/${second}`))]
 
@@ -1511,7 +1561,8 @@
         .finally(() => {
           actionBusy.delete(button)
           button.disabled = false
-          button.textContent = oldText
+          const buttonView = button.closest(".view")?.id.replace("view-", "") || ""
+          button.textContent = button.dataset.cleanLabel && !pageDirtyViews.has(buttonView) ? button.dataset.cleanLabel : oldText
         })
     }
     async function uploadImageData(file, purpose = "") {
@@ -1680,12 +1731,27 @@
       if (failures.length) throw new Error(`以下图片上传失败：${failures.join("；")}`)
     }
     function switchView(name) {
+      if (name !== currentView && pageDirtyViews.has(currentView) && !confirm("当前页面有尚未保存的修改，确认暂时离开吗？修改仍会保留，返回后请记得保存。")) return false
       currentView = name
       document.querySelectorAll(".nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.view === name))
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`))
       $("pageTitle").textContent = titles[name][0]
       $("pageDesc").textContent = titles[name][1]
-      $("saveBtn").style.display = ["overview", "customers", "models"].includes(name) ? "none" : "inline-block"
+      return true
+    }
+    function markPageDirty(viewName) {
+      if (!viewName) return
+      pageDirtyViews.add(viewName)
+      document.querySelectorAll(`#view-${viewName} [data-action="save-current"]`).forEach(button => {
+        if (!button.dataset.cleanLabel) button.dataset.cleanLabel = button.textContent
+        button.textContent = `${button.dataset.cleanLabel} · 待保存`
+      })
+    }
+    function clearPageDirty(viewName) {
+      pageDirtyViews.delete(viewName)
+      document.querySelectorAll(`#view-${viewName} [data-action="save-current"]`).forEach(button => {
+        if (button.dataset.cleanLabel) button.textContent = button.dataset.cleanLabel
+      })
     }
     function switchSubview(name) {
       const host = document.querySelector(`#view-${currentView}`)
@@ -1716,16 +1782,17 @@
       $("mUpdated").textContent = data.updatedAt ? String(data.updatedAt).slice(5, 16).replace("T", " ") : "-"
     }
     function renderEditableList(id, list, fields, prefix, removable = false) {
+      const collapsible = ["homeBanners", "homeEntries", "homeAds"].includes(id)
       $(id).innerHTML = list.map((item, index) => `
         <div class="item" data-index="${index}">
           <div class="item-head">
             <div>
-              <div class="item-title">${id === "homeBanners" ? ["Banner 1（首页轮播）", "Banner 2（首页轮播）", "Banner 3（首页轮播）"][index] || `${prefix} ${index + 1}` : id === "homeAds" ? escapeHtml(item.displayName || `${prefix} ${index + 1}`) : `${prefix} ${index + 1}`}</div>
+              <div class="item-title">${id === "homeBanners" ? ["Banner 1（首页轮播）", "Banner 2（首页轮播）", "Banner 3（首页轮播）"][index] || `${prefix} ${index + 1}` : id === "homeAds" ? escapeHtml(item.displayName || `${prefix} ${index + 1}`) : id === "homeEntries" ? escapeHtml(item.name || `${prefix} ${index + 1}`) : `${prefix} ${index + 1}`}</div>
               ${id === "homeAds" ? `<div class="upload-help">使用位置：${escapeHtml(item.usage || "")}<br>建议尺寸：${escapeHtml(item.size || "")}<br>展示方式：${escapeHtml(item.directDisplay || "")}</div>` : ""}
             </div>
-            ${removable ? `<button class="danger" data-action="remove-product" data-index="${index}">删除</button>` : ""}
+            <div class="toolbar">${collapsible ? `<button class="secondary" data-action="toggle-home-item" data-list-id="${id}" data-index="${index}">${expandedHomeItems[id] === index ? "收起" : "编辑"}</button>` : ""}${removable ? `<button class="danger" data-action="remove-product" data-index="${index}">删除</button>` : ""}</div>
           </div>
-          <div class="form-grid">${fields.map(config => field(config.label, item[config.key], config.key, config.type, { listId: id, index, item })).join("")}</div>
+          ${!collapsible || expandedHomeItems[id] === index ? `<div class="form-grid">${fields.map(config => field(config.label, item[config.key], config.key, config.type, { listId: id, index, item })).join("")}</div>` : `<div class="upload-help">${escapeHtml(item.title || item.desc || item.targetValue || "点击编辑查看详细配置")}</div>`}
         </div>
       `).join("")
     }
@@ -1783,13 +1850,26 @@
       }).join("") || `<div class="empty">暂无匹配类目</div>`
     }
     function renderActivities() {
-      $("activityManager").innerHTML = activities.map((activity, index) => `
+      const counts = { all: activities.length, active: 0, upcoming: 0, ended: 0, disabled: 0 }
+      const indexed = activities.map((activity, index) => {
+        const status = activityDisplayStatus(activity)
+        counts[status] += 1
+        return { activity, index, status }
+      })
+      $("activityQuickTabs").innerHTML = [
+        ["active", "进行中"], ["upcoming", "未开始"], ["ended", "已结束"], ["disabled", "已停用"], ["all", "全部"]
+      ].map(([value, label]) => `<button class="quick-tab ${activityFilter === value ? "active" : ""}" data-activity-filter="${value}">${label} ${counts[value]}</button>`).join("")
+      const visible = activityFilter === "all" ? indexed : indexed.filter(item => item.status === activityFilter)
+      $("activityManager").innerHTML = visible.map(({ activity, index, status }) => `
         <div class="activity-card" data-activity-index="${index}">
-          <div class="activity-card-head">
-            <div class="item-title">活动 ${index + 1} · ${escapeHtml(activity.title)}</div>
+          <div class="activity-summary">
+            <div class="item-title">${escapeHtml(activity.title || `活动 ${index + 1}`)}</div>
+            <span class="pill">${activityStatusText(status)}</span>
+            <span class="muted">${escapeHtml(activity.startAt || "未设置开始时间")} → ${escapeHtml(activity.endAt || "未设置结束时间")}</span>
+            <button class="secondary" data-action="toggle-activity-details" data-id="${escapeHtml(activity.id)}">${expandedActivityId === activity.id ? "收起" : "编辑"}</button>
             <button class="danger" data-action="remove-activity" data-index="${index}">删除</button>
           </div>
-          <div class="form-grid">
+          ${expandedActivityId === activity.id ? `<div class="form-grid" style="margin-top:14px">
             ${field("活动名称", activity.title, "title")}
             ${field("活动类型", activity.type, "type")}
             ${field("活动海报", activity.posterUrl, "posterUrl")}
@@ -1798,9 +1878,21 @@
             ${field("结束时间", activity.endAt, "endAt")}
             ${field("跳转商品", activity.productId, "productId", "input", { id: activity.id, index })}
             ${field("排序", activity.sort, "sort")}
-          </div>
+          </div>` : ""}
         </div>
-      `).join("") || `<div class="empty">暂无活动，点击右上角新增。</div>`
+      `).join("") || `<div class="empty">当前分类暂无活动。</div>`
+    }
+    function activityDisplayStatus(activity) {
+      if (String(activity.enabled) === "false") return "disabled"
+      const now = Date.now()
+      const start = activity.startAt ? new Date(activity.startAt).getTime() : 0
+      const end = activity.endAt ? new Date(activity.endAt).getTime() : 0
+      if (Number.isFinite(start) && start > now) return "upcoming"
+      if (Number.isFinite(end) && end > 0 && end < now) return "ended"
+      return "active"
+    }
+    function activityStatusText(status) {
+      return ({ active: "进行中", upcoming: "未开始", ended: "已结束", disabled: "已停用" })[status] || "全部"
     }
     const homeAdDefaults = {
       profile_bottom_ad: {
@@ -1852,6 +1944,13 @@
     }
     function persistHomeAdSlots(list) {
       home.ads = Object.fromEntries(Object.keys(homeAdDefaults).map((key, index) => [key, { ...(list[index] || homeAdDefaults[key]), key }]))
+    }
+    function collectHomeEditorState() {
+      collectList("homeBanners", home.banners || [])
+      collectList("homeEntries", home.homeEntries || [])
+      const ads = homeAdSlots()
+      collectList("homeAds", ads)
+      persistHomeAdSlots(ads)
     }
     function renderHome() {
       $("promoText").value = home.promoText || ""
@@ -1999,7 +2098,7 @@
             <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
             <td><strong>${formatMoney(item.price)}</strong></td>
             <td><span class="pill">${productStatusText(item.status)}</span></td>
-            <td>${item.modelCandidateId ? `<span class="pill">${makerworldReviewText(item.modelAuthorizationStatus)}</span><div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}">审核通过</button><button class="secondary" data-action="makerworld-review" data-decision="pending_review" data-id="${escapeHtml(item.id)}">待审核</button><button class="danger" data-action="makerworld-review" data-decision="rejected" data-id="${escapeHtml(item.id)}">拒绝</button></div>` : `<span class="table-sub">-</span>`}</td>
+            <td>${item.modelCandidateId ? `${item.modelInfoStatus === "source_unavailable" ? `<span class="pill danger">来源已失效</span>` : `<span class="pill">${makerworldReviewText(item.modelAuthorizationStatus)}</span>`}<div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}" ${item.modelInfoStatus === "source_unavailable" ? "disabled" : ""}>审核通过</button><button class="secondary" data-action="makerworld-review" data-decision="pending_review" data-id="${escapeHtml(item.id)}">待审核</button><button class="danger" data-action="makerworld-review" data-decision="rejected" data-id="${escapeHtml(item.id)}">拒绝</button></div>` : `<span class="table-sub">-</span>`}</td>
             <td>${String(item.isHot) === "true" ? `<span class="mini-tag">首页推荐</span>` : `<span class="table-sub">-</span>`}</td>
             <td><div class="table-actions"><button class="secondary" data-action="edit-product" data-index="${index}">编辑</button><button class="danger" data-action="remove-product" data-index="${index}">删除</button></div></td>
           </tr>`).join("")}</tbody>
@@ -2008,6 +2107,9 @@
     }
     function makerworldReviewText(value) {
       return ({ approved: "审核通过", rejected: "审核拒绝", pending_review: "待人工审核" })[String(value || "pending_review")] || "待人工审核"
+    }
+    function makerworldInfoStatusText(value) {
+      return ({ complete: "已获取", incomplete: "信息待补全", source_unavailable: "来源已失效" })[String(value || "")] || value || "未知"
     }
     function switchMakerworldImportTab(name) {
       const target = String(name || "ranking")
@@ -2046,24 +2148,36 @@
       const sorts = makerworldRankingOptions.sorts || []
       $("makerworldRankingCategory").innerHTML = categories.map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`).join("")
       $("makerworldRankingSort").innerHTML = sorts.map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`).join("")
+      renderMakerworldRankingSubcategories()
+      const subcategoryCount = categories.reduce((total, item) => total + (item.children || []).length, 0)
       $("makerworldRankingStatus").textContent = categories.length
-        ? `已读取 ${categories.length} 个可导入类目；单次最多 100 个。`
+        ? `已读取 ${categories.length} 个一级类目、${subcategoryCount} 个二级类目；单次最多 100 个。`
         : "暂时无法读取 MakerWorld 类目。"
+    }
+    function renderMakerworldRankingSubcategories() {
+      const categoryKey = $("makerworldRankingCategory").value
+      const category = (makerworldRankingOptions.categories || []).find(item => item.key === categoryKey)
+      const children = category?.children || []
+      const select = $("makerworldRankingSubcategory")
+      select.innerHTML = `<option value="">全部${children.length ? `（${escapeHtml(category.label)}）` : ""}</option>` + children.map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`).join("")
+      select.disabled = !children.length
     }
     async function importMakerworldRanking(button) {
       switchMakerworldImportTab("ranking")
       const categoryKey = $("makerworldRankingCategory").value
+      const subcategoryKey = $("makerworldRankingSubcategory").value
       const orderBy = $("makerworldRankingSort").value
       const limit = Number($("makerworldRankingLimit").value)
       if (!categoryKey || !orderBy) throw new Error("请先选择 MakerWorld 类目和排名方式")
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("导入数量必须是 1 到 100 的整数")
       await withButtonLoading(button, "导入中...", async () => {
-        makerworldBatchResult = await api("/api/admin/makerworld/import-ranked", "POST", { categoryKey, orderBy, limit }, 180000)
+        makerworldBatchResult = await api("/api/admin/makerworld/import-ranked", "POST", { categoryKey, subcategoryKey, orderBy, limit }, 180000)
         makerworldImportBatches = await api("/api/admin/makerworld/import-batches?limit=10")
         renderMakerworldBatchResult()
         renderMakerworldBatchHistory()
         const ranking = makerworldBatchResult.ranking || {}
-        $("makerworldRankingStatus").textContent = `${ranking.categoryLabel || "榜单"} · ${ranking.orderLabel || "排名"}前 ${ranking.requestedCount || limit} 名：成功 ${makerworldBatchResult.successCount || 0}，已存在 ${makerworldBatchResult.existingCount || 0}，失败 ${makerworldBatchResult.failedCount || 0}`
+        const categoryLabel = [ranking.categoryLabel, ranking.subcategoryLabel].filter(Boolean).join(" / ") || "榜单"
+        $("makerworldRankingStatus").textContent = `${categoryLabel} · ${ranking.orderLabel || "排名"}前 ${ranking.requestedCount || limit} 名：成功 ${makerworldBatchResult.successCount || 0}，已存在 ${makerworldBatchResult.existingCount || 0}，失败 ${makerworldBatchResult.failedCount || 0}`
         await loadAll()
       })
     }
@@ -2330,7 +2444,7 @@
             <label>同步评分<input value="${escapeHtml(item.modelSyncScore || "0")}" disabled></label>
             <label>抓取时间<input value="${escapeHtml(item.modelFetchedAt || item.modelSyncedAt || "")}" disabled></label>
             <label>导入时间<input value="${escapeHtml(item.modelImportedAt || "")}" disabled></label>
-            <label>信息状态<input value="${escapeHtml(item.modelInfoStatus === "incomplete" ? "信息待补全" : "已获取")}" disabled></label>
+            <label>信息状态<input value="${escapeHtml(makerworldInfoStatusText(item.modelInfoStatus))}" disabled></label>
             <label>信息备注<textarea data-key="modelInfoNote">${escapeHtml(item.modelInfoNote || "")}</textarea></label>
             <label>署名文案<textarea data-key="modelAttribution">${escapeHtml(item.modelAttribution || "")}</textarea></label>
             <label>人工审核备注<textarea data-key="modelAuthorizationNote">${escapeHtml(item.modelAuthorizationNote || "")}</textarea></label>
@@ -2609,13 +2723,17 @@
         </div>
       `).join("")
     }
+    function refreshOrdersFromCache() {
+      orders = getFilteredOrders(allOrders)
+      renderOrders()
+      setStatus(`已筛选 ${orders.length} 个订单`)
+    }
     function renderOrders() {
       $("orderKeyword").value = orderFilters.keyword || ""
       $("orderStatusFilter").value = orderFilters.status || ""
       renderOrderWorkbench()
-      $("ordersTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox"></th><th>订单号</th><th>客户</th><th>金额</th><th>配送/自提</th><th>支付状态</th><th>发货状态</th><th>售后状态</th><th>时间</th><th>操作按钮</th></tr></thead><tbody>${orders.map((order, index) => `
+      $("ordersTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>订单号</th><th>客户</th><th>金额</th><th>配送/自提</th><th>支付状态</th><th>发货状态</th><th>售后状态</th><th>时间</th><th>操作按钮</th></tr></thead><tbody>${orders.map((order, index) => `
         <tr>
-          <td><input type="checkbox"></td>
           <td><div class="table-title">${escapeHtml(order.id)}</div><div class="table-sub">${escapeHtml(order.productName)}</div></td>
           <td>${escapeHtml(order.customerName)}<div class="muted">${escapeHtml(order.phone)}</div></td>
           <td><strong>${formatMoney(order.amount)}</strong></td>
@@ -2628,8 +2746,65 @@
         </tr>`).join("")}</tbody></table></div>`
     }
     function renderCustomers() {
-      $("customersTable").innerHTML = `<table><thead><tr><th>客户</th><th>电话</th><th>邀请码</th><th>微信</th><th>订单数</th><th>累计消费</th><th>推广奖励</th></tr></thead><tbody>${customers.map(customer => `
-        <tr><td>${escapeHtml(customer.name)}</td><td>${escapeHtml(customer.phone)}</td><td><span class="pill">${escapeHtml(customer.inviteCode)}</span></td><td>${escapeHtml(customer.wechat)}</td><td>${customer.orders}</td><td>¥${escapeHtml(customer.totalAmount)}</td><td>¥${escapeHtml(customer.shoppingMoney || "0")}</td></tr>`).join("")}</tbody></table>`
+      if ($("customerKeyword")) $("customerKeyword").value = customerKeyword
+      const list = getFilteredCustomers()
+      $("customersTable").innerHTML = list.length ? `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>客户</th><th>电话</th><th>邀请码</th><th>微信</th><th>订单数</th><th>累计消费</th><th>推广奖励</th><th>操作</th></tr></thead><tbody>${list.map(({ customer, index }) => `
+        <tr><td><div class="table-title">${escapeHtml(customer.name || "未命名客户")}</div></td><td>${escapeHtml(customer.phone || "-")}</td><td><span class="pill">${escapeHtml(customer.inviteCode || "-")}</span></td><td>${escapeHtml(customer.wechat || "-")}</td><td>${customer.orders || 0}</td><td>¥${escapeHtml(customer.totalAmount || "0")}</td><td>¥${escapeHtml(customer.shoppingMoney || "0")}</td><td><button class="secondary" data-action="view-customer" data-index="${index}">查看详情</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="upload-help">没有符合条件的客户。</div>`
+    }
+    function getFilteredCustomers() {
+      const keyword = customerKeyword.trim().toLowerCase()
+      return customers.map((customer, index) => ({ customer, index })).filter(({ customer }) => {
+        if (!keyword) return true
+        return [customer.name, customer.phone, customer.wechat, customer.inviteCode].some(value => String(value || "").toLowerCase().includes(keyword))
+      })
+    }
+    function customerOrders(customer) {
+      return allOrders.filter(order => {
+        if (customer.id && order.customerId) return String(order.customerId) === String(customer.id)
+        return customer.phone && String(order.phone || "") === String(customer.phone)
+      })
+    }
+    function openCustomerDrawer(index) {
+      const customer = customers[index]
+      if (!customer) return setStatus("未找到该客户")
+      const ordersForCustomer = customerOrders(customer)
+      drawerMode = "customer"
+      drawerIndex = index
+      drawerDirty = false
+      $("drawerTitle").textContent = "客户详情"
+      $("drawerDesc").textContent = `${customer.name || "未命名客户"} · ${customer.phone || "未填写手机号"}`
+      $("drawerBody").innerHTML = `
+        <div class="drawer-section"><h4>客户资料</h4><div class="form-grid">
+          <label>客户名称<input value="${escapeHtml(customer.name || "")}" disabled></label>
+          <label>手机号<input value="${escapeHtml(customer.phone || "")}" disabled></label>
+          <label>微信号<input value="${escapeHtml(customer.wechat || "")}" disabled></label>
+          <label>邀请码<input value="${escapeHtml(customer.inviteCode || "")}" disabled></label>
+          <label>订单数<input value="${escapeHtml(customer.orders || ordersForCustomer.length || 0)}" disabled></label>
+          <label>累计消费<input value="¥${escapeHtml(customer.totalAmount || "0")}" disabled></label>
+          <label>推广奖励<input value="¥${escapeHtml(customer.shoppingMoney || "0")}" disabled></label>
+        </div></div>
+        <div class="drawer-section"><h4>关联订单（${ordersForCustomer.length}）</h4>${ordersForCustomer.length ? `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>订单号</th><th>商品</th><th>金额</th><th>状态</th><th>时间</th></tr></thead><tbody>${ordersForCustomer.slice(0, 20).map(order => `<tr><td>${escapeHtml(order.id || "-")}</td><td>${escapeHtml(order.productName || "-")}</td><td>${formatMoney(order.amount)}</td><td><span class="pill">${escapeHtml(order.displayStatusText || order.status || "-")}</span></td><td>${escapeHtml(order.createdAtText || order.createdAt || "")}</td></tr>`).join("")}</tbody></table></div>${ordersForCustomer.length > 20 ? `<div class="upload-help">仅展示最近 20 条，完整记录请前往订单中心搜索手机号。</div>` : ""}` : `<div class="upload-help">暂未匹配到该客户的订单。</div>`}</div>`
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="close-drawer">关闭</button>`
+      $("detailDrawer").classList.add("show")
+    }
+    function exportFilteredCustomers() {
+      const list = getFilteredCustomers().map(({ customer }) => customer)
+      if (!list.length) return setStatus("当前没有可导出的客户")
+      const csvCell = value => `"${String(value == null ? "" : value).replace(/"/g, '""')}"`
+      const rows = [
+        ["客户", "手机号", "邀请码", "微信号", "订单数", "累计消费", "推广奖励"],
+        ...list.map(customer => [customer.name, customer.phone, customer.inviteCode, customer.wechat, customer.orders || 0, customer.totalAmount || 0, customer.shoppingMoney || 0])
+      ]
+      const blob = new Blob(["\uFEFF", rows.map(row => row.map(csvCell).join(",")).join("\n")], { type: "text/csv;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `客户列表-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      setStatus(`已导出 ${list.length} 个客户`)
     }
     function storeLevelText(level) {
       return ({ display: "展示点", pickup: "自提点", supplier: "供货点", partner: "合伙点" })[level] || "展示点"
@@ -2646,6 +2821,122 @@
       const actual = Math.max(payable - chargeback, 0)
       const remain = Math.max(chargeback - payable, 0)
       return `当前可结算：¥${payable.toFixed(2)}\n当前退款扣回：¥${chargeback.toFixed(2)}\n本次实际应支付：¥${actual.toFixed(2)}${remain > 0 ? `\n仍有 ¥${remain.toFixed(2)} 待后续收益抵扣` : ""}\n\n确认已按以上口径线下处理并标记结算？`
+    }
+    function updateSettlementSelectionSummary() {
+      const selected = Array.from(document.querySelectorAll("[data-settlement-id]:checked:not(:disabled)"))
+      const summary = $("settlementSelectionSummary")
+      const button = $("markSettledBtn")
+      if (summary) summary.textContent = `已选 ${selected.length} 条`
+      if (button) {
+        button.disabled = selected.length === 0
+        button.textContent = selected.length ? `结算已选记录（${selected.length}）` : "结算已选记录"
+      }
+    }
+    function openFinanceActionModal(type, options = {}) {
+      if (type.endsWith("-batch") && !(options.records || []).length) return setStatus("当前筛选范围没有可结算记录")
+      financeAction = { type, ...options }
+      const records = options.records || []
+      const isBatch = type.endsWith("-batch")
+      const isCancel = type.endsWith("-cancel")
+      const isAdjustment = type.endsWith("-adjustment")
+      const titleMap = {
+        "reward-settle": "结算个人推广奖励",
+        "reward-cancel": "取消个人推广奖励",
+        "reward-adjustment": "新增个人奖励调整",
+        "store-settle": "结算门店收益",
+        "store-cancel": "取消门店收益",
+        "store-adjustment": "新增门店收益调整",
+        "store-batch": "批量结算门店收益",
+        "sales-settle": "结算业务员佣金",
+        "sales-cancel": "取消业务员佣金",
+        "sales-adjustment": "新增业务员佣金调整",
+        "sales-batch": "批量结算业务员佣金",
+        "order-force-pickup": "管理员强制核销",
+        "order-refund-reject": "拒绝售后申请"
+      }
+      $("financeActionTitle").textContent = titleMap[type] || "财务操作"
+      $("financeActionDesc").textContent = type === "order-force-pickup" ? "该操作会绕过取货码校验并写入审计日志，请仅在确认客户已经取货时使用。" : type === "order-refund-reject" ? "拒绝后将结束当前售后申请，请填写可供复核的具体原因。" : isBatch ? `当前筛选范围内共有 ${records.length} 条可处理记录，请核对金额后执行。` : isAdjustment ? "调整金额可以为正数或负数，必须填写操作备注。" : isCancel ? "取消后该记录不再参与结算，请填写原因。" : "请核对金额并填写结算备注。"
+      $("financeActionError").style.display = "none"
+      $("financeActionError").textContent = ""
+      let body = ""
+      if (records.length) body += `<div class="finance-warning" style="margin:12px 0">${escapeHtml(settlementConfirmText(records).replace(/\n\n确认已按以上口径线下处理并标记结算？$/, "")).replace(/\n/g, "<br>")}</div>`
+      if (type === "order-force-pickup" || type === "order-refund-reject") {
+        body += `<label>${type === "order-force-pickup" ? "强制核销原因" : "拒绝原因"}<textarea id="financeReason" placeholder="请填写具体原因">${type === "order-refund-reject" ? "售后申请未通过" : ""}</textarea></label>`
+      } else if (type === "reward-adjustment") {
+        body += `<div class="form-grid"><label>用户手机号<input id="financePromoterPhone" inputmode="tel" placeholder="请输入 11 位手机号"></label><label>调整金额<input id="financeAmount" inputmode="decimal" placeholder="例如 10.00 或 -5.00"></label></div><label>调整备注<textarea id="financeNote" placeholder="请说明调整原因">后台手动调整</textarea></label>`
+      } else if (type === "store-adjustment") {
+        body += `<div class="form-grid"><label>合作门店<select id="financeStoreId"><option value="">请选择门店</option>${stores.map(store => `<option value="${escapeHtml(store.id)}" ${settlementFilters.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)} · ${escapeHtml(store.phone || store.id)}</option>`).join("")}</select></label><label>调整金额<input id="financeAmount" inputmode="decimal" placeholder="例如 10.00 或 -5.00"></label></div><label>调整备注<textarea id="financeNote" placeholder="请说明调整原因">后台手动调整</textarea></label>`
+      } else if (type === "sales-adjustment") {
+        body += `<div class="form-grid"><label>业务员<select id="financeSalesAgentId"><option value="">请选择业务员</option>${salesAgents.map(agent => `<option value="${escapeHtml(agent.id)}" ${salesCommissionFilters.salesAgentId === agent.id ? "selected" : ""}>${escapeHtml(agent.name)} · ${escapeHtml(agent.phone)}</option>`).join("")}</select></label><label>关联门店（选填）<select id="financeStoreId"><option value="">不关联门店</option>${stores.map(store => `<option value="${escapeHtml(store.id)}" ${salesCommissionFilters.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)}</option>`).join("")}</select></label><label>调整金额<input id="financeAmount" inputmode="decimal" placeholder="例如 10.00 或 -5.00"></label></div><label>调整备注<textarea id="financeNote" placeholder="请说明调整原因">后台手动调整</textarea></label>`
+      } else if (isCancel) {
+        body += `<label>取消原因<textarea id="financeReason" placeholder="请填写具体原因">后台人工取消</textarea></label>`
+      } else {
+        body += `<label>结算备注<textarea id="financeNote" placeholder="请填写线下付款方式或凭证说明">${isBatch ? "线下批量结算" : "线下已结算"}</textarea></label>`
+      }
+      $("financeActionBody").innerHTML = body
+      $("confirmFinanceAction").textContent = type === "order-force-pickup" ? "确认强制核销" : type === "order-refund-reject" ? "确认拒绝" : isCancel ? "确认取消" : isAdjustment ? "确认调整" : "确认结算"
+      $("confirmFinanceAction").className = isCancel || type.startsWith("order-") ? "danger" : "primary"
+      $("financeActionModal").classList.add("show")
+    }
+    function closeFinanceActionModal() {
+      $("financeActionModal").classList.remove("show")
+      financeAction = null
+      $("financeActionBody").innerHTML = ""
+    }
+    function financeActionError(message) {
+      $("financeActionError").textContent = message
+      $("financeActionError").style.display = "block"
+    }
+    async function submitFinanceAction() {
+      if (!financeAction) return
+      const { type, id } = financeAction
+      const note = $("financeNote")?.value.trim() || ""
+      const reason = $("financeReason")?.value.trim() || ""
+      const amountText = $("financeAmount")?.value.trim() || ""
+      const amount = Number(amountText)
+      const promoterPhone = $("financePromoterPhone")?.value.trim() || ""
+      const storeId = $("financeStoreId")?.value || ""
+      const salesAgentId = $("financeSalesAgentId")?.value || ""
+      if (type.endsWith("-cancel") && !reason) return financeActionError("请填写取消原因")
+      if ((type === "order-force-pickup" || type === "order-refund-reject") && !reason) return financeActionError("请填写具体原因")
+      if (type.endsWith("-adjustment") && (!amountText || !Number.isFinite(amount) || amount === 0)) return financeActionError("请输入不为 0 的有效调整金额")
+      if (type.endsWith("-adjustment") && !note) return financeActionError("请填写调整备注")
+      if (type === "reward-adjustment" && !/^1\d{10}$/.test(promoterPhone)) return financeActionError("请输入正确的 11 位手机号")
+      if (type === "store-adjustment" && !storeId) return financeActionError("请选择合作门店")
+      if (type === "sales-adjustment" && !salesAgentId) return financeActionError("请选择业务员")
+      try {
+        let result = {}
+        if (type === "reward-settle") result = await api(`/api/admin/rewards/${encodeURIComponent(id)}/settle`, "POST", { note })
+        if (type === "reward-cancel") result = await api(`/api/admin/rewards/${encodeURIComponent(id)}/cancel`, "POST", { reason })
+        if (type === "reward-adjustment") result = await api("/api/admin/rewards/adjustment", "POST", { promoterPhone, amount: amountText, note })
+        if (type === "store-settle") result = await api(`/api/admin/store-earnings/${encodeURIComponent(id)}/settle`, "POST", { note })
+        if (type === "store-cancel") result = await api(`/api/admin/store-earnings/${encodeURIComponent(id)}/cancel`, "POST", { reason })
+        if (type === "store-adjustment") result = await api("/api/admin/store-earnings/adjustment", "POST", { storeId, amount: amountText, note })
+        if (type === "store-batch") result = await api("/api/admin/store-earnings/batch-settle", "POST", { ...settlementFilters, note })
+        if (type === "sales-settle") result = await api(`/api/admin/sales-agent-commissions/${encodeURIComponent(id)}/settle`, "POST", { note })
+        if (type === "sales-cancel") result = await api(`/api/admin/sales-agent-commissions/${encodeURIComponent(id)}/cancel`, "POST", { reason })
+        if (type === "sales-adjustment") result = await api("/api/admin/sales-agent-commissions/adjustment", "POST", { salesAgentId, storeId, amount: amountText, note })
+        if (type === "sales-batch") result = await api("/api/admin/sales-agent-commissions/batch-settle", "POST", { ...salesCommissionFilters, note })
+        if (type === "order-force-pickup") result = await api(`/api/admin/orders/${encodeURIComponent(id)}/force-pickup`, "POST", { reason, requestKey: `admin-force-pickup-${id}` })
+        if (type === "order-refund-reject") result = await api(`/api/admin/orders/${encodeURIComponent(id)}/after-sales/reject`, "POST", { rejectReason: reason })
+        const successMap = {
+          "reward-settle": "个人推广奖励已标记结算", "reward-cancel": "个人推广奖励已取消", "reward-adjustment": "已新增个人奖励调整记录",
+          "store-settle": "门店收益已标记结算", "store-cancel": "门店收益已取消", "store-adjustment": "已新增门店收益调整记录",
+          "sales-settle": "业务员佣金已标记结算", "sales-cancel": "业务员佣金已取消", "sales-adjustment": "已新增业务员佣金调整记录"
+        }
+        closeFinanceActionModal()
+        if (type === "order-refund-reject") { drawerDirty = false; closeDrawer(true) }
+        const successText = type === "order-force-pickup" ? "已强制核销并记录原因" : type === "order-refund-reject" ? "已拒绝售后申请" : type.endsWith("-batch") ? `批量结算完成：${result.recordCount || 0} 条` : successMap[type] || "操作完成"
+        try {
+          await loadAll()
+          setStatus(successText)
+        } catch (refreshError) {
+          console.error("[admin-finance-refresh]", refreshError)
+          setStatus(`${successText}，但列表刷新失败，请稍后重新进入该页面`)
+        }
+      } catch (error) {
+        financeActionError(error.message || "操作失败，请稍后重试")
+      }
     }
     function financeValue(value) {
       return escapeHtml(value == null || value === "" ? "0.00" : value)
@@ -2711,7 +3002,8 @@
       $("settlementEndFilter").value = settlementFilters.endAt || ""
       $("storeSettlementSummary").innerHTML = `${renderFinanceSummaryCards(totals)}<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>推广订单</th><th>自提订单</th><th>推广佣金</th><th>自提服务费</th><th>待确认</th><th>当前可结算</th><th>退款扣回</th><th>本次应付</th><th>累计已结算</th></tr></thead><tbody>${summary.map(item => `
         <tr><td>${escapeHtml(item.storeName)}</td><td>${item.referralOrders}</td><td>${item.pickupOrders}</td><td>¥${item.referralAmount}</td><td>¥${item.pickupAmount}</td><td>¥${item.estimatedTotal}</td><td>¥${item.payableTotal}</td><td>¥${item.chargebackTotal}</td><td><strong class="finance-payable">¥${item.actualPayable}</strong>${Number(item.remainingChargeback || 0) > 0 ? `<div class="finance-deduct-note">仍有 ¥${item.remainingChargeback} 待抵扣</div>` : ""}</td><td>¥${item.settledTotal}</td></tr>`).join("")}</tbody></table></div>`
-      $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle">按当前筛选批量结算</button></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements"></th><th>订单号</th><th>门店</th><th>订单来源</th><th>操作人</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
+      const batchCount = records.filter(record => ["unsettled", "chargeback"].includes(record.effectiveStatus || record.status)).length
+      $("storeSettlementRecords").innerHTML = `<div class="toolbar" style="margin-bottom:10px"><button class="secondary" data-action="store-earning-adjustment">新增门店调整</button><button class="secondary" data-action="store-earning-batch-settle" ${batchCount ? "" : "disabled"}>结算当前筛选结果（${batchCount} 条）</button><span class="upload-help" style="margin:0">将处理当前筛选范围内所有可结算记录，确认前会显示金额汇总。</span></div><div class="dense-table-wrap"><table class="dense-table"><thead><tr><th><input type="checkbox" id="selectAllSettlements" aria-label="选择全部可结算记录"></th><th>订单号</th><th>门店</th><th>订单来源</th><th>操作人</th><th>收益类型</th><th>计算方式</th><th>金额</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>${records.map(record => {
         const store = stores.find(item => item.id === record.storeId) || {}
         return `<tr>
           <td><input type="checkbox" data-settlement-id="${escapeHtml(record.id)}" ${!["unsettled", "chargeback"].includes(record.effectiveStatus || record.status) ? "disabled" : ""}></td>
@@ -2727,6 +3019,7 @@
           <td><div class="table-actions"><button class="secondary" data-action="store-earning-settle" data-id="${escapeHtml(record.id)}" ${!["unsettled", "chargeback"].includes(record.effectiveStatus || record.status) ? "disabled" : ""}>结算</button><button class="danger" data-action="store-earning-cancel" data-id="${escapeHtml(record.id)}" ${record.status === "cancelled" ? "disabled" : ""}>取消</button></div></td>
         </tr>`
       }).join("")}</tbody></table></div>`
+      updateSettlementSelectionSummary()
     }
     function renderSalesAgents() {
       $("salesAgentsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>姓名</th><th>手机号</th><th>佣金比例</th><th>状态</th><th>已开发门店数</th><th>当前待结算</th><th>退款扣回</th><th>本次实际应支付</th><th>累计已结算</th><th>操作</th></tr></thead><tbody>${salesAgents.map(agent => `
@@ -2738,23 +3031,72 @@
     }
     function renderStoreLeads() {
       $("storeLeadStatusFilter").value = storeLeadFilters.status || ""
-      $("storeLeadsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>业务员</th><th>门店</th><th>联系人</th><th>电话</th><th>门店类型</th><th>合作类型</th><th>自提</th><th>地址/坐标</th><th>照片</th><th>备注</th><th>重复提示</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody>${storeLeads.map(lead => `
+      $("storeLeadsTable").innerHTML = `<div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>门店</th><th>联系人</th><th>合作信息</th><th>业务员</th><th>重复提示</th><th>状态/时间</th><th>操作</th></tr></thead><tbody>${storeLeads.map(lead => `
         <tr>
+          <td class="lead-summary"><div class="table-title">${escapeHtml(lead.storeName)}</div><div class="table-sub">${escapeHtml(lead.address || "未填写地址")}</div></td>
+          <td>${escapeHtml(lead.contactName || "-")}<div class="muted">${escapeHtml(lead.contactPhone || "-")}</div></td>
+          <td>${escapeHtml(lead.storeType || "-")} · ${escapeHtml(lead.cooperationType || "-")}<div class="muted">自提：${lead.pickupEnabled === "true" ? "支持" : "不支持"}</div></td>
           <td>${escapeHtml(lead.salesAgentName || "-")}<div class="muted">${escapeHtml(lead.salesAgentPhone || "")}</div></td>
-          <td>${escapeHtml(lead.storeName)}</td><td>${escapeHtml(lead.contactName)}</td><td>${escapeHtml(lead.contactPhone)}</td><td>${escapeHtml(lead.storeType || "-")}</td><td>${escapeHtml(lead.cooperationType || "-")}</td><td>${lead.pickupEnabled === "true" ? "是" : "否"}</td>
-          <td><div class="lead-address-cell">${escapeHtml(lead.address)}${lead.latitude || lead.longitude ? `<div class="muted">纬度 ${escapeHtml(lead.latitude || "-")} / 经度 ${escapeHtml(lead.longitude || "-")}</div>` : ""}</div></td>
-          <td><div class="lead-photo-list">${(lead.photos || []).map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="门店照片"></a>`).join("") || "-"}</div></td>
-          <td>${escapeHtml(lead.remark || "-")}</td>
-          <td>${(lead.duplicateStores || []).length ? `<strong style="color:#b45309">疑似已有门店</strong><div class="muted">${lead.duplicateStores.map(item => `${escapeHtml(item.name)}：${escapeHtml((item.duplicateReasons || []).join("、"))}`).join("<br>")}</div>` : "-"}</td>
-          <td><span class="pill">${escapeHtml(lead.statusText || lead.status)}</span>${lead.rejectReason ? `<div class="muted">${escapeHtml(lead.rejectReason)}</div>` : ""}</td>
-          <td>${escapeHtml(lead.createdAt || "")}<div class="muted">${lead.handledAt ? `审核：${escapeHtml(lead.handledAt)}` : ""}</div></td>
-          <td><div class="table-actions">
-            <button class="secondary" data-action="store-lead-create" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>创建门店</button>
-            <button class="secondary" data-action="store-lead-bind" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>绑定已有</button>
-            <button class="secondary" data-action="store-lead-follow" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>跟进中</button>
-            <button class="danger" data-action="store-lead-reject" data-id="${escapeHtml(lead.id)}" ${lead.status === "approved" ? "disabled" : ""}>拒绝</button>
-          </div></td>
+          <td>${(lead.duplicateStores || []).length ? `<span class="lead-warning">疑似已有门店（${lead.duplicateStores.length}）</span>` : "-"}</td>
+          <td><span class="pill">${escapeHtml(lead.statusText || lead.status)}</span><div class="muted">${escapeHtml(lead.createdAt || "")}</div></td>
+          <td><button class="secondary" data-action="view-store-lead" data-id="${escapeHtml(lead.id)}">查看与处理</button></td>
         </tr>`).join("")}</tbody></table></div>`
+    }
+    function openStoreLeadDrawer(leadId) {
+      const lead = storeLeads.find(item => item.id === leadId)
+      if (!lead) return setStatus("未找到该门店线索")
+      drawerMode = "storeLead"
+      drawerIndex = storeLeads.findIndex(item => item.id === leadId)
+      drawerDirty = false
+      $("drawerTitle").textContent = "门店线索详情"
+      $("drawerDesc").textContent = `${lead.storeName || "未命名门店"} · ${lead.contactName || "未填写联系人"}`
+      $("drawerBody").innerHTML = `
+        <div class="drawer-section"><h4>基本信息</h4><div class="form-grid">
+          <label>门店名称<input value="${escapeHtml(lead.storeName || "")}" disabled></label>
+          <label>联系人<input value="${escapeHtml(lead.contactName || "")}" disabled></label>
+          <label>联系电话<input value="${escapeHtml(lead.contactPhone || "")}" disabled></label>
+          <label>门店类型<input value="${escapeHtml(lead.storeType || "-")}" disabled></label>
+          <label>合作类型<input value="${escapeHtml(lead.cooperationType || "-")}" disabled></label>
+          <label>支持自提<input value="${lead.pickupEnabled === "true" ? "是" : "否"}" disabled></label>
+          <label>业务员<input value="${escapeHtml(lead.salesAgentName || "-")}" disabled></label>
+          <label>业务员电话<input value="${escapeHtml(lead.salesAgentPhone || "-")}" disabled></label>
+        </div></div>
+        <div class="drawer-section"><h4>地址与备注</h4><div class="form-grid">
+          <label>门店地址<textarea disabled>${escapeHtml(lead.address || "")}</textarea></label>
+          <label>坐标<textarea disabled>${lead.latitude || lead.longitude ? `纬度 ${escapeHtml(lead.latitude || "-")} / 经度 ${escapeHtml(lead.longitude || "-")}` : "未提供坐标"}</textarea></label>
+          <label style="grid-column:1/-1">备注<textarea disabled>${escapeHtml(lead.remark || "")}</textarea></label>
+        </div></div>
+        <div class="drawer-section"><h4>门店照片</h4><div class="lead-photo-list">${(lead.photos || []).map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="门店照片"></a>`).join("") || "暂无照片"}</div></div>
+        <div class="drawer-section"><h4>审核信息</h4>
+          <div><span class="pill">${escapeHtml(lead.statusText || lead.status)}</span></div>
+          ${lead.rejectReason ? `<div class="upload-help">拒绝原因：${escapeHtml(lead.rejectReason)}</div>` : ""}
+          ${(lead.duplicateStores || []).length ? `<div class="finance-warning" style="margin-top:12px">疑似重复：${lead.duplicateStores.map(item => `${escapeHtml(item.name)}（${escapeHtml((item.duplicateReasons || []).join("、"))}）`).join("；")}</div>` : "<div class=\"upload-help\">未发现疑似重复门店。</div>"}
+        </div>`
+      $("drawerActions").innerHTML = lead.status === "approved" ? `<button class="secondary" data-action="close-drawer">关闭</button>` : `
+        <button class="secondary" data-action="store-lead-follow" data-id="${escapeHtml(lead.id)}">标记跟进中</button>
+        <button class="secondary" data-action="store-lead-bind" data-id="${escapeHtml(lead.id)}">绑定已有门店</button>
+        <button class="primary" data-action="store-lead-create" data-id="${escapeHtml(lead.id)}">通过并创建门店</button>
+        <button class="danger" data-action="store-lead-reject" data-id="${escapeHtml(lead.id)}">拒绝</button>`
+      $("detailDrawer").classList.add("show")
+    }
+    function showStoreLeadBindPicker(leadId) {
+      const lead = storeLeads.find(item => item.id === leadId)
+      if (!lead) return setStatus("未找到该门店线索")
+      if (!stores.length) return setStatus("当前没有可绑定的合作门店")
+      const existing = document.querySelector("[data-store-lead-action-form]")
+      if (existing) existing.remove()
+      $("drawerBody").insertAdjacentHTML("beforeend", `<div class="drawer-section" data-store-lead-action-form><h4>绑定已有门店</h4><label>选择门店<select id="storeLeadBindStore">${stores.map(store => `<option value="${escapeHtml(store.id)}">${escapeHtml(store.name)} · ${escapeHtml(store.phone || store.address || store.id)}</option>`).join("")}</select></label><div class="upload-help">绑定后该线索将标记为已通过，请核对疑似重复提示。</div></div>`)
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="view-store-lead" data-id="${escapeHtml(leadId)}">取消</button><button class="primary" data-action="store-lead-bind-confirm" data-id="${escapeHtml(leadId)}">确认绑定</button>`
+      $("storeLeadBindStore")?.focus()
+    }
+    function showStoreLeadRejectForm(leadId) {
+      const lead = storeLeads.find(item => item.id === leadId)
+      if (!lead) return setStatus("未找到该门店线索")
+      const existing = document.querySelector("[data-store-lead-action-form]")
+      if (existing) existing.remove()
+      $("drawerBody").insertAdjacentHTML("beforeend", `<div class="drawer-section" data-store-lead-action-form><h4>拒绝线索</h4><label>拒绝原因<textarea id="storeLeadRejectReason" placeholder="请填写具体原因，便于后续复核">${escapeHtml(lead.rejectReason || "门店信息不符合合作要求")}</textarea></label></div>`)
+      $("drawerActions").innerHTML = `<button class="secondary" data-action="view-store-lead" data-id="${escapeHtml(leadId)}">取消</button><button class="danger" data-action="store-lead-reject-confirm" data-id="${escapeHtml(leadId)}">确认拒绝</button>`
+      $("storeLeadRejectReason")?.focus()
     }
     function renderSalesAgentCommissions() {
       const records = salesAgentCommissions.records || []
@@ -3191,26 +3533,6 @@
         await api("/api/admin/settings", "PUT", { ...settings, helpArticles: settings.helpArticles, helpPageTitle: settings.helpPageTitle, helpPageSubtitle: settings.helpPageSubtitle })
         finalStatus = "已保存，前台重新进入首页或下拉刷新后生效。"
       }
-      if (currentView === "products") {
-        collectCategoryManager()
-        await api("/api/admin/settings", "PUT", { ...settings, categoryCatalog })
-        collectProductDrawer()
-        await api("/api/admin/products", "PUT", products)
-        selectedProducts.clear()
-      }
-      if (currentView === "orders") {
-        collectOrderDrawer()
-        const order = orders[drawerIndex]
-        if (drawerMode === "order" && order) {
-          await api(`/api/admin/orders/${encodeURIComponent(order.id)}`, "PATCH", editableOrderPayload(order))
-        }
-      }
-      if (currentView === "relations") {
-        document.querySelectorAll("[data-relation]").forEach(input => {
-          relations[Number(input.dataset.relation)][input.dataset.key] = input.value
-        })
-        await api("/api/admin/promotion-relations", "PUT", relations)
-      }
       if (currentView === "marketing") {
         collectActivities()
         document.querySelectorAll("[data-relation]").forEach(input => {
@@ -3218,10 +3540,6 @@
         })
         await api("/api/admin/settings", "PUT", { ...settings, activities })
         await api("/api/admin/promotion-relations", "PUT", relations)
-      }
-      if (currentView === "stores") {
-        renderStores()
-        renderStoreSettlements()
       }
       if (currentView === "settings") {
         settings = {
@@ -3246,6 +3564,7 @@
         }
         await api("/api/admin/settings", "PUT", settings)
       }
+      clearPageDirty(currentView)
       await loadAll()
       setStatus(finalStatus)
     }
@@ -3254,10 +3573,12 @@
       if (event.target.dataset.view) switchView(event.target.dataset.view)
     })
     document.body.addEventListener("click", event => {
+      if (event.target.dataset.action === "save-current") {
+        withButtonLoading(event.target, "保存中...", saveCurrent)
+        return
+      }
       if (event.target.dataset.subview) switchSubview(event.target.dataset.subview)
     })
-    $("reloadBtn").addEventListener("click", () => loadAll().catch(error => setStatus(error.message)))
-    $("saveBtn").addEventListener("click", event => withButtonLoading(event.currentTarget, "保存中...", saveCurrent))
     $("closeDrawer").addEventListener("click", () => closeDrawer())
     $("detailDrawer").addEventListener("click", event => {
       if (event.target.id === "detailDrawer") {
@@ -3284,6 +3605,7 @@
     $("importMakerworldRankingBtn").addEventListener("click", event => importMakerworldRanking(event.currentTarget).catch(error => {
       setStatus(error.message || "MakerWorld 榜单导入失败")
     }))
+    $("makerworldRankingCategory").addEventListener("change", renderMakerworldRankingSubcategories)
     $("importMakerworldBatchBtn").addEventListener("click", event => importMakerworldBatch(event.currentTarget).catch(error => {
       setStatus(error.message || "MakerWorld 批量导入失败")
     }))
@@ -3308,10 +3630,14 @@
     })
     $("addActivityBtn").addEventListener("click", () => {
       collectActivities()
-      activities.unshift({ id: `ACT${Date.now()}`, title: "新活动", type: "活动海报", posterUrl: "", enabled: "true", startAt: "", endAt: "", productId: "", sort: "1" })
+      const activity = { id: `ACT${Date.now()}`, title: "新活动", type: "活动海报", posterUrl: "", enabled: "true", startAt: "", endAt: "", productId: "", sort: "1" }
+      activities.unshift(activity)
+      activityFilter = "active"
+      expandedActivityId = activity.id
       settings.activities = activities
       renderActivities()
-      setStatus("已新增活动，记得保存营销中心")
+      markPageDirty("marketing")
+      setStatus("已新增活动，请点击“保存活动设置”")
     })
     $("addStoreBtn").addEventListener("click", () => {
       const store = {
@@ -3407,14 +3733,48 @@
     $("confirmBulkCategory").addEventListener("click", applyBulkCategories)
     $("cancelCategoryModal").addEventListener("click", closeCategoryModal)
     $("confirmCategoryModal").addEventListener("click", confirmCategoryModal)
+    $("cancelFinanceAction").addEventListener("click", closeFinanceActionModal)
+    $("confirmFinanceAction").addEventListener("click", event => withButtonLoading(event.currentTarget, "处理中...", submitFinanceAction))
+    $("financeActionModal").addEventListener("click", event => {
+      if (event.target.id === "financeActionModal") closeFinanceActionModal()
+    })
     $("categoryModalName").addEventListener("keydown", event => {
       if (event.key === "Enter") confirmCategoryModal()
     })
     $("searchOrderBtn").addEventListener("click", () => {
       orderFilters = { keyword: $("orderKeyword").value.trim(), status: $("orderStatusFilter").value }
-      loadAll().catch(error => setStatus(error.message))
+      refreshOrdersFromCache()
     })
+    $("searchCustomerBtn").addEventListener("click", () => {
+      customerKeyword = $("customerKeyword").value.trim()
+      renderCustomers()
+    })
+    $("resetCustomerBtn").addEventListener("click", () => {
+      customerKeyword = ""
+      renderCustomers()
+    })
+    $("customerKeyword").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        customerKeyword = event.currentTarget.value.trim()
+        renderCustomers()
+      }
+    })
+    $("exportCustomersBtn").addEventListener("click", exportFilteredCustomers)
     document.body.addEventListener("click", event => {
+      if (event.target.dataset.activityFilter) {
+        collectActivities()
+        activityFilter = event.target.dataset.activityFilter
+        renderActivities()
+        return
+      }
+      if (event.target.dataset.action === "toggle-home-item") {
+        const listId = event.target.dataset.listId
+        collectHomeEditorState()
+        const index = Number(event.target.dataset.index)
+        expandedHomeItems[listId] = expandedHomeItems[listId] === index ? -1 : index
+        renderHome()
+        return
+      }
       if (event.target.dataset.productStatus != null) {
         productFilters.status = event.target.dataset.productStatus
         selectedProducts.clear()
@@ -3422,14 +3782,15 @@
       }
       if (event.target.dataset.orderStatus != null && event.target.tagName === "BUTTON") {
         orderFilters.status = event.target.dataset.orderStatus
-        loadAll().catch(error => setStatus(error.message))
+        refreshOrdersFromCache()
       }
       if (event.target.closest("[data-order-stage]")) {
         const status = event.target.closest("[data-order-stage]").dataset.orderStage
         orderFilters.status = status
-        loadAll().catch(error => setStatus(error.message))
+        refreshOrdersFromCache()
       }
       if (event.target.dataset.action === "edit-product") openProductDrawer(Number(event.target.dataset.index))
+      if (event.target.dataset.action === "view-customer") openCustomerDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "save-sales-agent-drawer") saveSalesAgentDrawer(event.target)
       if (event.target.dataset.action === "view-order") openOrderDrawer(Number(event.target.dataset.index))
       if (event.target.dataset.action === "edit-store") openStoreDrawer(Number(event.target.dataset.index))
@@ -3444,6 +3805,9 @@
       if (event.target.dataset.action === "sales-agent-add" || event.target.dataset.action === "sales-agent-edit") {
         openSalesAgentDrawer(event.target.dataset.id || "")
       }
+      if (event.target.dataset.action === "view-store-lead") {
+        openStoreLeadDrawer(event.target.dataset.id || "")
+      }
       if (event.target.dataset.action === "show-sales-agent-password-reset") {
         const field = $("salesAgentPasswordField")
         if (field) {
@@ -3456,23 +3820,29 @@
       if (event.target.dataset.action === "store-lead-create") {
         if (!confirm("确认通过线索并创建合作门店？")) return
         api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/create`, "POST", {})
-          .then(() => loadAll()).then(() => setStatus("已创建并绑定合作门店")).catch(error => setStatus(error.message))
+          .then(() => loadAll()).then(() => { closeDrawer(true); setStatus("已创建并绑定合作门店") }).catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "store-lead-bind") {
-        const storeId = prompt("请输入要绑定的已有合作门店ID")
-        if (!storeId) return
+        showStoreLeadBindPicker(event.target.dataset.id || "")
+      }
+      if (event.target.dataset.action === "store-lead-bind-confirm") {
+        const storeId = $("storeLeadBindStore")?.value || ""
+        if (!storeId) return setStatus("请选择要绑定的门店")
         api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/bind`, "POST", { storeId })
-          .then(() => loadAll()).then(() => setStatus("已绑定已有合作门店")).catch(error => setStatus(error.message))
+          .then(() => loadAll()).then(() => { closeDrawer(true); setStatus("已绑定已有合作门店") }).catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "store-lead-follow") {
         api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/follow`, "POST", {})
-          .then(() => loadAll()).then(() => setStatus("线索已标记跟进中")).catch(error => setStatus(error.message))
+          .then(() => loadAll()).then(() => { closeDrawer(true); setStatus("线索已标记跟进中") }).catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "store-lead-reject") {
-        const rejectReason = prompt("拒绝原因", "门店信息不符合合作要求")
-        if (rejectReason == null) return
+        showStoreLeadRejectForm(event.target.dataset.id || "")
+      }
+      if (event.target.dataset.action === "store-lead-reject-confirm") {
+        const rejectReason = $("storeLeadRejectReason")?.value.trim() || ""
+        if (!rejectReason) return setStatus("请填写拒绝原因")
         api(`/api/admin/store-leads/${encodeURIComponent(event.target.dataset.id)}/reject`, "POST", { rejectReason })
-          .then(() => loadAll()).then(() => setStatus("线索已拒绝")).catch(error => setStatus(error.message))
+          .then(() => loadAll()).then(() => { closeDrawer(true); setStatus("线索已拒绝") }).catch(error => setStatus(error.message))
       }
       if (event.target.dataset.action === "copy-store-id") {
         const id = event.target.dataset.id || ""
@@ -3484,106 +3854,41 @@
       }
       if (event.target.dataset.action === "reward-settle") {
         const record = (rewards || []).find(item => item.id === event.target.dataset.id)
-        if (record && !confirm(settlementConfirmText([record]))) return
-        const note = prompt("结算备注（选填）", "线下已结算") || ""
-        api(`/api/admin/rewards/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
-          .then(() => loadAll())
-          .then(() => setStatus("个人推广奖励已标记结算"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("reward-settle", { id: event.target.dataset.id, records: record ? [record] : [] })
       }
       if (event.target.dataset.action === "reward-cancel") {
-        const reason = prompt("取消原因", "后台人工取消奖励")
-        if (reason == null) return
-        api(`/api/admin/rewards/${encodeURIComponent(event.target.dataset.id)}/cancel`, "POST", { reason })
-          .then(() => loadAll())
-          .then(() => setStatus("个人推广奖励已取消"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("reward-cancel", { id: event.target.dataset.id })
       }
       if (event.target.dataset.action === "reward-adjustment") {
-        const promoterPhone = prompt("请输入用户手机号")
-        if (!promoterPhone) return
-        const amount = prompt("调整金额，可为负数，例如 -5.00")
-        if (!amount) return
-        const note = prompt("调整备注", "后台手动调整") || "后台手动调整"
-        api("/api/admin/rewards/adjustment", "POST", { promoterPhone, amount, note })
-          .then(() => loadAll())
-          .then(() => setStatus("已新增个人奖励调整记录"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("reward-adjustment")
       }
       if (event.target.dataset.action === "store-earning-settle") {
         const record = (storeSettlements.records || []).find(item => item.id === event.target.dataset.id)
-        if (record && !confirm(settlementConfirmText([record]))) return
-        const note = prompt("结算备注（选填）", "线下已结算") || ""
-        api(`/api/admin/store-earnings/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
-          .then(() => loadAll())
-          .then(() => setStatus("门店收益已标记结算"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("store-settle", { id: event.target.dataset.id, records: record ? [record] : [] })
       }
       if (event.target.dataset.action === "store-earning-cancel") {
-        const reason = prompt("取消原因", "后台人工取消收益")
-        if (reason == null) return
-        api(`/api/admin/store-earnings/${encodeURIComponent(event.target.dataset.id)}/cancel`, "POST", { reason })
-          .then(() => loadAll())
-          .then(() => setStatus("门店收益已取消"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("store-cancel", { id: event.target.dataset.id })
       }
       if (event.target.dataset.action === "store-earning-adjustment") {
-        const storeId = settlementFilters.storeId || prompt("请输入门店ID")
-        if (!storeId) return
-        const amount = prompt("调整金额，可为负数，例如 -5.00")
-        if (!amount) return
-        const note = prompt("调整备注", "后台手动调整") || "后台手动调整"
-        api("/api/admin/store-earnings/adjustment", "POST", { storeId, amount, note })
-          .then(() => loadAll())
-          .then(() => setStatus("已新增门店收益调整记录"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("store-adjustment")
       }
       if (event.target.dataset.action === "store-earning-batch-settle") {
         const batchRecords = (storeSettlements.records || []).filter(record => ["unsettled", "chargeback"].includes(record.effectiveStatus || record.status))
-        if (!confirm(settlementConfirmText(batchRecords))) return
-        const note = prompt("批量结算备注", "线下批量结算") || "线下批量结算"
-        api("/api/admin/store-earnings/batch-settle", "POST", { ...settlementFilters, note })
-          .then(result => loadAll().then(() => result))
-          .then(result => setStatus(`批量结算完成：${result.recordCount || 0} 条`))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("store-batch", { records: batchRecords })
       }
       if (event.target.dataset.action === "sales-commission-settle") {
         const record = (salesAgentCommissions.records || []).find(item => item.id === event.target.dataset.id)
-        if (record && !confirm(settlementConfirmText([record]))) return
-        const note = prompt("结算备注（选填）", "线下已结算") || ""
-        api(`/api/admin/sales-agent-commissions/${encodeURIComponent(event.target.dataset.id)}/settle`, "POST", { note })
-          .then(() => loadAll())
-          .then(() => setStatus("业务员佣金已标记结算"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("sales-settle", { id: event.target.dataset.id, records: record ? [record] : [] })
       }
       if (event.target.dataset.action === "sales-commission-cancel") {
-        const reason = prompt("取消原因", "后台人工取消佣金")
-        if (reason == null) return
-        api(`/api/admin/sales-agent-commissions/${encodeURIComponent(event.target.dataset.id)}/cancel`, "POST", { reason })
-          .then(() => loadAll())
-          .then(() => setStatus("业务员佣金已取消"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("sales-cancel", { id: event.target.dataset.id })
       }
       if (event.target.dataset.action === "sales-commission-adjustment") {
-        const salesAgentId = salesCommissionFilters.salesAgentId || prompt("请输入业务员ID")
-        if (!salesAgentId) return
-        const storeId = prompt("门店ID（选填）", salesCommissionFilters.storeId || "") || ""
-        const amount = prompt("调整金额，可为负数，例如 -5.00")
-        if (!amount) return
-        const note = prompt("调整备注", "后台手动调整") || "后台手动调整"
-        api("/api/admin/sales-agent-commissions/adjustment", "POST", { salesAgentId, storeId, amount, note })
-          .then(() => loadAll())
-          .then(() => setStatus("已新增业务员佣金调整记录"))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("sales-adjustment")
       }
       if (event.target.dataset.action === "sales-commission-batch-settle") {
         const batchRecords = (salesAgentCommissions.records || []).filter(record => ["unsettled", "chargeback"].includes(record.effectiveStatus || record.status))
-        if (!confirm(settlementConfirmText(batchRecords))) return
-        const note = prompt("批量结算备注", "线下批量结算") || "线下批量结算"
-        api("/api/admin/sales-agent-commissions/batch-settle", "POST", { ...salesCommissionFilters, note })
-          .then(result => loadAll().then(() => result))
-          .then(result => setStatus(`业务员佣金批量结算完成：${result.recordCount || 0} 条`))
-          .catch(error => setStatus(error.message))
+        openFinanceActionModal("sales-batch", { records: batchRecords })
       }
       if (event.target.dataset.action === "view-store-qrcode" || event.target.dataset.action === "download-store-qrcode" || event.target.dataset.action === "copy-store-link") {
         const id = event.target.dataset.id || ""
@@ -3717,8 +4022,15 @@
       if (event.target.dataset.action === "remove-activity") {
         if (!confirm("确认删除该活动？")) return
         collectActivities()
-        activities.splice(Number(event.target.dataset.index), 1)
+        const removed = activities.splice(Number(event.target.dataset.index), 1)[0]
+        if (removed?.id === expandedActivityId) expandedActivityId = ""
         settings.activities = activities
+        renderActivities()
+        markPageDirty("marketing")
+      }
+      if (event.target.dataset.action === "toggle-activity-details") {
+        collectActivities()
+        expandedActivityId = expandedActivityId === event.target.dataset.id ? "" : event.target.dataset.id
         renderActivities()
       }
       if (event.target.dataset.action === "add-help-article") {
@@ -3733,6 +4045,7 @@
           sort: String(settings.helpArticles.length + 1)
         })
         renderHelpArticles()
+        markPageDirty("home")
         setStatus("已新增帮助文章，保存后发布")
       }
       if (event.target.dataset.action === "remove-help-article") {
@@ -3740,6 +4053,7 @@
         collectHelpArticles()
         settings.helpArticles.splice(Number(event.target.dataset.index), 1)
         renderHelpArticles()
+        markPageDirty("home")
         setStatus("已删除帮助文章，保存后发布")
       }
       if (event.target.dataset.action === "pick-product") {
@@ -3857,22 +4171,7 @@
       if (event.target.dataset.action === "order-picked-up") {
         const order = orders[Number(event.target.dataset.index)]
         if (!order) return
-        const reason = prompt("管理员强制核销会绕过取货码校验，请填写原因：", "")
-        if (!reason || !reason.trim()) {
-          setStatus("已取消：强制核销必须填写原因")
-          return
-        }
-        if (!confirm("确认强制核销该订单并记录审计日志？")) return
-        withButtonLoading(event.target, "核销中...", () => api(`/api/admin/orders/${encodeURIComponent(order.id)}/force-pickup`, "POST", {
-          reason: reason.trim(),
-          requestKey: `admin-force-pickup-${order.id}`
-        })
-          .then(() => loadAll())
-          .then(() => setStatus("已强制核销并记录原因"))
-          .catch(error => {
-            console.error(error)
-            setStatus(error.message || "强制核销失败")
-          }))
+        openFinanceActionModal("order-force-pickup", { id: order.id })
       }
       if (event.target.dataset.action === "wechat-fulfillment-retry") {
         const order = orders[Number(event.target.dataset.index)]
@@ -3935,16 +4234,8 @@
       }
       if (event.target.dataset.action === "refund-reject") {
         const order = orders[Number(event.target.dataset.index)]
-        const rejectReason = prompt("请输入拒绝原因", "售后申请未通过")
-        if (!rejectReason) return
-        api(`/api/admin/orders/${encodeURIComponent(order.id)}/after-sales/reject`, "POST", { rejectReason })
-          .then(() => loadAll())
-          .then(() => {
-            setStatus("已拒绝售后申请")
-            drawerDirty = false
-            closeDrawer(true)
-          })
-          .catch(error => setStatus(error.message))
+        if (!order) return
+        openFinanceActionModal("order-refund-reject", { id: order.id })
       }
       if (event.target.dataset.action === "send-design-confirm") {
         setStatus("已生成确认提醒，请复制预览图发送客户确认")
@@ -3954,7 +4245,7 @@
       if (event.target.dataset.key === "targetType" && (event.target.closest("#homeEntries") || event.target.closest("#homeBanners"))) {
         const listId = event.target.closest("#homeBanners") ? "homeBanners" : "homeEntries"
         const target = listId === "homeBanners" ? home.banners : home.homeEntries
-        collectList(listId, target)
+        collectHomeEditorState()
         const index = Number(event.target.closest(".item").dataset.index)
         if (target[index]) {
           target[index].targetType = event.target.value
@@ -3969,6 +4260,7 @@
         return
       }
       if (event.target.dataset.targetPrimary != null) {
+        collectHomeEditorState()
         const list = event.target.closest("#homeBanners") ? home.banners : home.homeEntries
         const item = list[Number(event.target.dataset.index)]
         if (item) {
@@ -3989,6 +4281,17 @@
         document.querySelectorAll("[data-settlement-id]:not(:disabled)").forEach(input => {
           input.checked = event.target.checked
         })
+        updateSettlementSelectionSummary()
+        return
+      }
+      if (event.target.dataset.settlementId) {
+        const selectable = Array.from(document.querySelectorAll("[data-settlement-id]:not(:disabled)"))
+        const selectAll = $("selectAllSettlements")
+        if (selectAll) {
+          selectAll.checked = selectable.length > 0 && selectable.every(input => input.checked)
+          selectAll.indeterminate = selectable.some(input => input.checked) && !selectAll.checked
+        }
+        updateSettlementSelectionSummary()
         return
       }
       if (event.target.dataset.selectProduct) {
@@ -4072,7 +4375,7 @@
           collectActivities()
           renderActivities()
         } else {
-          collectList("homeEntries", home.homeEntries)
+          collectHomeEditorState()
           renderHome()
         }
       }
@@ -4133,10 +4436,13 @@
             updatedAt: banner.updatedAt
           })
         }
-        setStatus(file.size > 2 * 1024 * 1024 ? "图片已上传，记得保存当前页。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "图片已上传，记得保存当前页")
+        setStatus(file.size > 2 * 1024 * 1024 ? "图片已上传，请点击当前区域的保存按钮。图片较大，可能影响小程序加载速度，建议压缩后上传。" : "图片已上传，请点击当前区域的保存按钮")
       }).catch(error => setStatus(error.message))
     })
     document.body.addEventListener("change", event => {
+      if (event.target.closest("#view-home")) markPageDirty("home")
+      if (event.target.closest("#subview-activityManager, #subview-relationManager")) markPageDirty("marketing")
+      if (event.target.closest("#view-settings")) markPageDirty("settings")
       if (event.target.dataset.mediaBatchUpload) {
         appendGalleryFiles(event.target)
         return
@@ -4177,6 +4483,16 @@
         }
         setStatus(`${file.name}：${error.message || "上传失败"}`)
       })
+    })
+    document.body.addEventListener("input", event => {
+      if (event.target.closest("#view-home")) markPageDirty("home")
+      if (event.target.closest("#subview-activityManager, #subview-relationManager")) markPageDirty("marketing")
+      if (event.target.closest("#view-settings")) markPageDirty("settings")
+    })
+    window.addEventListener("beforeunload", event => {
+      if (!pageDirtyViews.size) return
+      event.preventDefault()
+      event.returnValue = ""
     })
     document.body.addEventListener("change", event => {
       if (!event.target.dataset.orderFinalUpload || !event.target.files?.[0]) return

@@ -67,3 +67,12 @@
 - 单条页面请求默认 5 秒超时，并发最多 10 条；失败后降级创建待审核记录。
 - 批次记录查询：`GET /api/admin/makerworld/import-batches?limit=10`。
 - 页面可能返回 Cloudflare 403，此时会先使用 `api.bambulab.cn`/`api.bambulab.com` 的区域元数据接口。只有元数据接口和页面都无法取得模型时才标记待补全。
+
+## 来源可用性巡检
+
+- 后台默认每 360 分钟检查一批 MakerWorld 商品，首次启动后约 1 分钟执行。
+- 只有官方元数据接口明确返回 HTTP 404 或 410 时，才把商品标记为“来源已失效”并自动下架。
+- 网络超时、Cloudflare、HTTP 5xx 或返回内容异常只记录为状态不确定，不会误下架。
+- 来源恢复后商品仍保持下架，必须由管理员重新审核上架。
+- 手动检查接口：`POST /api/admin/makerworld/check-availability`；状态接口：`GET /api/admin/makerworld/availability-status`。
+- 可通过 `MAKERWORLD_AVAILABILITY_CHECK_*` 环境变量调整启用状态、间隔、批量数、并发和超时。
