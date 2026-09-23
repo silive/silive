@@ -197,6 +197,16 @@
     .bulk-panel { display: grid; gap: 12px; margin-bottom: 14px; padding: 14px; border-radius: 16px; background: #FFF7EF; border: 1px solid #FFD9BF; }
     .bulk-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .bulk-row input, .bulk-row select { width: auto; min-width: 168px; margin-top: 0; }
+    .makerworld-import-tabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px; border-radius: 14px; background: rgba(255,255,255,.72); border: 1px solid rgba(255,106,0,.14); }
+    .makerworld-import-tab { height: 36px; padding: 0 15px; border: 0; border-radius: 10px; background: transparent; color: #6B7280; font-size: 13px; font-weight: 850; cursor: pointer; }
+    .makerworld-import-tab.active { background: #fff; color: #FF5A00; box-shadow: 0 6px 18px rgba(255,106,0,.12); }
+    .makerworld-import-pane { display: none; padding: 4px 2px 2px; }
+    .makerworld-import-pane.active { display: block; }
+    .makerworld-import-pane h3 { margin: 4px 0 6px; font-size: 16px; }
+    .makerworld-import-pane .bulk-row { margin-top: 10px; }
+    .makerworld-batch-input { min-height: 108px; max-height: 220px; }
+    .makerworld-scroll-result { max-height: 380px; overflow: auto; }
+    .makerworld-history-table { max-height: 330px; overflow: auto; }
     .center-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
     .center-tab {
       height: 36px;
@@ -647,48 +657,55 @@
           <div class="bulk-panel">
             <div class="item-head">
               <div>
-                <h3>MakerWorld 自动同步</h3>
-                <div class="upload-help">自动同步需要单独配置 JSON 数据源；不影响下方的单链接和批量手工导入。</div>
-              </div>
-              <button class="secondary" id="runMakerworldSyncBtn">立即同步</button>
-            </div>
-            <div id="makerworldSyncStatus" class="upload-help">正在读取同步配置...</div>
-          </div>
-          <div class="bulk-panel">
-            <div class="item-head">
-              <div>
-                <h3>MakerWorld 手工导入</h3>
-                <div class="upload-help">所有有效模型均以“下架 + 待人工审核”保存。许可证、版权和商用信息只作参考。</div>
+                <h3>MakerWorld 模型导入</h3>
+                <div class="upload-help">选择一种导入方式即可。所有有效模型均以“下架 + 待人工审核”保存，版权信息仅供人工参考。</div>
               </div>
             </div>
-            <h3>按 MakerWorld 类目导入榜单</h3>
-            <div class="upload-help">选择 MakerWorld 类目、排名方式和前 N 名。系统按榜单顺序获取模型，自动去重，并统一保存到“3D打印”类目等待人工审核。</div>
-            <div class="bulk-row">
-              <label>MakerWorld 类目<select id="makerworldRankingCategory"></select></label>
-              <label>排名方式<select id="makerworldRankingSort"></select></label>
-              <label>导入前 N 名<input id="makerworldRankingLimit" type="number" min="1" max="100" step="1" value="20"></label>
-              <button class="primary" id="importMakerworldRankingBtn">导入榜单</button>
+            <div class="makerworld-import-tabs" role="tablist" aria-label="MakerWorld 导入方式">
+              <button class="makerworld-import-tab active" data-makerworld-import-tab="ranking">榜单导入</button>
+              <button class="makerworld-import-tab" data-makerworld-import-tab="single">单链接</button>
+              <button class="makerworld-import-tab" data-makerworld-import-tab="batch">批量链接</button>
+              <button class="makerworld-import-tab" data-makerworld-import-tab="history">导入记录</button>
             </div>
-            <div id="makerworldRankingStatus" class="upload-help">正在读取 MakerWorld 类目...</div>
-            <h3 style="margin-top:20px">单链接导入</h3>
-            <div class="bulk-row">
-              <input id="makerworldImportUrl" placeholder="MakerWorld 模型链接（必填）">
-              <input id="makerworldImportTitle" placeholder="模型标题（可选，默认自动获取）">
-              <input id="makerworldImportAuthor" placeholder="作者（可选）">
-              <input id="makerworldImportLicense" placeholder="原始许可证文字（可选，仅供参考）">
-              <button class="secondary" id="importMakerworldDraftBtn">导入待审核</button>
-            </div>
-            <h3 style="margin-top:20px">批量导入 MakerWorld 链接</h3>
-            <div class="upload-help">可每行一个、空格分隔或直接粘贴整段文字；自动获取标题、主图和预览图，每批最多 100 个。价格、克重和打印时间暂由审核人员填写。</div>
-            <textarea id="makerworldBatchUrls" rows="7" placeholder="粘贴 MakerWorld 模型链接或包含链接的文字..."></textarea>
-            <div class="bulk-row">
-              <button class="primary" id="importMakerworldBatchBtn">批量导入</button>
-              <button class="secondary" id="retryMakerworldFailedBtn" disabled>重新导入失败项</button>
-              <button class="secondary" id="copyMakerworldFailedBtn" disabled>一键复制失败链接</button>
-            </div>
-            <div id="makerworldBatchSummary" class="upload-help">等待批量导入。</div>
-            <div id="makerworldBatchResults"></div>
-            <div id="makerworldBatchHistory"></div>
+            <section class="makerworld-import-pane active" data-makerworld-import-pane="ranking">
+              <h3>按类目导入榜单</h3>
+              <div class="upload-help">选择类目、排名方式和数量，系统自动去重并保存到“3D打印”类目。</div>
+              <div class="bulk-row">
+                <label>类目<select id="makerworldRankingCategory"></select></label>
+                <label>排名方式<select id="makerworldRankingSort"></select></label>
+                <label>前 N 名<input id="makerworldRankingLimit" type="number" min="1" max="100" step="1" value="20"></label>
+                <button class="primary" id="importMakerworldRankingBtn">导入榜单</button>
+              </div>
+              <div id="makerworldRankingStatus" class="upload-help">正在读取 MakerWorld 类目...</div>
+            </section>
+            <section class="makerworld-import-pane" data-makerworld-import-pane="single">
+              <h3>导入一个模型</h3>
+              <div class="upload-help">只需填写模型链接；标题、作者和许可证通常会自动获取。</div>
+              <div class="bulk-row">
+                <input id="makerworldImportUrl" placeholder="MakerWorld 模型链接（必填）">
+                <input id="makerworldImportTitle" placeholder="模型标题（可选）">
+                <input id="makerworldImportAuthor" placeholder="作者（可选）">
+                <input id="makerworldImportLicense" placeholder="许可证文字（可选）">
+                <button class="primary" id="importMakerworldDraftBtn">导入待审核</button>
+              </div>
+            </section>
+            <section class="makerworld-import-pane" data-makerworld-import-pane="batch">
+              <h3>批量导入链接</h3>
+              <div class="upload-help">支持每行一个、空格分隔或粘贴整段文字，每批最多 100 个。</div>
+              <textarea class="makerworld-batch-input" id="makerworldBatchUrls" rows="4" placeholder="粘贴 MakerWorld 模型链接或包含链接的文字..."></textarea>
+              <div class="bulk-row">
+                <button class="primary" id="importMakerworldBatchBtn">批量导入</button>
+                <button class="secondary" id="retryMakerworldFailedBtn" disabled>重试失败项</button>
+                <button class="secondary" id="copyMakerworldFailedBtn" disabled>复制失败链接</button>
+              </div>
+              <div id="makerworldBatchSummary" class="upload-help">等待批量导入。</div>
+              <div class="makerworld-scroll-result" id="makerworldBatchResults"></div>
+            </section>
+            <section class="makerworld-import-pane" data-makerworld-import-pane="history">
+              <h3>最近批量导入记录</h3>
+              <div class="upload-help">仅显示最近 10 个批次，表格区域可独立滚动。</div>
+              <div id="makerworldBatchHistory"></div>
+            </section>
           </div>
           <div class="list" id="productEditor"></div>
         </div>
@@ -972,7 +989,6 @@
     let rewardFilters = { status: "", keyword: "" }
     let productFilters = { keyword: "", category: "", status: "", hot: "" }
     let productImportToken = ""
-    let makerworldSyncStatus = {}
     let makerworldBatchResult = null
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
@@ -2070,29 +2086,17 @@
     function makerworldReviewText(value) {
       return ({ approved: "审核通过", rejected: "审核拒绝", pending_review: "待人工审核" })[String(value || "pending_review")] || "待人工审核"
     }
-    function renderMakerworldSyncStatus() {
-      const status = makerworldSyncStatus || {}
-      const report = status.lastReport || {}
-      const configText = !status.feedConfigured
-        ? "自动同步数据源未配置，批量手工导入可正常使用"
-        : status.feedReady ? `数据源：${status.feedHost || "已配置"}` : "数据源配置不符合 HTTPS/域名白名单要求"
-      const modeText = "全部进入待人工审核，不执行许可证自动判定"
-      const lastText = status.lastCompletedAt
-        ? `上次完成：${new Date(status.lastCompletedAt).toLocaleString()}；新增 ${report.created || 0}，更新 ${report.updated || 0}，待审核 ${report.pendingReview || 0}`
-        : "尚未执行同步"
-      const errorText = status.lastError ? `；最近错误：${status.lastError}` : ""
-      $("makerworldSyncStatus").innerHTML = `${escapeHtml(configText)}；${escapeHtml(modeText)}<br>${escapeHtml(lastText + errorText)}`
-      $("runMakerworldSyncBtn").disabled = !!status.running || !!status.batchRunning || !status.feedReady
-      $("runMakerworldSyncBtn").textContent = status.running ? "同步中..." : "立即同步"
-    }
-    async function runMakerworldSync(button) {
-      await withButtonLoading(button, "同步中...", async () => {
-        const report = await api("/api/admin/makerworld/sync", "POST", {})
-        setStatus(`MakerWorld 同步完成：新增 ${report.created || 0}，更新 ${report.updated || 0}，待审核 ${report.pendingReview || 0}`)
-        await loadAll()
+    function switchMakerworldImportTab(name) {
+      const target = String(name || "ranking")
+      document.querySelectorAll("[data-makerworld-import-tab]").forEach(button => {
+        button.classList.toggle("active", button.dataset.makerworldImportTab === target)
+      })
+      document.querySelectorAll("[data-makerworld-import-pane]").forEach(pane => {
+        pane.classList.toggle("active", pane.dataset.makerworldImportPane === target)
       })
     }
     async function importMakerworldDraft(button) {
+      switchMakerworldImportTab("single")
       const sourceUrl = $("makerworldImportUrl").value.trim()
       const title = $("makerworldImportTitle").value.trim()
       if (!sourceUrl) throw new Error("请填写 MakerWorld 模型链接")
@@ -2124,6 +2128,7 @@
         : "暂时无法读取 MakerWorld 类目。"
     }
     async function importMakerworldRanking(button) {
+      switchMakerworldImportTab("ranking")
       const categoryKey = $("makerworldRankingCategory").value
       const orderBy = $("makerworldRankingSort").value
       const limit = Number($("makerworldRankingLimit").value)
@@ -2159,12 +2164,13 @@
       </table></div>`
     }
     function renderMakerworldBatchHistory() {
-      $("makerworldBatchHistory").innerHTML = makerworldImportBatches.length ? `<h3 style="margin-top:20px">最近批量导入记录</h3><div class="dense-table-wrap"><table class="dense-table">
+      $("makerworldBatchHistory").innerHTML = makerworldImportBatches.length ? `<div class="dense-table-wrap makerworld-history-table"><table class="dense-table">
         <thead><tr><th>批次 ID</th><th>开始时间</th><th>完成时间</th><th>提交</th><th>成功</th><th>已存在</th><th>失败</th></tr></thead>
         <tbody>${makerworldImportBatches.map(item => `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.startedAt ? new Date(item.startedAt).toLocaleString() : "-")}</td><td>${escapeHtml(item.completedAt ? new Date(item.completedAt).toLocaleString() : "-")}</td><td>${item.submittedCount || 0}</td><td>${item.successCount || 0}</td><td>${item.existingCount || 0}</td><td>${item.failedCount || 0}</td></tr>`).join("")}</tbody>
-      </table></div>` : ""
+      </table></div>` : `<div class="upload-help">暂无批量导入记录。</div>`
     }
     async function importMakerworldBatch(button, text) {
+      switchMakerworldImportTab("batch")
       const value = String(text == null ? $("makerworldBatchUrls").value : text).trim()
       if (!value) throw new Error("请粘贴 MakerWorld 模型链接")
       await withButtonLoading(button, "处理中...", async () => {
@@ -3157,7 +3163,7 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldStatusData, makerworldBatchData, makerworldRankingData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldBatchData, makerworldRankingData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
@@ -3169,7 +3175,6 @@
         api("/api/admin/sales-agents"),
         api(`/api/admin/store-leads${storeLeadQuery ? `?${storeLeadQuery}` : ""}`),
         api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`),
-        api("/api/admin/makerworld/sync-status"),
         api("/api/admin/makerworld/import-batches?limit=10"),
         api("/api/admin/makerworld/ranking-options")
       ])
@@ -3192,7 +3197,6 @@
       rewards = rewardData.records || rewardData
       rewardDataSummary = rewardData.summary || {}
       settings = settingData
-      makerworldSyncStatus = makerworldStatusData
       makerworldImportBatches = makerworldBatchData
       makerworldRankingOptions = makerworldRankingData
       rebuildCategoryOptions()
@@ -3200,7 +3204,6 @@
       renderHome()
       renderHelpArticles()
       renderProducts()
-      renderMakerworldSyncStatus()
       renderMakerworldRankingOptions()
       renderMakerworldBatchResult()
       renderMakerworldBatchHistory()
@@ -3330,10 +3333,9 @@
       renderProducts()
       openProductDrawer(0)
     })
-    $("runMakerworldSyncBtn").addEventListener("click", event => runMakerworldSync(event.currentTarget).catch(error => {
-      setStatus(error.message || "MakerWorld 同步失败")
-      loadAll().catch(() => {})
-    }))
+    document.querySelectorAll("[data-makerworld-import-tab]").forEach(button => {
+      button.addEventListener("click", () => switchMakerworldImportTab(button.dataset.makerworldImportTab))
+    })
     $("importMakerworldDraftBtn").addEventListener("click", event => importMakerworldDraft(event.currentTarget).catch(error => {
       setStatus(error.message || "MakerWorld 导入失败")
     }))
