@@ -13,6 +13,7 @@ const model = {
   author: "南波万",
   license: "Standard Digital File License",
   imageUrl: "https://example.com/mita.jpg",
+  galleryImages: ["https://example.com/preview-1.jpg", "https://example.com/preview-2.jpg"],
   rights: { commercialUseAllowed: false, listingMediaReuseAllowed: false, sourceVerified: false },
   metrics: { downloads: 1000, likes: 200, boosts: 40, makes: 80, rating: 4.9 }
 }
@@ -29,6 +30,8 @@ assert.strictEqual(result.products.every(item => item.status === "off"), true)
 assert.strictEqual(result.products.every(item => item.modelAuthorizationStatus === "pending_review"), true)
 assert.strictEqual(result.products[0].modelLicenseRaw, "Standard Digital File License")
 assert.deepStrictEqual(result.products[0].categories, ["3D打印"])
+assert.strictEqual(result.products[0].imageUrl, "https://example.com/mita.jpg")
+assert.deepStrictEqual(result.products[0].galleryImages, [])
 
 const approvedExisting = planSync({ items: [{ ...model, license: "Non-Commercial / 非商用" }] }, [{
   id: "MW849446",
@@ -42,5 +45,6 @@ assert.strictEqual(approvedExisting.products[0].status, "on")
 assert.strictEqual(approvedExisting.products[0].modelAuthorizationStatus, "approved")
 assert.strictEqual(approvedExisting.products[0].modelLicenseRaw, "Non-Commercial / 非商用")
 assert.deepStrictEqual(approvedExisting.products[0].categories, ["潮玩手办", "潮玩手办/桌面摆件"])
+assert.deepStrictEqual(approvedExisting.products[0].galleryImages, [])
 
 console.log("makerworld manual review sync tests passed")

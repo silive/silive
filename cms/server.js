@@ -904,7 +904,9 @@ function refreshMakerworldProductMetadata(product, candidate, config) {
     product.detailText = generated.detailText
   }
   if (generated.imageUrl) product.imageUrl = generated.imageUrl
-  if (generated.galleryImages.length) product.galleryImages = generated.galleryImages
+  product.galleryImages = []
+  product.detailImages = []
+  product.videoUrl = ""
   for (const key of [
     "modelSourcePlatform", "modelSourceUrl", "modelSourceOriginalUrl", "modelAuthorName", "modelAuthorId",
     "modelAuthorUrl", "modelLicenseCode", "modelLicenseRaw", "modelLicenseUrl", "modelAttribution",
@@ -3010,6 +3012,7 @@ function normalizeProduct(product, index) {
   const isHot = normalizeBooleanText(product.isHot ?? product.is_hot ?? product.hot ?? product.hotRecommend, false)
   const promotionHot = normalizeBooleanText(product.promotionHot ?? product.isPromotionHot ?? product.promotion_hot, false)
   const sortOrder = product.sortOrder ?? product.sort ?? product.sort_order ?? index ?? 0
+  const modelCandidateId = product.modelCandidateId || product.model_candidate_id || ""
   return {
     id: product.id || `P${Date.now()}${index}`,
     name: product.name || "未命名商品",
@@ -3026,9 +3029,9 @@ function normalizeProduct(product, index) {
     cartThumbUrl: product.cartThumbUrl ? publicAssetUrl(product.cartThumbUrl) : imageVariants.cartThumbUrl,
     detailUrl: product.detailUrl ? publicAssetUrl(product.detailUrl) : imageVariants.detailUrl,
     webpUrl: product.webpUrl ? publicAssetUrl(product.webpUrl) : imageVariants.webpUrl,
-    galleryImages: normalizeAssetUrls(normalizeMediaList(product.galleryImages)).map(url => uploadVariantUrl(url, ".optimized")),
-    videoUrl: publicAssetUrl(product.videoUrl),
-    detailImages: normalizeAssetUrls(normalizeMediaList(product.detailImages)).map(url => uploadVariantUrl(url, ".detail")),
+    galleryImages: modelCandidateId ? [] : normalizeAssetUrls(normalizeMediaList(product.galleryImages)).map(url => uploadVariantUrl(url, ".optimized")),
+    videoUrl: modelCandidateId ? "" : publicAssetUrl(product.videoUrl),
+    detailImages: modelCandidateId ? [] : normalizeAssetUrls(normalizeMediaList(product.detailImages)).map(url => uploadVariantUrl(url, ".detail")),
     detailText: product.detailText || "",
     productType,
     needCustom: productType === "normal" ? "false" : "true",
@@ -3047,7 +3050,7 @@ function normalizeProduct(product, index) {
     rewardEnabled: String(product.rewardEnabled == null ? "true" : product.rewardEnabled) === "false" ? "false" : "true",
     firstReward: String(product.firstReward || "0"),
     secondReward: String(product.secondReward || "0"),
-    modelCandidateId: product.modelCandidateId || product.model_candidate_id || "",
+    modelCandidateId,
     modelSourcePlatform: product.modelSourcePlatform || product.model_source_platform || "",
     modelSourceUrl: product.modelSourceUrl || product.model_source_url || "",
     modelSourceOriginalUrl: product.modelSourceOriginalUrl || product.model_source_original_url || "",

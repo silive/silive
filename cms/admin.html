@@ -617,9 +617,10 @@
           </div>
           <div class="bulk-panel">
             <div class="quick-tabs" id="productQuickTabs">
-              <button class="quick-tab active" data-product-status="">全部</button>
-              <button class="quick-tab" data-product-status="on">已上架</button>
-              <button class="quick-tab" data-product-status="off">已下架</button>
+              <button class="quick-tab active" data-product-scope="selling">在售商品</button>
+              <button class="quick-tab" data-product-scope="review">导入审核</button>
+              <button class="quick-tab" data-product-scope="off">已下架</button>
+              <button class="quick-tab" data-product-scope="all">全部商品</button>
             </div>
             <div class="bulk-row">
               <input id="productSearch" placeholder="筛选商品名称">
@@ -1008,7 +1009,7 @@
     let storeLeadFilters = { status: "" }
     let salesCommissionFilters = { salesAgentId: "", storeId: "", status: "", type: "", startAt: "", endAt: "" }
     let rewardFilters = { status: "", keyword: "" }
-    let productFilters = { keyword: "", category: "", status: "", hot: "" }
+    let productFilters = { scope: "selling", keyword: "", category: "", status: "", hot: "" }
     let customerKeyword = ""
     let makerworldBatchResult = null
     let makerworldImportBatches = []
@@ -2089,7 +2090,7 @@
           <button class="secondary" data-action="bulk-clear" data-requires-product-selection ${selectionDisabled}>取消选择</button>
           <button class="danger" data-action="bulk-delete" data-requires-product-selection ${selectionDisabled}>删除所选</button>
         </div><div class="dense-table-wrap"><table class="dense-table">
-          <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>模型审核</th><th>首页</th><th>操作按钮</th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>来源 / 审核</th><th>首页</th><th>操作按钮</th></tr></thead>
         <tbody>${filtered.map(({ item, index }) => `
           <tr class="${selectedProducts.has(index) ? "selected" : ""}">
             <td><input class="product-select" type="checkbox" data-select-product="${index}" ${selectedProducts.has(index) ? "checked" : ""}></td>
@@ -2097,8 +2098,8 @@
             <td><div class="table-title">${escapeHtml(item.name || "未命名商品")}</div><div class="table-sub">${escapeHtml(item.intro || item.id || "")}</div></td>
             <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
             <td><strong>${formatMoney(item.price)}</strong></td>
-            <td><span class="pill">${productStatusText(item.status)}</span></td>
-            <td>${item.modelCandidateId ? `${item.modelInfoStatus === "source_unavailable" ? `<span class="pill danger">来源已失效</span>` : `<span class="pill">${makerworldReviewText(item.modelAuthorizationStatus)}</span>`}<div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}" ${item.modelInfoStatus === "source_unavailable" ? "disabled" : ""}>审核通过</button><button class="secondary" data-action="makerworld-review" data-decision="pending_review" data-id="${escapeHtml(item.id)}">待审核</button><button class="danger" data-action="makerworld-review" data-decision="rejected" data-id="${escapeHtml(item.id)}">拒绝</button></div>` : `<span class="table-sub">-</span>`}</td>
+            <td><span class="pill">${productStatusText(item.status)}</span>${isApprovedImportedProduct(item) ? `<span class="mini-tag">${escapeHtml(importSourceText(item))}导入</span>` : ""}</td>
+            <td>${makerworldReviewCell(item)}</td>
             <td>${String(item.isHot) === "true" ? `<span class="mini-tag">首页推荐</span>` : `<span class="table-sub">-</span>`}</td>
             <td><div class="table-actions"><button class="secondary" data-action="edit-product" data-index="${index}">编辑</button><button class="danger" data-action="remove-product" data-index="${index}">删除</button></div></td>
           </tr>`).join("")}</tbody>
@@ -2107,6 +2108,30 @@
     }
     function makerworldReviewText(value) {
       return ({ approved: "审核通过", rejected: "审核拒绝", pending_review: "待人工审核" })[String(value || "pending_review")] || "待人工审核"
+    }
+    function isImportedProduct(item) {
+      return Boolean(item && item.modelCandidateId)
+    }
+    function isApprovedImportedProduct(item) {
+      return isImportedProduct(item) && String(item.modelAuthorizationStatus || "") === "approved"
+    }
+    function importSourceText(item) {
+      return String(item?.modelSourcePlatform || "MakerWorld").trim() || "MakerWorld"
+    }
+    function makerworldReviewCell(item) {
+      if (!isImportedProduct(item)) return `<span class="table-sub">-</span>`
+      if (isApprovedImportedProduct(item)) {
+        return `<span class="table-sub">${escapeHtml(importSourceText(item))} 导入商品</span>`
+      }
+      const unavailable = item.modelInfoStatus === "source_unavailable"
+      const current = unavailable ? `<span class="pill danger">来源已失效</span>` : `<span class="pill">${makerworldReviewText(item.modelAuthorizationStatus)}</span>`
+      const pendingButton = String(item.modelAuthorizationStatus || "pending_review") === "pending_review"
+        ? ""
+        : `<button class="secondary" data-action="makerworld-review" data-decision="pending_review" data-id="${escapeHtml(item.id)}">恢复待审核</button>`
+      const rejectButton = String(item.modelAuthorizationStatus || "pending_review") === "rejected"
+        ? ""
+        : `<button class="danger" data-action="makerworld-review" data-decision="rejected" data-id="${escapeHtml(item.id)}">拒绝</button>`
+      return `${current}<div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}" ${unavailable ? "disabled" : ""}>审核通过</button>${pendingButton}${rejectButton}</div>`
     }
     function makerworldInfoStatusText(value) {
       return ({ complete: "已获取", incomplete: "信息待补全", source_unavailable: "来源已失效" })[String(value || "")] || value || "未知"
@@ -2249,17 +2274,24 @@
       $("productHotFilter").value = productFilters.hot
       $("productCategoryFilter").innerHTML = `<option value="">全部类目</option>${categoryOptions.map(category => `<option value="${category}" ${productFilters.category === category ? "selected" : ""}>${category}</option>`).join("")}`
       if ($("selectAllProducts")) $("selectAllProducts").checked = getFilteredProducts().length > 0 && getFilteredProducts().every(({ index }) => selectedProducts.has(index))
-      document.querySelectorAll("[data-product-status]").forEach(btn => btn.classList.toggle("active", btn.dataset.productStatus === productFilters.status))
+      document.querySelectorAll("[data-product-scope]").forEach(btn => btn.classList.toggle("active", btn.dataset.productScope === productFilters.scope))
     }
     function getFilteredProducts() {
       const keyword = productFilters.keyword.toLowerCase()
       return products.map((item, index) => ({ item, index })).filter(({ item }) => {
         const categories = Array.isArray(item.categories) ? item.categories : []
+        const imported = isImportedProduct(item)
+        const approved = isApprovedImportedProduct(item)
+        const status = item.status || "on"
+        const scopeOk = productFilters.scope === "all" ||
+          (productFilters.scope === "selling" && status === "on") ||
+          (productFilters.scope === "review" && imported && !approved) ||
+          (productFilters.scope === "off" && status === "off" && (!imported || approved))
         const keywordOk = !keyword || [item.name, item.intro, item.id].some(value => String(value || "").toLowerCase().includes(keyword))
         const categoryOk = !productFilters.category || categories.includes(productFilters.category)
         const statusOk = !productFilters.status || (item.status || "on") === productFilters.status
         const hotOk = !productFilters.hot || String(item.isHot || "false") === productFilters.hot
-        return keywordOk && categoryOk && statusOk && hotOk
+        return scopeOk && keywordOk && categoryOk && statusOk && hotOk
       })
     }
     function getFilteredOrders(source = allOrders) {
@@ -2452,12 +2484,11 @@
         </div>
         <div class="drawer-pane" data-drawer-pane="media">
           <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
-          ${mediaManager("商品轮播图", "galleryImages", item.galleryImages, "image")}
-          ${mediaManager("商品视频（可选）", "videoUrl", item.videoUrl ? [item.videoUrl] : [], "video")}
+          ${item.modelCandidateId ? `<div class="upload-help">导入商品仅保留一张主图。需要替换时可在上方上传，服务器会免费生成列表缩略图，不使用任何付费图片生成服务。</div>` : `${mediaManager("商品轮播图", "galleryImages", item.galleryImages, "image")}${mediaManager("商品视频（可选）", "videoUrl", item.videoUrl ? [item.videoUrl] : [], "video")}`}
         </div>
         <div class="drawer-pane" data-drawer-pane="detail">
           <div class="drawer-section"><h4>详情文字</h4><div class="form-grid">${field("详情文字说明", item.detailText, "detailText", "textarea")}</div></div>
-          ${mediaManager("商品详情图", "detailImages", item.detailImages, "image")}
+          ${item.modelCandidateId ? `<div class="upload-help">导入商品不保存额外预览图或详情图，来源与许可证文字仍保留供人工审核。</div>` : mediaManager("商品详情图", "detailImages", item.detailImages, "image")}
         </div>
         <div class="drawer-pane" data-drawer-pane="price">
           <div class="drawer-section"><h4>价格库存</h4><div class="form-grid">
@@ -3719,12 +3750,12 @@
       loadAll().catch(error => setStatus(error.message))
     })
     $("filterProductsBtn").addEventListener("click", () => {
-      productFilters = { keyword: $("productSearch").value.trim(), category: $("productCategoryFilter").value, status: $("productStatusFilter").value, hot: $("productHotFilter").value }
+      productFilters = { scope: productFilters.scope, keyword: $("productSearch").value.trim(), category: $("productCategoryFilter").value, status: $("productStatusFilter").value, hot: $("productHotFilter").value }
       selectedProducts.clear()
       renderProducts()
     })
     $("resetProductsBtn").addEventListener("click", () => {
-      productFilters = { keyword: "", category: "", status: "", hot: "" }
+      productFilters = { scope: productFilters.scope, keyword: "", category: "", status: "", hot: "" }
       selectedProducts.clear()
       renderProducts()
     })
@@ -3775,8 +3806,9 @@
         renderHome()
         return
       }
-      if (event.target.dataset.productStatus != null) {
-        productFilters.status = event.target.dataset.productStatus
+      if (event.target.dataset.productScope != null) {
+        productFilters.scope = event.target.dataset.productScope
+        productFilters.status = ""
         selectedProducts.clear()
         renderProducts()
       }
