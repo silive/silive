@@ -51,5 +51,8 @@ assert.match(admin, /makerworld-history-table/)
 assert.doesNotMatch(admin, /id="runMakerworldSyncBtn"/)
 assert.doesNotMatch(admin, /id="productImportExcel"/)
 assert.doesNotMatch(admin, /id="previewProductImportBtn"/)
+assert.match(admin, /data-action="bulk-delete"/)
+assert.match(admin, /data-action="bulk-hot-on"/)
+assert.match(admin, /modelAuthorizationStatus === "approved"/)
 
 console.log("makerworld ranked import tests passed")

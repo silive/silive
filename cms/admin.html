@@ -197,6 +197,11 @@
     .bulk-panel { display: grid; gap: 12px; margin-bottom: 14px; padding: 14px; border-radius: 16px; background: #FFF7EF; border: 1px solid #FFD9BF; }
     .bulk-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .bulk-row input, .bulk-row select { width: auto; min-width: 168px; margin-top: 0; }
+    .product-bulk-toolbar { position: sticky; top: 10px; z-index: 8; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; padding: 10px 12px; border: 1px solid #FFD9BF; border-radius: 14px; background: rgba(255,255,255,.96); box-shadow: 0 10px 28px rgba(255,106,0,.10); backdrop-filter: blur(16px); }
+    .product-bulk-toolbar .checkline { margin-right: 4px; color: #1F2933; }
+    .product-bulk-count { min-width: 112px; color: #FF5A00; font-size: 13px; font-weight: 900; }
+    .product-bulk-toolbar button:disabled { opacity: .42; cursor: not-allowed; box-shadow: none; }
+    .product-bulk-spacer { flex: 1; }
     .makerworld-import-tabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px; border-radius: 14px; background: rgba(255,255,255,.72); border: 1px solid rgba(255,106,0,.14); }
     .makerworld-import-tab { height: 36px; padding: 0 15px; border: 0; border-radius: 10px; background: transparent; color: #6B7280; font-size: 13px; font-weight: 850; cursor: pointer; }
     .makerworld-import-tab.active { background: #fff; color: #FF5A00; box-shadow: 0 6px 18px rgba(255,106,0,.12); }
@@ -624,16 +629,6 @@
               </select>
               <button class="secondary" id="filterProductsBtn">筛选</button>
               <button class="secondary" id="resetProductsBtn">重置</button>
-            </div>
-            <div class="bulk-row">
-              <label class="checkline"><input type="checkbox" id="selectAllProducts"> 全选当前筛选结果</label>
-              <span class="muted" id="selectedProductCount">已选 0 个商品</span>
-              <button class="secondary" data-bulk="replace">批量移动类目</button>
-              <button class="secondary" data-bulk="append">批量添加类目</button>
-              <button class="secondary" data-bulk="remove">批量删除类目</button>
-              <button class="secondary" data-action="bulk-on">批量上架</button>
-              <button class="secondary" data-action="bulk-off">批量下架</button>
-              <button class="danger" data-action="bulk-delete">批量删除商品</button>
             </div>
           </div>
           <div class="bulk-panel">
@@ -1979,7 +1974,22 @@
     function renderProducts() {
       renderProductFilters()
       const filtered = getFilteredProducts()
-      $("productEditor").innerHTML = `<div class="dense-table-wrap"><table class="dense-table">
+      const selectedCount = selectedProductIndexes().length
+      const selectionDisabled = selectedCount ? "" : "disabled"
+      $("productEditor").innerHTML = `<div class="product-bulk-toolbar">
+          <label class="checkline"><input type="checkbox" id="selectAllProducts" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}> 全选当前 ${filtered.length} 个</label>
+          <span class="product-bulk-count" id="selectedProductCount">已选 ${selectedCount} 个商品</span>
+          <button class="secondary" data-action="bulk-on" data-requires-product-selection ${selectionDisabled}>上架</button>
+          <button class="secondary" data-action="bulk-off" data-requires-product-selection ${selectionDisabled}>下架</button>
+          <button class="secondary" data-action="bulk-hot-on" data-requires-product-selection ${selectionDisabled}>设为首页推荐</button>
+          <button class="secondary" data-action="bulk-hot-off" data-requires-product-selection ${selectionDisabled}>取消首页推荐</button>
+          <button class="secondary" data-bulk="replace" data-requires-product-selection ${selectionDisabled}>移动类目</button>
+          <button class="secondary" data-bulk="append" data-requires-product-selection ${selectionDisabled}>添加类目</button>
+          <button class="secondary" data-bulk="remove" data-requires-product-selection ${selectionDisabled}>移除类目</button>
+          <span class="product-bulk-spacer"></span>
+          <button class="secondary" data-action="bulk-clear" data-requires-product-selection ${selectionDisabled}>取消选择</button>
+          <button class="danger" data-action="bulk-delete" data-requires-product-selection ${selectionDisabled}>删除所选</button>
+        </div><div class="dense-table-wrap"><table class="dense-table">
           <thead><tr><th><input type="checkbox" id="selectAllProductsTable" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}></th><th>商品图</th><th>商品名称</th><th>分类</th><th>价格</th><th>状态</th><th>模型审核</th><th>首页</th><th>操作按钮</th></tr></thead>
         <tbody>${filtered.map(({ item, index }) => `
           <tr class="${selectedProducts.has(index) ? "selected" : ""}">
@@ -2124,7 +2134,7 @@
       $("productStatusFilter").value = productFilters.status
       $("productHotFilter").value = productFilters.hot
       $("productCategoryFilter").innerHTML = `<option value="">全部类目</option>${categoryOptions.map(category => `<option value="${category}" ${productFilters.category === category ? "selected" : ""}>${category}</option>`).join("")}`
-      $("selectAllProducts").checked = getFilteredProducts().length > 0 && getFilteredProducts().every(({ index }) => selectedProducts.has(index))
+      if ($("selectAllProducts")) $("selectAllProducts").checked = getFilteredProducts().length > 0 && getFilteredProducts().every(({ index }) => selectedProducts.has(index))
       document.querySelectorAll("[data-product-status]").forEach(btn => btn.classList.toggle("active", btn.dataset.productStatus === productFilters.status))
     }
     function getFilteredProducts() {
@@ -2204,7 +2214,9 @@
       return order.status === status || order.paymentStatus === status
     }
     function updateSelectedProductCount() {
-      if ($("selectedProductCount")) $("selectedProductCount").textContent = `已选 ${selectedProducts.size} 个商品`
+      const count = selectedProductIndexes().length
+      if ($("selectedProductCount")) $("selectedProductCount").textContent = `已选 ${count} 个商品`
+      document.querySelectorAll("[data-requires-product-selection]").forEach(button => { button.disabled = count === 0 })
     }
     function selectedProductIndexes() {
       return Array.from(selectedProducts).filter(index => products[index])
@@ -2243,14 +2255,31 @@
         if (mode === "remove") products[index].categories = current.filter(category => !selectedCategories.includes(category))
       })
       $("bulkCategoryModal").classList.remove("show")
+      selectedProducts.clear()
       saveProductsAndRefresh("批量类目已生效").catch(error => setStatus(error.message))
     }
     function applyBulkStatus(status) {
       const indexes = selectedProductIndexes()
       if (!indexes.length) return setStatus("请先勾选商品")
-      if (!confirm(`确认批量${status === "off" ? "下架" : "上架"} ${indexes.length} 个商品？`)) return
-      indexes.forEach(index => { products[index].status = status })
-      saveProductsAndRefresh(status === "off" ? "已批量下架" : "已批量上架").catch(error => setStatus(error.message))
+      const eligibleIndexes = status === "on"
+        ? indexes.filter(index => !products[index].modelCandidateId || products[index].modelAuthorizationStatus === "approved")
+        : indexes
+      const skippedCount = indexes.length - eligibleIndexes.length
+      if (!eligibleIndexes.length) return setStatus("所选模型均未审核通过，不能批量上架")
+      const skippedText = skippedCount ? `；另有 ${skippedCount} 个待审核或已拒绝模型将保持下架` : ""
+      if (!confirm(`确认批量${status === "off" ? "下架" : "上架"} ${eligibleIndexes.length} 个商品${skippedText}？`)) return
+      eligibleIndexes.forEach(index => { products[index].status = status })
+      selectedProducts.clear()
+      saveProductsAndRefresh(status === "off" ? "已批量下架" : `已批量上架${skippedCount ? `，跳过 ${skippedCount} 个未审核模型` : ""}`).catch(error => setStatus(error.message))
+    }
+    function applyBulkHomepageRecommendation(enabled) {
+      const indexes = selectedProductIndexes()
+      if (!indexes.length) return setStatus("请先勾选商品")
+      const label = enabled ? "设为首页推荐" : "取消首页推荐"
+      if (!confirm(`确认将 ${indexes.length} 个商品${label}？`)) return
+      indexes.forEach(index => { products[index].isHot = enabled ? "true" : "false" })
+      selectedProducts.clear()
+      saveProductsAndRefresh(`已为 ${indexes.length} 个商品${label}`).catch(error => setStatus(error.message))
     }
     function applyBulkDelete() {
       const indexes = selectedProductIndexes().sort((a, b) => b - a)
@@ -3365,18 +3394,12 @@
     })
     $("filterProductsBtn").addEventListener("click", () => {
       productFilters = { keyword: $("productSearch").value.trim(), category: $("productCategoryFilter").value, status: $("productStatusFilter").value, hot: $("productHotFilter").value }
+      selectedProducts.clear()
       renderProducts()
     })
     $("resetProductsBtn").addEventListener("click", () => {
       productFilters = { keyword: "", category: "", status: "", hot: "" }
       selectedProducts.clear()
-      renderProducts()
-    })
-    $("selectAllProducts").addEventListener("change", event => {
-      getFilteredProducts().forEach(({ index }) => {
-        if (event.target.checked) selectedProducts.add(index)
-        else selectedProducts.delete(index)
-      })
       renderProducts()
     })
     $("bulkPrimaryCategory").addEventListener("change", renderBulkSecondCategories)
@@ -3394,6 +3417,7 @@
     document.body.addEventListener("click", event => {
       if (event.target.dataset.productStatus != null) {
         productFilters.status = event.target.dataset.productStatus
+        selectedProducts.clear()
         renderProducts()
       }
       if (event.target.dataset.orderStatus != null && event.target.tagName === "BUTTON") {
@@ -3797,6 +3821,12 @@
       if (event.target.dataset.bulk) openBulkCategory(event.target.dataset.bulk)
       if (event.target.dataset.action === "bulk-on") applyBulkStatus("on")
       if (event.target.dataset.action === "bulk-off") applyBulkStatus("off")
+      if (event.target.dataset.action === "bulk-hot-on") applyBulkHomepageRecommendation(true)
+      if (event.target.dataset.action === "bulk-hot-off") applyBulkHomepageRecommendation(false)
+      if (event.target.dataset.action === "bulk-clear") {
+        selectedProducts.clear()
+        renderProducts()
+      }
       if (event.target.dataset.action === "bulk-delete") applyBulkDelete()
       if (event.target.dataset.action === "ship-order") {
         const index = Number(event.target.dataset.index)
@@ -3947,7 +3977,7 @@
         }
         return
       }
-      if (event.target.id === "selectAllProductsTable") {
+      if (["selectAllProducts", "selectAllProductsTable"].includes(event.target.id)) {
         getFilteredProducts().forEach(({ index }) => {
           if (event.target.checked) selectedProducts.add(index)
           else selectedProducts.delete(index)
