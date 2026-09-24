@@ -243,6 +243,17 @@
       overflow: hidden;
     }
     .category-card.dragging, .secondary-row.dragging { opacity: .55; }
+    .makerworld-direct-grid { display: grid; gap: 16px; margin-top: 16px; }
+    .makerworld-direct-row { display: grid; grid-template-columns: 46px minmax(260px,1fr) 42px minmax(260px,1fr); gap: 16px; align-items: center; padding: 16px; border: 1px solid #f0d8c6; border-radius: 18px; background: #fff; }
+    .makerworld-direct-row.drag-over { border-color: #ff6a00; box-shadow: inset 0 0 0 2px rgba(255,106,0,.13); }
+    .makerworld-direct-order { font-size: 20px; font-weight: 900; color: #ff5a00; text-align: center; }
+    .makerworld-direct-item { min-width: 0; display: grid; gap: 9px; }
+    .makerworld-direct-item img { width: 100%; aspect-ratio: 1200 / 1024; object-fit: cover; border-radius: 15px; background: #f5f7fb; box-shadow: 0 8px 24px rgba(31,41,51,.08); }
+    .makerworld-direct-generated { cursor: grab; border: 2px dashed #ffb476; border-radius: 17px; padding: 10px; background: #fff8f0; }
+    .makerworld-direct-generated.dragging { opacity: .45; }
+    .makerworld-direct-arrow { color: #ff6a00; font-size: 28px; font-weight: 900; text-align: center; }
+    .makerworld-direct-title { font-size: 15px; font-weight: 850; color: #1f2933; }
+    .makerworld-direct-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #687385; }
     .category-card-head {
       display: grid;
       grid-template-columns: 28px minmax(180px, 1fr) 86px 96px auto;
@@ -509,6 +520,9 @@
       .drawer .form-grid { grid-template-columns: 1fr; }
       .drawer-actions { justify-content: stretch; }
       .drawer-actions button { flex: 1; }
+      .makerworld-direct-row { grid-template-columns: 36px minmax(0,1fr); }
+      .makerworld-direct-arrow { transform: rotate(90deg); }
+      .makerworld-direct-item, .makerworld-direct-arrow { grid-column: 2; }
     }
   </style>
 </head>
@@ -640,6 +654,7 @@
             </div>
           </div>
           <input id="makerworldMainImageZip" type="file" accept=".zip,application/zip" hidden>
+          <input id="makerworldDirectMainImages" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple hidden>
           <div id="makerworldMainImageReplaceResult"></div>
           <div class="list" id="productEditor"></div>
         </div>
@@ -1017,6 +1032,9 @@
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
     let makerworldMainImagePreview = null
+    let makerworldDirectImageDraft = null
+    let makerworldDirectTargetIds = []
+    let draggedMakerworldDirectImage = null
     let categorySearch = ""
     let activityProductSearch = {}
     let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
@@ -2092,7 +2110,8 @@
           <button class="secondary" data-bulk="append" data-requires-product-selection ${selectionDisabled}>添加类目</button>
           <button class="secondary" data-bulk="remove" data-requires-product-selection ${selectionDisabled}>移除类目</button>
           <button class="secondary" data-action="download-makerworld-main-images" data-requires-import-selection ${importSelectionDisabled}>打包下载导入主图</button>
-          <button class="secondary" data-action="pick-makerworld-main-images">上传 GPT 成图 ZIP</button>
+          <button class="secondary" data-action="pick-makerworld-direct-images" data-requires-import-selection ${importSelectionDisabled}>直接上传 GPT 成图</button>
+          <button class="secondary" data-action="pick-makerworld-main-images">上传已命名 ZIP</button>
           <span class="product-bulk-spacer"></span>
           <button class="secondary" data-action="bulk-clear" data-requires-product-selection ${selectionDisabled}>取消选择</button>
           <button class="danger" data-action="bulk-delete" data-requires-product-selection ${selectionDisabled}>删除所选</button>
@@ -2415,6 +2434,97 @@
         setStatus(`主图包已下载${failed ? `，${failed} 张来源图下载失败，详情见包内说明` : ""}`)
       })
     }
+
+    function clearMakerworldDirectImageDraft() {
+      ;(makerworldDirectImageDraft?.images || []).forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      })
+      makerworldDirectImageDraft = null
+      draggedMakerworldDirectImage = null
+    }
+
+    function renderMakerworldDirectImageDraft() {
+      const box = $("makerworldMainImageReplaceResult")
+      const draft = makerworldDirectImageDraft
+      if (!box || !draft) return
+      box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>核对 GPT 成图顺序</h3><div class="upload-help">左侧是原商品图，右侧是 GPT 成图。缩略图按大图展示；如果对应错误，直接拖动右侧成图到正确行，再上传预览。</div></div><div class="table-actions"><button class="primary" data-action="upload-makerworld-direct-images">按当前顺序上传预览</button><button class="secondary" data-action="cancel-makerworld-direct-images">取消</button></div></div>
+        <div class="makerworld-direct-grid">${draft.targets.map((target, index) => {
+          const generated = draft.images[index]
+          return `<div class="makerworld-direct-row" data-direct-target-index="${index}">
+            <div class="makerworld-direct-order">${index + 1}</div>
+            <div class="makerworld-direct-item"><div class="makerworld-direct-title">原商品：${escapeHtml(target.name || target.id)}</div><img src="${escapeHtml(target.imageUrl || "")}" alt="${escapeHtml(target.name || "原商品图")}"><div class="makerworld-direct-name">${escapeHtml(target.modelCandidateId || target.id)}</div></div>
+            <div class="makerworld-direct-arrow">→</div>
+            <div class="makerworld-direct-item makerworld-direct-generated" draggable="true" data-direct-image-index="${index}" title="拖动此图调整顺序"><div class="makerworld-direct-title">GPT 成图（可拖动）</div><img src="${escapeHtml(generated.previewUrl)}" alt="${escapeHtml(generated.file.name)}"><div class="makerworld-direct-name">${escapeHtml(generated.file.name)}</div></div>
+          </div>`
+        }).join("")}</div></div>`
+      box.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+
+    function prepareMakerworldDirectImages(files) {
+      const targets = makerworldDirectTargetIds.map(id => products.find(product => String(product.id) === String(id))).filter(item => item?.modelCandidateId)
+      const list = Array.from(files || []).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "zh-CN", { numeric: true }))
+      if (!targets.length) throw new Error("请先勾选需要替换主图的 MakerWorld 导入商品")
+      if (!list.length) return
+      if (list.length !== targets.length) throw new Error(`已选 ${targets.length} 个商品，但选择了 ${list.length} 张成图，请保持数量一致`)
+      if (list.length > 100) throw new Error("每次最多上传100张成图")
+      let totalSize = 0
+      list.forEach(file => {
+        const ext = String(file.name || "").split(".").pop().toLowerCase()
+        if (!["jpg", "jpeg", "png", "webp"].includes(ext)) throw new Error(`不支持的图片格式：${file.name}`)
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} 超过10MB`)
+        totalSize += Number(file.size || 0)
+      })
+      if (totalSize > 50 * 1024 * 1024) throw new Error("所选成图总大小超过50MB，请分批上传")
+      clearMakerworldDirectImageDraft()
+      makerworldDirectImageDraft = {
+        targets,
+        images: list.map(file => ({ file, previewUrl: URL.createObjectURL(file) }))
+      }
+      renderMakerworldDirectImageDraft()
+      setStatus(`已载入 ${list.length} 张 GPT 成图，请检查并拖动调整顺序`)
+    }
+
+    function moveMakerworldDirectImage(fromIndex, toIndex) {
+      const images = makerworldDirectImageDraft?.images
+      if (!images || fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= images.length || toIndex >= images.length) return
+      const [moved] = images.splice(fromIndex, 1)
+      images.splice(toIndex, 0, moved)
+      renderMakerworldDirectImageDraft()
+      setStatus("成图顺序已调整，请继续核对")
+    }
+
+    async function uploadMakerworldDirectImages(button) {
+      const draft = makerworldDirectImageDraft
+      if (!draft || draft.targets.length !== draft.images.length) throw new Error("请重新选择商品和 GPT 成图")
+      await withButtonLoading(button, "正在上传...", async () => {
+        const form = new FormData()
+        draft.targets.forEach((target, index) => form.append(`image__${target.id}`, draft.images[index].file, draft.images[index].file.name))
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 120000)
+        try {
+          const response = await fetch("/api/admin/makerworld/main-image-replacements/direct-preview", { method: "POST", body: form, cache: "no-store", signal: controller.signal })
+          if (response.status === 401) {
+            setStatus("登录已过期，请重新登录后台")
+            setTimeout(() => { location.href = "/login" }, 800)
+            throw new Error("登录已过期，请重新登录后台")
+          }
+          const data = await response.json().catch(() => ({}))
+          if (!response.ok || data.ok === false) throw new Error(data.message || `GPT 成图上传失败（HTTP ${response.status}）`)
+          makerworldMainImagePreview = data.data || data
+          clearMakerworldDirectImageDraft()
+          renderMakerworldMainImageResult()
+          $("makerworldMainImageReplaceResult")?.scrollIntoView({ behavior: "smooth", block: "start" })
+          setStatus(`成图上传完成：匹配 ${makerworldMainImagePreview.matchedCount || 0}，异常 ${makerworldMainImagePreview.failedCount || 0}`)
+        } catch (error) {
+          if (error.name === "AbortError") throw new Error("GPT 成图上传超时，请检查网络后重试")
+          showMakerworldMainImageUploadError(error)
+          throw error
+        } finally {
+          clearTimeout(timer)
+        }
+      })
+    }
+
     async function previewMakerworldMainImages(file) {
       if (!file) return
       if (!/\.zip$/i.test(file.name || "")) throw new Error("请选择 ZIP 格式的主图替换包")
@@ -2450,7 +2560,7 @@
       setStatus(message)
       const box = $("makerworldMainImageReplaceResult")
       if (box) {
-        box.innerHTML = `<div class="panel"><h3>主图 ZIP 上传失败</h3><div class="upload-help">${escapeHtml(message)}</div></div>`
+        box.innerHTML = `<div class="panel"><h3>主图上传失败</h3><div class="upload-help">${escapeHtml(message)}</div></div>`
         box.scrollIntoView({ behavior: "smooth", block: "start" })
       }
     }
@@ -3769,6 +3879,15 @@
         }
       })
     })
+    $("makerworldDirectMainImages").addEventListener("change", event => {
+      const files = event.currentTarget.files
+      event.currentTarget.value = ""
+      try {
+        prepareMakerworldDirectImages(files)
+      } catch (error) {
+        showMakerworldMainImageUploadError(error)
+      }
+    })
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
     })
@@ -4290,8 +4409,30 @@
       if (event.target.dataset.action === "download-makerworld-main-images") {
         downloadMakerworldMainImages(event.target).catch(error => setStatus(error.message || "主图打包失败"))
       }
+      if (event.target.dataset.action === "pick-makerworld-direct-images") {
+        makerworldDirectTargetIds = selectedProductIndexes()
+          .sort((a, b) => a - b)
+          .map(index => products[index])
+          .filter(item => item?.modelCandidateId)
+          .map(item => item.id)
+        if (!makerworldDirectTargetIds.length) {
+          setStatus("请先勾选需要替换主图的 MakerWorld 导入商品")
+        } else {
+          $("makerworldDirectMainImages").click()
+        }
+      }
       if (event.target.dataset.action === "pick-makerworld-main-images") {
         $("makerworldMainImageZip").click()
+      }
+      if (event.target.dataset.action === "upload-makerworld-direct-images") {
+        uploadMakerworldDirectImages(event.target).catch(error => showMakerworldMainImageUploadError(error))
+      }
+      if (event.target.dataset.action === "cancel-makerworld-direct-images") {
+        clearMakerworldDirectImageDraft()
+        makerworldDirectTargetIds = []
+        makerworldMainImagePreview = null
+        renderMakerworldMainImageResult()
+        setStatus("已取消 GPT 成图匹配")
       }
       if (event.target.dataset.action === "confirm-makerworld-main-images") {
         confirmMakerworldMainImages(event.target).catch(error => setStatus(error.message || "主图替换失败"))
@@ -4486,6 +4627,17 @@
       }
     })
     document.body.addEventListener("dragstart", event => {
+      const directImage = event.target.closest("[data-direct-image-index]")
+      if (directImage) {
+        draggedMakerworldDirectImage = Number(directImage.dataset.directImageIndex)
+        directImage.classList.add("dragging")
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move"
+          event.dataTransfer.setData("text/plain", String(draggedMakerworldDirectImage))
+        }
+        event.stopPropagation()
+        return
+      }
       const category = event.target.closest("[data-category-index]")
       const second = event.target.closest("[data-second-index]")
       if (second) {
@@ -4503,15 +4655,33 @@
       }
     })
     document.body.addEventListener("dragend", event => {
+      event.target.closest("[data-direct-image-index]")?.classList.remove("dragging")
+      document.querySelectorAll(".makerworld-direct-row.drag-over").forEach(row => row.classList.remove("drag-over"))
       event.target.closest(".category-card")?.classList.remove("dragging")
       event.target.closest(".secondary-row")?.classList.remove("dragging")
+      draggedMakerworldDirectImage = null
       draggedCategory = null
       draggedSecond = null
     })
     document.body.addEventListener("dragover", event => {
+      const directRow = event.target.closest("[data-direct-target-index]")
+      if (draggedMakerworldDirectImage != null && directRow) {
+        event.preventDefault()
+        document.querySelectorAll(".makerworld-direct-row.drag-over").forEach(row => row.classList.remove("drag-over"))
+        directRow.classList.add("drag-over")
+        return
+      }
       if (event.target.closest("[data-category-index]") || event.target.closest("[data-second-index]")) event.preventDefault()
     })
     document.body.addEventListener("drop", event => {
+      const directRow = event.target.closest("[data-direct-target-index]")
+      if (draggedMakerworldDirectImage != null && directRow) {
+        event.preventDefault()
+        const targetIndex = Number(directRow.dataset.directTargetIndex)
+        moveMakerworldDirectImage(draggedMakerworldDirectImage, targetIndex)
+        draggedMakerworldDirectImage = null
+        return
+      }
       const targetSecond = event.target.closest("[data-second-index]")
       if (draggedSecond && targetSecond) {
         event.preventDefault()
