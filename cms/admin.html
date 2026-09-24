@@ -639,9 +639,9 @@
               <button class="secondary" id="resetProductsBtn">重置</button>
             </div>
           </div>
-          <div class="list" id="productEditor"></div>
           <input id="makerworldMainImageZip" type="file" accept=".zip,application/zip" hidden>
           <div id="makerworldMainImageReplaceResult"></div>
+          <div class="list" id="productEditor"></div>
         </div>
         </div>
         <div class="subview" id="subview-makerworldImport">
@@ -2422,12 +2422,37 @@
       const form = new FormData()
       form.append("zip", file)
       setStatus("正在校验主图文件名与商品匹配关系...")
-      const response = await fetch("/api/admin/makerworld/main-image-replacements/preview", { method: "POST", body: form, cache: "no-store" })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || data.ok === false) throw new Error(data.message || "主图替换包解析失败")
-      makerworldMainImagePreview = data.data || data
-      renderMakerworldMainImageResult()
-      setStatus(`主图替换预览完成：匹配 ${makerworldMainImagePreview.matchedCount || 0}，异常 ${makerworldMainImagePreview.failedCount || 0}`)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 120000)
+      try {
+        const response = await fetch("/api/admin/makerworld/main-image-replacements/preview", { method: "POST", body: form, cache: "no-store", signal: controller.signal })
+        if (response.status === 401) {
+          setStatus("登录已过期，请重新登录后台")
+          setTimeout(() => { location.href = "/login" }, 800)
+          throw new Error("登录已过期，请重新登录后台")
+        }
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok || data.ok === false) throw new Error(data.message || `主图替换包解析失败（HTTP ${response.status}）`)
+        makerworldMainImagePreview = data.data || data
+        renderMakerworldMainImageResult()
+        $("makerworldMainImageReplaceResult")?.scrollIntoView({ behavior: "smooth", block: "start" })
+        setStatus(`主图替换预览完成：匹配 ${makerworldMainImagePreview.matchedCount || 0}，异常 ${makerworldMainImagePreview.failedCount || 0}`)
+      } catch (error) {
+        if (error.name === "AbortError") throw new Error("主图替换包上传超时，请检查网络后重试")
+        throw error
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    function showMakerworldMainImageUploadError(error) {
+      const message = error?.message || "主图替换包解析失败"
+      setStatus(message)
+      const box = $("makerworldMainImageReplaceResult")
+      if (box) {
+        box.innerHTML = `<div class="panel"><h3>主图 ZIP 上传失败</h3><div class="upload-help">${escapeHtml(message)}</div></div>`
+        box.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
     }
     async function confirmMakerworldMainImages(button) {
       if (!makerworldMainImagePreview?.token) throw new Error("请先上传并预览主图替换包")
@@ -3732,8 +3757,17 @@
     }))
     $("makerworldMainImageZip").addEventListener("change", event => {
       const file = event.currentTarget.files?.[0]
-      previewMakerworldMainImages(file).catch(error => setStatus(error.message || "主图替换包解析失败"))
       event.currentTarget.value = ""
+      if (!file) return
+      const button = document.querySelector('[data-action="pick-makerworld-main-images"]')
+      withButtonLoading(button, "正在上传...", async () => {
+        try {
+          await previewMakerworldMainImages(file)
+        } catch (error) {
+          showMakerworldMainImageUploadError(error)
+          throw error
+        }
+      })
     })
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
