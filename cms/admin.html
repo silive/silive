@@ -640,6 +640,8 @@
             </div>
           </div>
           <div class="list" id="productEditor"></div>
+          <input id="makerworldMainImageZip" type="file" accept=".zip,application/zip" hidden>
+          <div id="makerworldMainImageReplaceResult"></div>
         </div>
         </div>
         <div class="subview" id="subview-makerworldImport">
@@ -1014,6 +1016,7 @@
     let makerworldBatchResult = null
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
+    let makerworldMainImagePreview = null
     let categorySearch = ""
     let activityProductSearch = {}
     let categoryModal = { mode: "", primaryIndex: -1, secondIndex: -1 }
@@ -2075,7 +2078,9 @@
       renderProductFilters()
       const filtered = getFilteredProducts()
       const selectedCount = selectedProductIndexes().length
+      const selectedImportedCount = selectedProductIndexes().filter(index => products[index]?.modelCandidateId).length
       const selectionDisabled = selectedCount ? "" : "disabled"
+      const importSelectionDisabled = selectedImportedCount ? "" : "disabled"
       $("productEditor").innerHTML = `<div class="product-bulk-toolbar">
           <label class="checkline"><input type="checkbox" id="selectAllProducts" ${filtered.length > 0 && filtered.every(({ index }) => selectedProducts.has(index)) ? "checked" : ""}> 全选当前 ${filtered.length} 个</label>
           <span class="product-bulk-count" id="selectedProductCount">已选 ${selectedCount} 个商品</span>
@@ -2086,6 +2091,8 @@
           <button class="secondary" data-bulk="replace" data-requires-product-selection ${selectionDisabled}>移动类目</button>
           <button class="secondary" data-bulk="append" data-requires-product-selection ${selectionDisabled}>添加类目</button>
           <button class="secondary" data-bulk="remove" data-requires-product-selection ${selectionDisabled}>移除类目</button>
+          <button class="secondary" data-action="download-makerworld-main-images" data-requires-import-selection ${importSelectionDisabled}>打包下载导入主图</button>
+          <button class="secondary" data-action="pick-makerworld-main-images">上传 GPT 成图 ZIP</button>
           <span class="product-bulk-spacer"></span>
           <button class="secondary" data-action="bulk-clear" data-requires-product-selection ${selectionDisabled}>取消选择</button>
           <button class="danger" data-action="bulk-delete" data-requires-product-selection ${selectionDisabled}>删除所选</button>
@@ -2361,11 +2368,88 @@
     }
     function updateSelectedProductCount() {
       const count = selectedProductIndexes().length
+      const importedCount = selectedProductIndexes().filter(index => products[index]?.modelCandidateId).length
       if ($("selectedProductCount")) $("selectedProductCount").textContent = `已选 ${count} 个商品`
       document.querySelectorAll("[data-requires-product-selection]").forEach(button => { button.disabled = count === 0 })
+      document.querySelectorAll("[data-requires-import-selection]").forEach(button => { button.disabled = importedCount === 0 })
     }
     function selectedProductIndexes() {
       return Array.from(selectedProducts).filter(index => products[index])
+    }
+    function makerworldMainImageStatusText(status) {
+      return ({ matched: "已匹配", replaced: "已替换", unmatched: "未匹配", ambiguous: "匹配冲突", duplicate: "重复图片", invalid: "图片无效", failed: "替换失败" })[status] || status || "-"
+    }
+    function renderMakerworldMainImageResult(report = makerworldMainImagePreview) {
+      const box = $("makerworldMainImageReplaceResult")
+      if (!box) return
+      if (!report) {
+        box.innerHTML = ""
+        return
+      }
+      const canConfirm = report.token && Number(report.matchedCount || 0) > 0
+      box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>导入商品主图替换预览</h3><div class="upload-help">共 ${Number(report.submittedCount || report.results?.length || 0)} 张，匹配 ${Number(report.matchedCount ?? report.replacedCount ?? 0)} 张，异常 ${Number(report.failedCount || 0)} 张。只有匹配成功的图片会被替换。</div></div><div class="table-actions">${canConfirm ? `<button class="primary" data-action="confirm-makerworld-main-images">确认批量替换</button>` : ""}${report.batchId ? `<button class="secondary" data-action="rollback-makerworld-main-images" data-batch-id="${escapeHtml(report.batchId)}">撤销本批替换</button>` : ""}</div></div>
+        <div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>文件名</th><th>商品</th><th>模型 ID</th><th>尺寸</th><th>状态</th><th>说明</th></tr></thead><tbody>${(report.results || []).map(item => `<tr><td>${escapeHtml(item.filename || "-")}</td><td>${escapeHtml(item.title || item.productId || "-")}</td><td>${escapeHtml(item.modelId || "-")}</td><td>${item.width && item.height ? `${item.width}×${item.height}` : "-"}</td><td><span class="pill">${escapeHtml(makerworldMainImageStatusText(item.status))}</span></td><td>${escapeHtml(item.message || "-")}</td></tr>`).join("")}</tbody></table></div></div>`
+    }
+    async function downloadMakerworldMainImages(button) {
+      const ids = selectedProductIndexes().map(index => products[index]).filter(item => item?.modelCandidateId).map(item => item.id)
+      if (!ids.length) throw new Error("请先勾选 MakerWorld 导入商品")
+      await withButtonLoading(button, "正在打包...", async () => {
+        const response = await fetch("/api/admin/makerworld/main-image-package", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+          cache: "no-store"
+        })
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          throw new Error(data.message || "主图打包失败")
+        }
+        const blob = await response.blob()
+        const objectUrl = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = objectUrl
+        link.download = `MakerWorld-主图包-${new Date().toISOString().slice(0, 10)}.zip`
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+        const failed = Number(response.headers.get("X-Failed-Count") || 0)
+        setStatus(`主图包已下载${failed ? `，${failed} 张来源图下载失败，详情见包内说明` : ""}`)
+      })
+    }
+    async function previewMakerworldMainImages(file) {
+      if (!file) return
+      if (!/\.zip$/i.test(file.name || "")) throw new Error("请选择 ZIP 格式的主图替换包")
+      if (file.size > 50 * 1024 * 1024) throw new Error("主图替换包不能超过50MB")
+      const form = new FormData()
+      form.append("zip", file)
+      setStatus("正在校验主图文件名与商品匹配关系...")
+      const response = await fetch("/api/admin/makerworld/main-image-replacements/preview", { method: "POST", body: form, cache: "no-store" })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.ok === false) throw new Error(data.message || "主图替换包解析失败")
+      makerworldMainImagePreview = data.data || data
+      renderMakerworldMainImageResult()
+      setStatus(`主图替换预览完成：匹配 ${makerworldMainImagePreview.matchedCount || 0}，异常 ${makerworldMainImagePreview.failedCount || 0}`)
+    }
+    async function confirmMakerworldMainImages(button) {
+      if (!makerworldMainImagePreview?.token) throw new Error("请先上传并预览主图替换包")
+      if (!confirm(`确认替换 ${makerworldMainImagePreview.matchedCount || 0} 个导入商品的主图？替换后可撤销本批操作。`)) return
+      await withButtonLoading(button, "替换中...", async () => {
+        const report = await api("/api/admin/makerworld/main-image-replacements/confirm", "POST", { token: makerworldMainImagePreview.token }, 180000)
+        makerworldMainImagePreview = report
+        await loadAll()
+        renderMakerworldMainImageResult(report)
+        setStatus(`主图批量替换完成：成功 ${report.replacedCount || 0}，失败 ${report.failedCount || 0}`)
+      })
+    }
+    async function rollbackMakerworldMainImages(button) {
+      const batchId = button.dataset.batchId
+      if (!batchId || !confirm("确认撤销本批主图替换并恢复原主图？之后单独修改过主图的商品不会被覆盖。")) return
+      await withButtonLoading(button, "撤销中...", async () => {
+        const report = await api("/api/admin/makerworld/main-image-replacements/rollback", "POST", { batchId })
+        await loadAll()
+        makerworldMainImagePreview = null
+        renderMakerworldMainImageResult()
+        setStatus(`已恢复 ${report.restoredCount || 0} 张原主图，跳过 ${report.skippedCount || 0} 张后来修改过的主图`)
+      })
     }
     function saveProductsAndRefresh(message) {
       setStatus("保存中...")
@@ -3646,6 +3730,11 @@
     $("copyMakerworldFailedBtn").addEventListener("click", () => copyMakerworldFailed().catch(error => {
       setStatus(error.message || "复制失败")
     }))
+    $("makerworldMainImageZip").addEventListener("change", event => {
+      const file = event.currentTarget.files?.[0]
+      previewMakerworldMainImages(file).catch(error => setStatus(error.message || "主图替换包解析失败"))
+      event.currentTarget.value = ""
+    })
     $("addPrimaryCategoryBtn").addEventListener("click", () => {
       setStatus("一级类目暂时固定为 4 个。可编辑名称、副标题、图片、排序或隐藏显示。")
     })
@@ -4163,6 +4252,18 @@
       }
       if (event.target.dataset.action === "makerworld-review") {
         reviewMakerworld(event.target).catch(error => setStatus(error.message || "模型审核失败"))
+      }
+      if (event.target.dataset.action === "download-makerworld-main-images") {
+        downloadMakerworldMainImages(event.target).catch(error => setStatus(error.message || "主图打包失败"))
+      }
+      if (event.target.dataset.action === "pick-makerworld-main-images") {
+        $("makerworldMainImageZip").click()
+      }
+      if (event.target.dataset.action === "confirm-makerworld-main-images") {
+        confirmMakerworldMainImages(event.target).catch(error => setStatus(error.message || "主图替换失败"))
+      }
+      if (event.target.dataset.action === "rollback-makerworld-main-images") {
+        rollbackMakerworldMainImages(event.target).catch(error => setStatus(error.message || "撤销主图替换失败"))
       }
       if (event.target.dataset.bulk) openBulkCategory(event.target.dataset.bulk)
       if (event.target.dataset.action === "bulk-on") applyBulkStatus("on")

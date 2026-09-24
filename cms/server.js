@@ -91,6 +91,12 @@ const {
   rankingDesignUrls
 } = require("./makerworld-ranked-import")
 const { classifyMakerworldSourceResponse } = require("./makerworld-source-availability")
+const {
+  manifestCsv: makerworldMainImageManifestCsv,
+  matchReplacementFilename,
+  replacementFilename: makerworldReplacementFilename,
+  replacementStem: makerworldReplacementStem
+} = require("./makerworld-main-image-package")
 
 let mysql
 try {
@@ -169,6 +175,7 @@ const salesAgentsFile = path.join(seedDir, "sales-agents.json")
 const storeLeadsFile = path.join(seedDir, "store-leads.json")
 const salesAgentCommissionsFile = path.join(seedDir, "sales-agent-commissions.json")
 const makerworldImportBatchesFile = path.join(seedDir, "makerworld-import-batches.json")
+const makerworldImageReplacementBatchesFile = path.join(seedDir, "makerworld-image-replacement-batches.json")
 const sessions = new Map()
 const salesSessions = new Map()
 const userSessions = new Map()
@@ -176,6 +183,7 @@ const publicUploadHits = new Map()
 const authenticatedUploadHits = new Map()
 const orderRecommendationEventHits = new Map()
 const productImportPreviews = new Map()
+const makerworldImageReplacementPreviews = new Map()
 const adminLoginFailures = new Map()
 const salesLoginFailures = new Map()
 const pickupVerificationHits = new Map()
@@ -1700,6 +1708,8 @@ const MAX_UPLOAD_MEMORY_BYTES = Math.max(
 const MAX_IMPORT_EXCEL_SIZE = 5 * 1024 * 1024
 const MAX_IMPORT_ZIP_SIZE = 50 * 1024 * 1024
 const IMPORT_PREVIEW_TTL = 30 * 60 * 1000
+const MAX_MAKERWORLD_IMAGE_PACKAGE_ITEMS = 100
+const MAKERWORLD_IMAGE_PREVIEW_TTL = 30 * 60 * 1000
 const ZIP_ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"])
 const ZIP_BLOCKED_EXTS = new Set([".exe", ".dll", ".dmg", ".pkg", ".app", ".com", ".scr", ".msi", ".html", ".htm", ".php", ".js", ".mjs", ".cjs", ".sh", ".bash", ".zsh", ".bat", ".cmd", ".ps1", ".vbs", ".jar", ".py", ".rb", ".pl"])
 const CATEGORY_TREE = {
@@ -2048,6 +2058,332 @@ function listZipEntries(zipFile) {
     .split(/\r?\n/)
     .map(item => item.trim())
     .filter(Boolean)
+}
+
+function makerworldImageHostAllowed(hostname) {
+  const host = String(hostname || "").toLowerCase()
+  return ["bambulab.cn", "bambulab.com", "bblmw.cn", "bblmw.com", "makerworld.com.cn", "makerworld.com"]
+    .some(domain => host === domain || host.endsWith(`.${domain}`))
+}
+
+function localUploadFileFromUrl(value) {
+  try {
+    const raw = String(value || "").trim()
+    const target = new URL(raw, PUBLIC_BASE_URL)
+    const publicBase = new URL(PUBLIC_BASE_URL)
+    if (/^https?:\/\//i.test(raw) && target.origin !== publicBase.origin) return ""
+    if (!target.pathname.startsWith("/uploads/") && !target.pathname.startsWith("/cms/uploads/")) return ""
+    const relative = decodeURIComponent(target.pathname.replace(/^\/cms\/uploads\//, "").replace(/^\/uploads\//, ""))
+    const file = path.resolve(uploadsDir, relative)
+    if (!file.startsWith(`${path.resolve(uploadsDir)}${path.sep}`)) return ""
+    return fs.existsSync(file) && fs.statSync(file).isFile() ? file : ""
+  } catch (error) {
+    return ""
+  }
+}
+
+function fetchMakerworldMainImage(url, redirectsLeft = 3) {
+  return new Promise((resolve, reject) => {
+    let target
+    try { target = new URL(String(url || "")) } catch (error) { return reject(new Error("主图地址无效")) }
+    if (target.protocol !== "https:" || !makerworldImageHostAllowed(target.hostname)) {
+      return reject(new Error("主图域名不在 MakerWorld 图片白名单中"))
+    }
+    const req = https.request({
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: `${target.pathname}${target.search}`,
+      method: "GET",
+      headers: { Accept: "image/webp,image/png,image/jpeg,*/*;q=0.5", "User-Agent": "Mozilla/5.0 (compatible; VerySimpleMakerWorldImagePack/1.0)" },
+      timeout: 12000
+    }, response => {
+      if ([301, 302, 303, 307, 308].includes(Number(response.statusCode || 0)) && response.headers.location && redirectsLeft > 0) {
+        response.resume()
+        let redirected
+        try { redirected = new URL(response.headers.location, target).toString() } catch (error) { return reject(new Error("主图重定向地址无效")) }
+        fetchMakerworldMainImage(redirected, redirectsLeft - 1).then(resolve, reject)
+        return
+      }
+      if (Number(response.statusCode || 0) < 200 || Number(response.statusCode || 0) >= 300) {
+        response.resume()
+        reject(new Error(`主图下载返回 HTTP ${response.statusCode}`))
+        return
+      }
+      const chunks = []
+      let size = 0
+      response.on("data", chunk => {
+        size += chunk.length
+        if (size > MAX_IMAGE_SIZE) {
+          req.destroy(new Error("主图超过10MB"))
+          return
+        }
+        chunks.push(chunk)
+      })
+      response.on("end", () => resolve(Buffer.concat(chunks)))
+    })
+    req.on("timeout", () => req.destroy(new Error("主图下载超时")))
+    req.on("error", reject)
+    req.end()
+  })
+}
+
+async function readMakerworldMainImage(product) {
+  const sourceUrl = String(product?.imageUrl || "").trim()
+  if (!sourceUrl) throw new Error("商品没有主图")
+  const localFile = localUploadFileFromUrl(sourceUrl)
+  const buffer = localFile ? fs.readFileSync(localFile) : await fetchMakerworldMainImage(sourceUrl)
+  const ext = detectImageExt(buffer)
+  if (!ext || !["jpg", "png", "webp"].includes(ext)) throw new Error("主图不是支持的 JPG、PNG 或 WebP 图片")
+  return { buffer, ext }
+}
+
+function cleanupMakerworldImageReplacementPreviews(force = false) {
+  const now = Date.now()
+  for (const [token, preview] of makerworldImageReplacementPreviews.entries()) {
+    if (force || now - preview.createdAt > MAKERWORLD_IMAGE_PREVIEW_TTL) {
+      if (preview.tempDir) fs.rmSync(preview.tempDir, { recursive: true, force: true })
+      makerworldImageReplacementPreviews.delete(token)
+    }
+  }
+}
+
+async function createMakerworldMainImagePackage(ids = []) {
+  const requestedIds = [...new Set((Array.isArray(ids) ? ids : []).map(item => String(item || "").trim()).filter(Boolean))]
+  if (!requestedIds.length) throw httpError(400, "请先勾选需要导出主图的导入商品")
+  if (requestedIds.length > MAX_MAKERWORLD_IMAGE_PACKAGE_ITEMS) throw httpError(400, "每次最多导出100个商品主图")
+  const productMap = new Map((await getProducts()).map(product => [String(product.id), product]))
+  const products = requestedIds.map(id => productMap.get(id)).filter(product => product?.modelCandidateId)
+  if (!products.length) throw httpError(400, "所选商品中没有 MakerWorld 导入商品")
+  const tempDir = fs.mkdtempSync(path.join(importTempDir, "makerworld-main-images-"))
+  const packageFile = path.join(importTempDir, `makerworld-main-images-${Date.now()}-${crypto.randomBytes(3).toString("hex")}.zip`)
+  try {
+    const results = await mapWithConcurrency(products, 4, async product => {
+      try {
+        const image = await readMakerworldMainImage(product)
+        const originalFilename = makerworldReplacementFilename(product, image.ext)
+        fs.writeFileSync(path.join(tempDir, originalFilename), image.buffer)
+        return {
+          ok: true,
+          productId: product.id,
+          modelId: product.modelCandidateId,
+          title: product.name,
+          originalImageUrl: product.imageUrl,
+          originalFilename,
+          suggestedFilename: `${makerworldReplacementStem(product)}_gpt.png`
+        }
+      } catch (error) {
+        return { ok: false, productId: product.id, modelId: product.modelCandidateId, title: product.name, message: error.message || "主图下载失败" }
+      }
+    })
+    const success = results.filter(item => item.ok)
+    if (!success.length) throw httpError(422, `没有可打包的主图：${results.map(item => `${item.title}（${item.message}）`).join("；")}`)
+    fs.writeFileSync(path.join(tempDir, "主图匹配清单.csv"), makerworldMainImageManifestCsv(success))
+    const failed = results.filter(item => !item.ok)
+    const instructions = [
+      "MakerWorld 导入商品主图制作说明",
+      "",
+      "1. 将每张原图交给 GPT 人工制作 1:1 电商主图。",
+      "2. 下载成图时保留文件名前缀，可使用清单中的“GPT成图建议文件名”。",
+      "3. 允许在编号后增加 _gpt、_final 等后缀，不要修改 MW-...__PID-... 编号。",
+      "4. 将生成后的 JPG、PNG 或 WebP 图片压缩为一个 ZIP，再上传后台预览确认。",
+      "5. 系统不调用任何付费 AI 接口。",
+      failed.length ? `\n未能下载的 ${failed.length} 项：\n${failed.map(item => `${item.productId} ${item.title}：${item.message}`).join("\n")}` : ""
+    ].join("\n")
+    fs.writeFileSync(path.join(tempDir, "制作与上传说明.txt"), instructions)
+    execFileSync("zip", ["-qr", packageFile, "."], { cwd: tempDir })
+    return { buffer: fs.readFileSync(packageFile), exportedCount: success.length, failedCount: failed.length }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+    fs.rmSync(packageFile, { force: true })
+  }
+}
+
+function safeMakerworldReplacementEntries(zipFile) {
+  const entries = []
+  for (const entry of listZipEntries(zipFile)) {
+    if (entry.endsWith("/") || entry.startsWith("__MACOSX/") || /(^|\/)\.DS_Store$/i.test(entry)) continue
+    if (entry.includes("../") || entry.includes("..\\") || /^[a-zA-Z]:[\\/]/.test(entry)) throw new Error(`替换包存在非法路径：${entry}`)
+    const normalized = path.posix.normalize(entry.replace(/\\/g, "/"))
+    if (normalized.startsWith("../") || normalized.includes("/../") || path.posix.isAbsolute(normalized)) throw new Error(`替换包存在非法路径：${entry}`)
+    const ext = path.extname(normalized).toLowerCase()
+    if ([".csv", ".txt"].includes(ext)) continue
+    if (ZIP_BLOCKED_EXTS.has(ext)) throw new Error(`替换包包含禁止文件：${entry}`)
+    if (![".jpg", ".jpeg", ".png", ".webp"].includes(ext)) throw new Error(`替换包只允许 JPG、PNG、WebP 图片：${entry}`)
+    entries.push(normalized)
+  }
+  if (entries.length > MAX_MAKERWORLD_IMAGE_PACKAGE_ITEMS) throw new Error("每次最多上传100张替换主图")
+  return entries
+}
+
+async function previewMakerworldMainImageReplacements(zipPart) {
+  cleanupMakerworldImageReplacementPreviews()
+  if (!zipPart || !/\.zip$/i.test(zipPart.filename || "")) throw httpError(400, "请选择 ZIP 格式的主图替换包")
+  if (zipPart.body.length > MAX_IMPORT_ZIP_SIZE) throw httpError(413, "主图替换包超过50MB")
+  const tempDir = fs.mkdtempSync(path.join(importTempDir, "makerworld-main-replace-"))
+  const zipFile = path.join(tempDir, "replacements.zip")
+  fs.writeFileSync(zipFile, zipPart.body)
+  try {
+    const entries = safeMakerworldReplacementEntries(zipFile)
+    if (!entries.length) throw httpError(400, "替换包中没有可处理的图片")
+    const products = (await getProducts()).filter(product => product.modelCandidateId)
+    const results = []
+    let extractedBytes = 0
+    for (const entry of entries) {
+      const match = matchReplacementFilename(path.posix.basename(entry), products)
+      if (!match.product) {
+        results.push({ entry, filename: path.posix.basename(entry), status: match.matchedBy === "ambiguous" ? "ambiguous" : "unmatched", message: match.matchedBy === "ambiguous" ? "文件名匹配到多个商品" : "文件名未找到对应导入商品" })
+        continue
+      }
+      try {
+        const buffer = readZipEntry(zipFile, entry, MAX_IMAGE_SIZE + 1024 * 1024)
+        if (buffer.length > MAX_IMAGE_SIZE) throw new Error("图片超过10MB")
+        extractedBytes += buffer.length
+        if (extractedBytes > 100 * 1024 * 1024) throw new Error("替换包解压后的图片总量超过100MB")
+        const detected = detectImageExt(buffer)
+        const declared = path.extname(entry).toLowerCase().replace(/^\./, "").replace("jpeg", "jpg")
+        if (!detected || detected !== declared) throw new Error("图片内容与扩展名不一致")
+        const metadata = await sharp(buffer, { failOnError: true }).metadata()
+        results.push({
+          entry,
+          filename: path.posix.basename(entry),
+          status: "matched",
+          productId: match.product.id,
+          modelId: match.product.modelCandidateId,
+          title: match.product.name,
+          matchedBy: match.matchedBy,
+          width: metadata.width || null,
+          height: metadata.height || null,
+          message: metadata.width && metadata.height && Math.abs(metadata.width / metadata.height - 1) > 0.1 ? "已匹配；图片不是接近1:1，将按原比例压缩" : "匹配成功"
+        })
+      } catch (error) {
+        results.push({ entry, filename: path.posix.basename(entry), status: "invalid", productId: match.product.id, modelId: match.product.modelCandidateId, title: match.product.name, message: error.message || "图片校验失败" })
+      }
+    }
+    const counts = new Map()
+    results.filter(item => item.status === "matched").forEach(item => counts.set(item.productId, (counts.get(item.productId) || 0) + 1))
+    results.forEach(item => {
+      if (item.status === "matched" && counts.get(item.productId) > 1) {
+        item.status = "duplicate"
+        item.message = "同一商品出现多张候选图片，请删除重复项后重新打包"
+      }
+    })
+    const token = crypto.randomBytes(24).toString("hex")
+    makerworldImageReplacementPreviews.set(token, { token, createdAt: Date.now(), tempDir, zipFile, results })
+    const matchedCount = results.filter(item => item.status === "matched").length
+    return { token, submittedCount: results.length, matchedCount, failedCount: results.length - matchedCount, results: results.map(({ entry, ...item }) => item) }
+  } catch (error) {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+    throw error
+  }
+}
+
+async function confirmMakerworldMainImageReplacements(token) {
+  cleanupMakerworldImageReplacementPreviews()
+  const preview = makerworldImageReplacementPreviews.get(String(token || ""))
+  if (!preview) throw httpError(404, "替换预览已过期，请重新上传 ZIP")
+  const products = await getProducts()
+  const productMap = new Map(products.map(product => [String(product.id), product]))
+  const changes = []
+  const results = preview.results
+    .filter(item => item.status !== "matched")
+    .map(({ entry, ...item }) => item)
+  for (const item of preview.results.filter(result => result.status === "matched")) {
+    const product = productMap.get(String(item.productId))
+    if (!product?.modelCandidateId) {
+      const { entry, ...publicItem } = item
+      results.push({ ...publicItem, status: "failed", message: "商品已不存在或不再是导入商品" })
+      continue
+    }
+    try {
+      const buffer = readZipEntry(preview.zipFile, item.entry, MAX_IMAGE_SIZE + 1024 * 1024)
+      const optimized = await optimizeProductImageUpload({ buffer, outputDir: productUploadsDir, sourceName: item.filename })
+      const oldImageUrl = product.imageUrl || ""
+      const newImageUrl = `${PUBLIC_BASE_URL}/uploads/products/${optimized.filename}`
+      product.imageUrl = newImageUrl
+      product.galleryImages = []
+      product.detailImages = []
+      product.videoUrl = ""
+      changes.push({ productId: product.id, modelId: product.modelCandidateId, title: product.name, oldImageUrl, newImageUrl })
+      const { entry, ...publicItem } = item
+      results.push({ ...publicItem, status: "replaced", imageUrl: newImageUrl, message: "主图已替换" })
+    } catch (error) {
+      const { entry, ...publicItem } = item
+      results.push({ ...publicItem, status: "failed", message: error.message || "主图替换失败" })
+    }
+  }
+  if (changes.length) await saveProducts(products)
+  const batchId = `MWIMG${Date.now()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`
+  await saveMakerworldImageReplacementBatch({ id: batchId, createdAt: new Date().toISOString(), rolledBackAt: "", changes, restoredCount: 0, skippedCount: 0 })
+  fs.rmSync(preview.tempDir, { recursive: true, force: true })
+  makerworldImageReplacementPreviews.delete(preview.token)
+  return { batchId, replacedCount: changes.length, failedCount: results.filter(item => item.status !== "replaced").length, results }
+}
+
+async function saveMakerworldImageReplacementBatch(batch) {
+  if (!pool) {
+    const batches = readJsonFile(makerworldImageReplacementBatchesFile, [])
+    const index = batches.findIndex(item => String(item.id) === String(batch.id))
+    if (index >= 0) batches.splice(index, 1)
+    batches.unshift(batch)
+    writeJsonFile(makerworldImageReplacementBatchesFile, batches.slice(0, 30))
+    return batch
+  }
+  await query(
+    `INSERT INTO makerworld_image_replacement_batches
+      (id, created_at_text, rolled_back_at, changes_json, restored_count, skipped_count)
+     VALUES (:id, :createdAt, :rolledBackAt, :changesJson, :restoredCount, :skippedCount)
+     ON DUPLICATE KEY UPDATE rolled_back_at=VALUES(rolled_back_at), changes_json=VALUES(changes_json),
+       restored_count=VALUES(restored_count), skipped_count=VALUES(skipped_count)`,
+    {
+      id: batch.id,
+      createdAt: batch.createdAt,
+      rolledBackAt: batch.rolledBackAt || null,
+      changesJson: JSON.stringify(batch.changes || []),
+      restoredCount: Number(batch.restoredCount || 0),
+      skippedCount: Number(batch.skippedCount || 0)
+    }
+  )
+  return batch
+}
+
+async function getMakerworldImageReplacementBatch(batchId) {
+  if (!pool) return readJsonFile(makerworldImageReplacementBatchesFile, []).find(item => String(item.id) === String(batchId || "")) || null
+  const rows = await query("SELECT * FROM makerworld_image_replacement_batches WHERE id=:id LIMIT 1", { id: String(batchId || "") })
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: row.id,
+    createdAt: row.created_at_text,
+    rolledBackAt: row.rolled_back_at || "",
+    changes: parseJsonValue(row.changes_json, []),
+    restoredCount: Number(row.restored_count || 0),
+    skippedCount: Number(row.skipped_count || 0)
+  }
+}
+
+async function rollbackMakerworldMainImageReplacement(batchId) {
+  const batch = await getMakerworldImageReplacementBatch(batchId)
+  if (!batch) throw httpError(404, "未找到该主图替换批次")
+  if (batch.rolledBackAt) throw httpError(409, "该批次已经撤销")
+  const products = await getProducts()
+  const productMap = new Map(products.map(product => [String(product.id), product]))
+  let restoredCount = 0
+  let skippedCount = 0
+  for (const change of batch.changes || []) {
+    const product = productMap.get(String(change.productId))
+    if (!product || String(product.imageUrl || "") !== String(change.newImageUrl || "")) {
+      skippedCount += 1
+      continue
+    }
+    product.imageUrl = change.oldImageUrl || ""
+    restoredCount += 1
+  }
+  if (restoredCount) await saveProducts(products)
+  batch.rolledBackAt = new Date().toISOString()
+  batch.restoredCount = restoredCount
+  batch.skippedCount = skippedCount
+  await saveMakerworldImageReplacementBatch(batch)
+  return { batchId: batch.id, restoredCount, skippedCount }
 }
 
 function cleanupProductImportPreviews(force = false) {
@@ -3003,7 +3339,7 @@ function normalizeModelReviewStatus(value) {
 }
 
 function normalizeProduct(product, index) {
-  const imageUrl = publicAssetUrl(product.mainImage || product.imageUrl || product.image || product.coverImage)
+  const imageUrl = publicAssetUrl(product.imageUrl || product.mainImage || product.image || product.coverImage)
   const imageVariants = uploadImageVariants(imageUrl)
   const categories = normalizeProductCategories(product.categories, product)
   const levels = productCategoryLevels(categories, product)
@@ -10503,6 +10839,16 @@ async function initDb() {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_makerworld_batches_started (started_at)
   )`)
+  await query(`CREATE TABLE IF NOT EXISTS makerworld_image_replacement_batches (
+    id VARCHAR(50) PRIMARY KEY,
+    created_at_text VARCHAR(40) NOT NULL,
+    rolled_back_at VARCHAR(40),
+    changes_json JSON,
+    restored_count INT NOT NULL DEFAULT 0,
+    skipped_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_makerworld_image_batches_created (created_at_text)
+  )`)
   await query(`CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(32) PRIMARY KEY,
     customer_name VARCHAR(50) NOT NULL,
@@ -12895,6 +13241,38 @@ async function handle(req, res) {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     const payload = Array.isArray(body) ? body : (Array.isArray(body.items) ? body : { items: [body] })
     sendJson(res, 200, { ok: true, data: await runMakerworldSingleImport(payload) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/main-image-package" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const result = await createMakerworldMainImagePackage(body.ids)
+    sendText(res, 200, result.buffer, "application/zip", {
+      "Content-Disposition": `attachment; filename="makerworld-main-images-${Date.now()}.zip"`,
+      "X-Exported-Count": String(result.exportedCount),
+      "X-Failed-Count": String(result.failedCount)
+    })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/main-image-replacements/preview" && req.method === "POST") {
+    if (!isMultipartFormRequest(req)) throw httpError(400, "请使用 multipart/form-data 上传 ZIP")
+    const body = await readBody(req, MAX_IMPORT_ZIP_SIZE + 1024 * 1024, "主图替换包超过50MB")
+    const parts = parseMultipart(body, req.headers["content-type"])
+    const zip = parts.find(part => part.name === "zip" || /\.zip$/i.test(part.filename || ""))
+    sendJson(res, 200, { ok: true, data: await previewMakerworldMainImageReplacements(zip) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/main-image-replacements/confirm" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await confirmMakerworldMainImageReplacements(body.token) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/makerworld/main-image-replacements/rollback" && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    sendJson(res, 200, { ok: true, data: await rollbackMakerworldMainImageReplacement(body.batchId) })
     return
   }
 
