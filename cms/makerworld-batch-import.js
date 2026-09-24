@@ -69,16 +69,6 @@ function firstText(...values) {
   return ""
 }
 
-function plainText(value) {
-  return decodeHtml(String(value == null ? "" : value)
-    .replace(/<br\s*\/?\s*>/gi, "\n")
-    .replace(/<\/p\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, " "))
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .trim()
-}
-
 function imageList(value) {
   const list = Array.isArray(value) ? value : [value]
   return list.map(item => typeof item === "object" ? (item.url || item.contentUrl) : item)
@@ -100,13 +90,12 @@ function parseMakerWorldHtml(html, sourceUrl) {
   ].filter((item, index, list) => list.indexOf(item) === index)
   const title = firstText(main.name, meta.get("og:title"), meta.get("twitter:title"))
     .replace(/\s*[-|]\s*MakerWorld.*$/i, "").trim()
-  const description = firstText(main.description, meta.get("description"), meta.get("og:description"))
   const licenseRaw = firstText(main.license, meta.get("license"), meta.get("copyright"))
   const cloudflareBlocked = /cf-mitigated|challenge-platform|challenges\.cloudflare|<title>\s*(?:Just a moment|\u8bf7\u7a0d候)/i.test(body)
   return {
     sourceUrl,
     title,
-    summary: description,
+    summary: "",
     author: firstText(authorObject.name, typeof main.author === "string" ? main.author : "", meta.get("author")),
     authorId: authorIdMatch ? authorIdMatch[1] : "",
     authorUrl,
@@ -141,7 +130,7 @@ function parseMakerWorldApiDesign(payload, sourceUrl, submittedUrl = sourceUrl) 
   return {
     sourceUrl,
     title: firstText(design.titleTranslated, design.title),
-    summary: plainText(firstText(design.summaryTranslated, design.summary)),
+    summary: "",
     author: firstText(creator.name),
     authorId: firstText(creator.uid),
     authorUrl,

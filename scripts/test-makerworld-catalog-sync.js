@@ -32,6 +32,9 @@ assert.strictEqual(result.products[0].modelLicenseRaw, "Standard Digital File Li
 assert.deepStrictEqual(result.products[0].categories, ["3D打印"])
 assert.strictEqual(result.products[0].imageUrl, "https://example.com/mita.jpg")
 assert.deepStrictEqual(result.products[0].galleryImages, [])
+assert.strictEqual(result.products[0].intro, "")
+assert.strictEqual(result.products[0].detailText, "")
+assert.strictEqual(result.products[0].modelAttribution, "")
 
 const approvedExisting = planSync({ items: [{ ...model, license: "Non-Commercial / 非商用" }] }, [{
   id: "MW849446",
@@ -46,5 +49,19 @@ assert.strictEqual(approvedExisting.products[0].modelAuthorizationStatus, "appro
 assert.strictEqual(approvedExisting.products[0].modelLicenseRaw, "Non-Commercial / 非商用")
 assert.deepStrictEqual(approvedExisting.products[0].categories, ["潮玩手办", "潮玩手办/桌面摆件"])
 assert.deepStrictEqual(approvedExisting.products[0].galleryImages, [])
+
+const existingManualText = planSync({ items: [model] }, [{
+  id: "MW849446",
+  name: "Existing",
+  intro: "人工商品说明",
+  detailText: "人工详情文字",
+  modelAttribution: "人工署名文案",
+  status: "off",
+  modelCandidateId: "849446",
+  modelAuthorizationStatus: "pending_review"
+}], {})
+assert.strictEqual(existingManualText.products[0].intro, "人工商品说明")
+assert.strictEqual(existingManualText.products[0].detailText, "人工详情文字")
+assert.strictEqual(existingManualText.products[0].modelAttribution, "人工署名文案")
 
 console.log("makerworld manual review sync tests passed")

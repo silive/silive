@@ -914,17 +914,13 @@ function refreshMakerworldProductMetadata(product, candidate, config) {
   const generated = buildMakerWorldProduct(candidate, config)
   const wasAutoPriced = !!product.modelPrintMetadata?.autoPriced
   if (candidate.title) product.name = generated.name
-  if (candidate.summary) {
-    product.intro = generated.intro
-    product.detailText = generated.detailText
-  }
   if (generated.imageUrl && !String(product.imageUrl || "").trim()) product.imageUrl = generated.imageUrl
   product.galleryImages = []
   product.detailImages = []
   product.videoUrl = ""
   for (const key of [
     "modelSourcePlatform", "modelSourceUrl", "modelSourceOriginalUrl", "modelAuthorName", "modelAuthorId",
-    "modelAuthorUrl", "modelLicenseCode", "modelLicenseRaw", "modelLicenseUrl", "modelAttribution",
+    "modelAuthorUrl", "modelLicenseCode", "modelLicenseRaw", "modelLicenseUrl",
     "modelSyncScore", "modelSyncedAt", "modelFetchedAt", "modelInfoStatus", "modelInfoNote", "modelPrintMetadata"
   ]) product[key] = generated[key]
   if (generated.modelPrintMetadata?.autoPriced && (Number(product.price || 0) <= 0 || wasAutoPriced)) {
