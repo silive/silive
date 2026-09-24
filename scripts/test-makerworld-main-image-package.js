@@ -6,6 +6,7 @@ const path = require("path")
 const {
   manifestCsv,
   matchReplacementFilename,
+  productMainImageSizeMessage,
   replacementFilename,
   replacementStem
 } = require("../cms/makerworld-main-image-package")
@@ -21,6 +22,8 @@ assert.strictEqual(matchReplacementFilename("MW-123__PID-MW123_gpt.png", product
 assert.strictEqual(matchReplacementFilename("PID-MW456-final.webp", products).product.id, "MW456")
 assert.strictEqual(matchReplacementFilename("MW-456_ecommerce.jpg", products).product.id, "MW456")
 assert.strictEqual(matchReplacementFilename("random.png", products).product, null)
+assert.match(productMainImageSizeMessage(1200, 1024), /符合 1200×1024px/)
+assert.match(productMainImageSizeMessage(1024, 1024), /建议使用 1200×1024px/)
 assert.match(manifestCsv([{
   productId: "MW123",
   modelId: "123",
@@ -40,5 +43,8 @@ assert.match(server, /product\.imageUrl \|\| product\.mainImage/)
 assert.match(admin, /打包下载导入主图/)
 assert.match(admin, /上传 GPT 成图 ZIP/)
 assert.match(admin, /确认批量替换/)
+assert.match(admin, /1200×1024/)
+assert.doesNotMatch(server, /制作 1:1 电商主图/)
+assert.match(server, /1200×1024px/)
 
 console.log("makerworld main image package tests passed")

@@ -94,6 +94,7 @@ const { classifyMakerworldSourceResponse } = require("./makerworld-source-availa
 const {
   manifestCsv: makerworldMainImageManifestCsv,
   matchReplacementFilename,
+  productMainImageSizeMessage: makerworldProductMainImageSizeMessage,
   replacementFilename: makerworldReplacementFilename,
   replacementStem: makerworldReplacementStem
 } = require("./makerworld-main-image-package")
@@ -2182,7 +2183,8 @@ async function createMakerworldMainImagePackage(ids = []) {
     const instructions = [
       "MakerWorld 导入商品主图制作说明",
       "",
-      "1. 将每张原图交给 GPT 人工制作 1:1 电商主图。",
+      "1. 将每张原图交给 GPT 人工制作 1200×1024px（约 1.17:1）的横版电商主图，这是小程序商品列表主图的实际展示比例。",
+      "   推荐提示词：请基于原图制作微信小程序电商主图，输出尺寸 1200×1024px。保留商品真实外观、结构和颜色，主体完整居中，占画面约 65%～75%，四周保留安全留白；使用简洁、明亮、干净的电商背景，不添加品牌 Logo、水印、价格或未经提供的文字，不改变商品本身。确保主体在列表页 aspectFill 展示时不被裁掉，并兼顾详情页 aspectFit 完整显示。",
       "2. 下载成图时保留文件名前缀，可使用清单中的“GPT成图建议文件名”。",
       "3. 允许在编号后增加 _gpt、_final 等后缀，不要修改 MW-...__PID-... 编号。",
       "4. 将生成后的 JPG、PNG 或 WebP 图片压缩为一个 ZIP，再上传后台预览确认。",
@@ -2253,7 +2255,7 @@ async function previewMakerworldMainImageReplacements(zipPart) {
           matchedBy: match.matchedBy,
           width: metadata.width || null,
           height: metadata.height || null,
-          message: metadata.width && metadata.height && Math.abs(metadata.width / metadata.height - 1) > 0.1 ? "已匹配；图片不是接近1:1，将按原比例压缩" : "匹配成功"
+          message: makerworldProductMainImageSizeMessage(metadata.width, metadata.height)
         })
       } catch (error) {
         results.push({ entry, filename: path.posix.basename(entry), status: "invalid", productId: match.product.id, modelId: match.product.modelCandidateId, title: match.product.name, message: error.message || "图片校验失败" })

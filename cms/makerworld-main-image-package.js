@@ -2,6 +2,18 @@
 
 const path = require("path")
 
+const PRODUCT_MAIN_IMAGE_WIDTH = 1200
+const PRODUCT_MAIN_IMAGE_HEIGHT = 1024
+const PRODUCT_MAIN_IMAGE_RATIO = PRODUCT_MAIN_IMAGE_WIDTH / PRODUCT_MAIN_IMAGE_HEIGHT
+
+function productMainImageSizeMessage(width, height) {
+  if (!Number(width) || !Number(height)) return "匹配成功"
+  const ratioDifference = Math.abs(Number(width) / Number(height) - PRODUCT_MAIN_IMAGE_RATIO)
+  return ratioDifference > 0.06
+    ? `已匹配；建议使用 ${PRODUCT_MAIN_IMAGE_WIDTH}×${PRODUCT_MAIN_IMAGE_HEIGHT}px（约 1.17:1），当前图片会按原比例压缩`
+    : `匹配成功（符合 ${PRODUCT_MAIN_IMAGE_WIDTH}×${PRODUCT_MAIN_IMAGE_HEIGHT}px 展示比例）`
+}
+
 function safeToken(value, fallback = "unknown") {
   const token = String(value || "")
     .trim()
@@ -64,8 +76,12 @@ function manifestCsv(rows = []) {
 }
 
 module.exports = {
+  PRODUCT_MAIN_IMAGE_HEIGHT,
+  PRODUCT_MAIN_IMAGE_RATIO,
+  PRODUCT_MAIN_IMAGE_WIDTH,
   manifestCsv,
   matchReplacementFilename,
+  productMainImageSizeMessage,
   replacementFilename,
   replacementStem,
   safeToken

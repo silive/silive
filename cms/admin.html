@@ -1296,8 +1296,8 @@
       if (key === "imageUrl" || key === "posterUrl") {
         const isBanner = label.includes("Banner") || label.includes("海报")
         const isProductMainImage = label.includes("商品主图")
-        const sizeText = isBanner ? "Banner图：1200x500 像素，建议300KB以内" : "商品图：800x800 像素，建议300KB以内"
-        const productMainImageTip = isProductMainImage ? "<br>商品主图建议 800×800 像素，重要文字和主体距离边缘至少 80px，避免不同设备显示时被裁切。" : ""
+        const sizeText = isBanner ? "Banner图：1200x500 像素，建议300KB以内" : "商品图：1200x1024 像素，建议300KB以内"
+        const productMainImageTip = isProductMainImage ? "<br>商品主图建议 1200×1024 像素（约 1.17:1），对应小程序列表实际展示比例；主体完整居中并保留安全留白。" : ""
         const optimizationText = isProductMainImage ? "系统会在服务端自动压缩并保持兼容图片格式" : "系统会自动生成前台压缩图，原图仅作备份"
         return `<label>${label}
           <div class="upload-row">
@@ -2568,7 +2568,7 @@
         </div>
         <div class="drawer-pane" data-drawer-pane="media">
           <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
-          ${item.modelCandidateId ? `<div class="upload-help">导入商品仅保留一张主图。需要替换时可在上方上传，服务器会免费生成列表缩略图，不使用任何付费图片生成服务。</div>` : `${mediaManager("商品轮播图", "galleryImages", item.galleryImages, "image")}${mediaManager("商品视频（可选）", "videoUrl", item.videoUrl ? [item.videoUrl] : [], "video")}`}
+          ${item.modelCandidateId ? `<div class="upload-help">导入商品仅保留一张主图。建议上传 1200×1024px（约 1.17:1），与小程序列表主图比例一致；服务器会免费生成列表缩略图，不使用任何付费图片生成服务。</div>` : `${mediaManager("商品轮播图", "galleryImages", item.galleryImages, "image")}${mediaManager("商品视频（可选）", "videoUrl", item.videoUrl ? [item.videoUrl] : [], "video")}`}
         </div>
         <div class="drawer-pane" data-drawer-pane="detail">
           <div class="drawer-section"><h4>详情文字</h4><div class="form-grid">${field("详情文字说明", item.detailText, "detailText", "textarea")}</div></div>
