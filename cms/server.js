@@ -2368,6 +2368,14 @@ async function confirmMakerworldMainImageReplacements(token) {
       const oldImageUrl = product.imageUrl || ""
       const newImageUrl = `${PUBLIC_BASE_URL}/uploads/products/${optimized.filename}`
       product.imageUrl = newImageUrl
+      // All of these URLs are derived from imageUrl. Do not retain variants
+      // from the old source image after a successful replacement.
+      product.optimizedUrl = ""
+      product.thumbUrl = ""
+      product.listImage = ""
+      product.cartThumbUrl = ""
+      product.detailUrl = ""
+      product.webpUrl = ""
       product.galleryImages = []
       product.detailImages = []
       product.videoUrl = ""
@@ -2444,6 +2452,12 @@ async function rollbackMakerworldMainImageReplacement(batchId) {
       continue
     }
     product.imageUrl = change.oldImageUrl || ""
+    product.optimizedUrl = ""
+    product.thumbUrl = ""
+    product.listImage = ""
+    product.cartThumbUrl = ""
+    product.detailUrl = ""
+    product.webpUrl = ""
     restoredCount += 1
   }
   if (restoredCount) await saveProducts(products)

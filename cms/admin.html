@@ -243,17 +243,21 @@
       overflow: hidden;
     }
     .category-card.dragging, .secondary-row.dragging { opacity: .55; }
-    .makerworld-direct-grid { display: grid; gap: 16px; margin-top: 16px; }
-    .makerworld-direct-row { display: grid; grid-template-columns: 46px minmax(260px,1fr) 42px minmax(260px,1fr); gap: 16px; align-items: center; padding: 16px; border: 1px solid #f0d8c6; border-radius: 18px; background: #fff; }
+    .makerworld-direct-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(540px,1fr)); gap: 12px; margin-top: 12px; }
+    .makerworld-direct-row { display: grid; grid-template-columns: 32px minmax(0,1fr) 24px minmax(0,1fr); gap: 10px; align-items: center; padding: 12px; border: 1px solid #f0d8c6; border-radius: 14px; background: #fff; }
     .makerworld-direct-row.drag-over { border-color: #ff6a00; box-shadow: inset 0 0 0 2px rgba(255,106,0,.13); }
-    .makerworld-direct-order { font-size: 20px; font-weight: 900; color: #ff5a00; text-align: center; }
-    .makerworld-direct-item { min-width: 0; display: grid; gap: 9px; }
-    .makerworld-direct-item img { width: 100%; aspect-ratio: 1200 / 1024; object-fit: cover; border-radius: 15px; background: #f5f7fb; box-shadow: 0 8px 24px rgba(31,41,51,.08); }
-    .makerworld-direct-generated { cursor: grab; border: 2px dashed #ffb476; border-radius: 17px; padding: 10px; background: #fff8f0; }
+    .makerworld-direct-row.is-skipped { background: #f7f7f7; border-style: dashed; }
+    .makerworld-direct-row.is-skipped .makerworld-direct-item { opacity: .55; }
+    .makerworld-direct-order { font-size: 17px; font-weight: 900; color: #ff5a00; text-align: center; }
+    .makerworld-direct-item { min-width: 0; display: grid; gap: 5px; }
+    .makerworld-direct-item img { width: 100%; max-height: 150px; aspect-ratio: 1200 / 1024; object-fit: cover; border-radius: 10px; background: #f5f7fb; box-shadow: 0 4px 12px rgba(31,41,51,.08); }
+    .makerworld-direct-generated { cursor: grab; border: 2px dashed #ffb476; border-radius: 12px; padding: 7px; background: #fff8f0; }
     .makerworld-direct-generated.dragging { opacity: .45; }
-    .makerworld-direct-arrow { color: #ff6a00; font-size: 28px; font-weight: 900; text-align: center; }
-    .makerworld-direct-title { font-size: 15px; font-weight: 850; color: #1f2933; }
+    .makerworld-direct-arrow { color: #ff6a00; font-size: 21px; font-weight: 900; text-align: center; }
+    .makerworld-direct-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 850; color: #1f2933; }
     .makerworld-direct-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #687385; }
+    .makerworld-direct-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; min-height: 32px; }
+    .makerworld-direct-skip-note { margin-right: auto; color: #9a3412; font-size: 12px; font-weight: 700; }
     .category-card-head {
       display: grid;
       grid-template-columns: 28px minmax(180px, 1fr) 86px 96px auto;
@@ -520,9 +524,11 @@
       .drawer .form-grid { grid-template-columns: 1fr; }
       .drawer-actions { justify-content: stretch; }
       .drawer-actions button { flex: 1; }
-      .makerworld-direct-row { grid-template-columns: 36px minmax(0,1fr); }
+      .makerworld-direct-grid { grid-template-columns: 1fr; }
+      .makerworld-direct-row { grid-template-columns: 30px minmax(0,1fr); }
       .makerworld-direct-arrow { transform: rotate(90deg); }
       .makerworld-direct-item, .makerworld-direct-arrow { grid-column: 2; }
+      .makerworld-direct-actions { grid-column: 1 / -1; }
     }
   </style>
 </head>
@@ -2121,7 +2127,7 @@
           <tr class="${selectedProducts.has(index) ? "selected" : ""}">
             <td><input class="product-select" type="checkbox" data-select-product="${index}" ${selectedProducts.has(index) ? "checked" : ""}></td>
             <td><img class="table-image" src="${escapeHtml(item.imageUrl || "")}" alt=""></td>
-            <td><div class="table-title">${escapeHtml(item.name || "未命名商品")}</div><div class="table-sub">${escapeHtml(item.intro || item.id || "")}</div></td>
+            <td><div class="table-title">${escapeHtml(item.name || "未命名商品")}</div><div class="table-sub">${escapeHtml(item.intro || "")}</div><div class="table-sub">商品 ${escapeHtml(item.id || "-")}${item.modelCandidateId ? ` · MakerWorld ${escapeHtml(item.modelCandidateId)}` : ""}</div></td>
             <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
             <td><strong>${formatMoney(item.price)}</strong></td>
             <td><span class="pill">${productStatusText(item.status)}</span>${isApprovedImportedProduct(item) ? `<span class="mini-tag">${escapeHtml(importSourceText(item))}导入</span>` : ""}</td>
@@ -2407,7 +2413,7 @@
       }
       const canConfirm = report.token && Number(report.matchedCount || 0) > 0
       box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>导入商品主图替换预览</h3><div class="upload-help">共 ${Number(report.submittedCount || report.results?.length || 0)} 张，匹配 ${Number(report.matchedCount ?? report.replacedCount ?? 0)} 张，异常 ${Number(report.failedCount || 0)} 张。只有匹配成功的图片会被替换。</div></div><div class="table-actions">${canConfirm ? `<button class="primary" data-action="confirm-makerworld-main-images">确认批量替换</button>` : ""}${report.batchId ? `<button class="secondary" data-action="rollback-makerworld-main-images" data-batch-id="${escapeHtml(report.batchId)}">撤销本批替换</button>` : ""}</div></div>
-        <div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>文件名</th><th>商品</th><th>模型 ID</th><th>尺寸</th><th>状态</th><th>说明</th></tr></thead><tbody>${(report.results || []).map(item => `<tr><td>${escapeHtml(item.filename || "-")}</td><td>${escapeHtml(item.title || item.productId || "-")}</td><td>${escapeHtml(item.modelId || "-")}</td><td>${item.width && item.height ? `${item.width}×${item.height}` : "-"}</td><td><span class="pill">${escapeHtml(makerworldMainImageStatusText(item.status))}</span></td><td>${escapeHtml(item.message || "-")}</td></tr>`).join("")}</tbody></table></div></div>`
+        <div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>替换图</th><th>文件名</th><th>商品 / 商品 ID</th><th>模型 ID</th><th>尺寸</th><th>状态</th><th>说明</th></tr></thead><tbody>${(report.results || []).map(item => `<tr><td>${item.imageUrl ? `<img class="table-image" src="${escapeHtml(item.imageUrl)}" alt="替换后的主图">` : "-"}</td><td>${escapeHtml(item.filename || "-")}</td><td>${escapeHtml(item.title || item.productId || "-")}<div class="table-sub">${escapeHtml(item.productId || "-")}</div></td><td>${escapeHtml(item.modelId || "-")}</td><td>${item.width && item.height ? `${item.width}×${item.height}` : "-"}</td><td><span class="pill">${escapeHtml(makerworldMainImageStatusText(item.status))}</span></td><td>${escapeHtml(item.message || "-")}</td></tr>`).join("")}</tbody></table></div></div>`
     }
     async function downloadMakerworldMainImages(button) {
       const ids = selectedProductIndexes().map(index => products[index]).filter(item => item?.modelCandidateId).map(item => item.id)
@@ -2447,14 +2453,17 @@
       const box = $("makerworldMainImageReplaceResult")
       const draft = makerworldDirectImageDraft
       if (!box || !draft) return
-      box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>核对 GPT 成图顺序</h3><div class="upload-help">左侧是原商品图，右侧是 GPT 成图。缩略图按大图展示；如果对应错误，直接拖动右侧成图到正确行，再上传预览。</div></div><div class="table-actions"><button class="primary" data-action="upload-makerworld-direct-images">按当前顺序上传预览</button><button class="secondary" data-action="cancel-makerworld-direct-images">取消</button></div></div>
+      const skippedCount = draft.targets.filter(target => draft.skippedTargetIds?.has(String(target.id))).length
+      box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>核对 GPT 成图顺序</h3><div class="upload-help">紧凑缩略图可同时核对多组；对应错误时拖动右侧成图。没有正确成图的商品点“跳过”，本次不会替换。</div></div><div class="table-actions"><span class="table-sub">替换 ${draft.targets.length - skippedCount} 个 · 跳过 ${skippedCount} 个</span><button class="primary" data-action="upload-makerworld-direct-images">按当前顺序上传预览</button><button class="secondary" data-action="cancel-makerworld-direct-images">取消</button></div></div>
         <div class="makerworld-direct-grid">${draft.targets.map((target, index) => {
           const generated = draft.images[index]
-          return `<div class="makerworld-direct-row" data-direct-target-index="${index}">
+          const skipped = draft.skippedTargetIds?.has(String(target.id))
+          return `<div class="makerworld-direct-row ${skipped ? "is-skipped" : ""}" data-direct-target-index="${index}">
             <div class="makerworld-direct-order">${index + 1}</div>
             <div class="makerworld-direct-item"><div class="makerworld-direct-title">原商品：${escapeHtml(target.name || target.id)}</div><img src="${escapeHtml(target.imageUrl || "")}" alt="${escapeHtml(target.name || "原商品图")}"><div class="makerworld-direct-name">${escapeHtml(target.modelCandidateId || target.id)}</div></div>
             <div class="makerworld-direct-arrow">→</div>
             <div class="makerworld-direct-item makerworld-direct-generated" draggable="true" data-direct-image-index="${index}" title="拖动此图调整顺序"><div class="makerworld-direct-title">GPT 成图（可拖动）</div><img src="${escapeHtml(generated.previewUrl)}" alt="${escapeHtml(generated.file.name)}"><div class="makerworld-direct-name">${escapeHtml(generated.file.name)}</div></div>
+            <div class="makerworld-direct-actions">${skipped ? `<span class="makerworld-direct-skip-note">本次不替换此商品</span>` : ""}<button class="${skipped ? "secondary" : "danger"}" data-action="toggle-makerworld-direct-skip" data-target-id="${escapeHtml(target.id)}">${skipped ? "恢复替换" : "跳过此商品"}</button></div>
           </div>`
         }).join("")}</div></div>`
       box.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -2478,7 +2487,8 @@
       clearMakerworldDirectImageDraft()
       makerworldDirectImageDraft = {
         targets,
-        images: list.map(file => ({ file, previewUrl: URL.createObjectURL(file) }))
+        images: list.map(file => ({ file, previewUrl: URL.createObjectURL(file) })),
+        skippedTargetIds: new Set()
       }
       renderMakerworldDirectImageDraft()
       setStatus(`已载入 ${list.length} 张 GPT 成图，请检查并拖动调整顺序`)
@@ -2496,9 +2506,12 @@
     async function uploadMakerworldDirectImages(button) {
       const draft = makerworldDirectImageDraft
       if (!draft || draft.targets.length !== draft.images.length) throw new Error("请重新选择商品和 GPT 成图")
+      const activePairs = draft.targets.map((target, index) => ({ target, image: draft.images[index] }))
+        .filter(({ target }) => !draft.skippedTargetIds?.has(String(target.id)))
+      if (!activePairs.length) throw new Error("所有商品都已跳过，请至少恢复一个商品后再上传")
       await withButtonLoading(button, "正在上传...", async () => {
         const form = new FormData()
-        draft.targets.forEach((target, index) => form.append(`image__${target.id}`, draft.images[index].file, draft.images[index].file.name))
+        activePairs.forEach(({ target, image }) => form.append(`image__${target.id}`, image.file, image.file.name))
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), 120000)
         try {
@@ -2514,7 +2527,8 @@
           clearMakerworldDirectImageDraft()
           renderMakerworldMainImageResult()
           $("makerworldMainImageReplaceResult")?.scrollIntoView({ behavior: "smooth", block: "start" })
-          setStatus(`成图上传完成：匹配 ${makerworldMainImagePreview.matchedCount || 0}，异常 ${makerworldMainImagePreview.failedCount || 0}`)
+          const skippedCount = draft.targets.length - activePairs.length
+          setStatus(`成图上传完成：匹配 ${makerworldMainImagePreview.matchedCount || 0}，跳过 ${skippedCount}，异常 ${makerworldMainImagePreview.failedCount || 0}`)
         } catch (error) {
           if (error.name === "AbortError") throw new Error("GPT 成图上传超时，请检查网络后重试")
           showMakerworldMainImageUploadError(error)
@@ -4426,6 +4440,16 @@
       }
       if (event.target.dataset.action === "upload-makerworld-direct-images") {
         uploadMakerworldDirectImages(event.target).catch(error => showMakerworldMainImageUploadError(error))
+      }
+      if (event.target.dataset.action === "toggle-makerworld-direct-skip") {
+        const targetId = String(event.target.dataset.targetId || "")
+        const skipped = makerworldDirectImageDraft?.skippedTargetIds
+        if (targetId && skipped) {
+          if (skipped.has(targetId)) skipped.delete(targetId)
+          else skipped.add(targetId)
+          renderMakerworldDirectImageDraft()
+          setStatus(skipped.has(targetId) ? "已跳过该商品，本次不会替换" : "已恢复该商品的主图替换")
+        }
       }
       if (event.target.dataset.action === "cancel-makerworld-direct-images") {
         clearMakerworldDirectImageDraft()

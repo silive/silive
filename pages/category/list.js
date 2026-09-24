@@ -220,6 +220,11 @@ Page({
   onShow() {
     applyTheme(this)
     this.loadCartCount()
+    // onShow also runs immediately after onLoad. Refresh only when returning
+    // to an already displayed list so backend image replacements are visible.
+    if (this.data.loaded && (!this.lastProductsLoadAt || Date.now() - this.lastProductsLoadAt > 1000)) {
+      this.loadProducts(this.data.primary, this.data.secondary, this.data.ids)
+    }
   },
 
   loadCartCount() {
@@ -234,6 +239,7 @@ Page({
   },
 
   loadProducts(primary, secondary = "全部", ids = "") {
+    this.lastProductsLoadAt = Date.now()
     this.setData({ loading: true, loaded: false })
     Promise.all([
       request(`/api/home?t=${Date.now()}`, { timeout: 8000 }),

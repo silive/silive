@@ -189,6 +189,9 @@ Page({
         detailImagesExpanded: false
       })
       this.rememberShareProduct(product)
+      // The navigation payload is only an instant placeholder. Refresh from
+      // the API so a recently replaced main image is not kept on screen.
+      if (product.id) this.loadProduct(product.id)
       return
     }
     if (options.id || sceneProductId) {
