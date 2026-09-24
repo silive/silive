@@ -390,6 +390,9 @@
     .dense-table tr:hover td { background: #FFF7EF; }
     .dense-table input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
     .table-image { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; background: linear-gradient(135deg, #f4b7ae, #272322); border: 1px solid #FFD9BF; display: block; }
+    .image-hover-preview { position: fixed; z-index: 10000; display: none; width: 360px; padding: 8px; border: 1px solid #ffb476; border-radius: 14px; background: #fff; box-shadow: 0 18px 48px rgba(31,41,51,.24); pointer-events: none; }
+    .image-hover-preview.show { display: block; }
+    .image-hover-preview img { display: block; width: 100%; max-height: 360px; aspect-ratio: 1200 / 1024; border-radius: 9px; object-fit: contain; background: #f5f7fb; }
     .lead-photo-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 116px; }
     .lead-photo-list img { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 1px solid #FFD9BF; background: #FFF9F3; display: block; }
     .lead-address-cell { min-width: 220px; max-width: 320px; line-height: 1.5; }
@@ -1038,6 +1041,7 @@
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
     let makerworldMainImagePreview = null
+    let makerworldMainImageResultExpanded = false
     let makerworldDirectImageDraft = null
     let makerworldDirectTargetIds = []
     let categorySearch = ""
@@ -2125,7 +2129,7 @@
         <tbody>${filtered.map(({ item, index }) => `
           <tr class="${selectedProducts.has(index) ? "selected" : ""}">
             <td><input class="product-select" type="checkbox" data-select-product="${index}" ${selectedProducts.has(index) ? "checked" : ""}></td>
-            <td><img class="table-image" src="${escapeHtml(item.imageUrl || "")}" alt=""></td>
+            <td><img class="table-image" data-hover-preview src="${escapeHtml(item.imageUrl || "")}" alt="${escapeHtml(item.name || "商品主图")}"></td>
             <td><div class="table-title">${escapeHtml(item.name || "未命名商品")}</div><div class="table-sub">${escapeHtml(item.intro || "")}</div><div class="table-sub">商品 ${escapeHtml(item.id || "-")}${item.modelCandidateId ? ` · MakerWorld ${escapeHtml(item.modelCandidateId)}` : ""}</div></td>
             <td><div class="category-tags">${compactCategories(item.categories).slice(0, 3).map(category => `<span class="mini-tag">${escapeHtml(category)}</span>`).join("")}</div></td>
             <td><strong>${formatMoney(item.price)}</strong></td>
@@ -2411,8 +2415,12 @@
         return
       }
       const canConfirm = report.token && Number(report.matchedCount || 0) > 0
-      box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>导入商品主图替换预览</h3><div class="upload-help">共 ${Number(report.submittedCount || report.results?.length || 0)} 张，匹配 ${Number(report.matchedCount ?? report.replacedCount ?? 0)} 张，异常 ${Number(report.failedCount || 0)} 张。只有匹配成功的图片会被替换。</div></div><div class="table-actions">${canConfirm ? `<button class="primary" data-action="confirm-makerworld-main-images">确认批量替换</button>` : ""}${report.batchId ? `<button class="secondary" data-action="rollback-makerworld-main-images" data-batch-id="${escapeHtml(report.batchId)}">撤销本批替换</button>` : ""}</div></div>
-        <div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>替换图</th><th>文件名</th><th>商品 / 商品 ID</th><th>模型 ID</th><th>尺寸</th><th>状态</th><th>说明</th></tr></thead><tbody>${(report.results || []).map(item => `<tr><td>${item.imageUrl ? `<img class="table-image" src="${escapeHtml(item.imageUrl)}" alt="替换后的主图">` : "-"}</td><td>${escapeHtml(item.filename || "-")}</td><td>${escapeHtml(item.title || item.productId || "-")}<div class="table-sub">${escapeHtml(item.productId || "-")}</div></td><td>${escapeHtml(item.modelId || "-")}</td><td>${item.width && item.height ? `${item.width}×${item.height}` : "-"}</td><td><span class="pill">${escapeHtml(makerworldMainImageStatusText(item.status))}</span></td><td>${escapeHtml(item.message || "-")}</td></tr>`).join("")}</tbody></table></div></div>`
+      if (report.batchId && !makerworldMainImageResultExpanded) {
+        box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>主图替换已完成</h3><div class="upload-help">成功 ${Number(report.replacedCount || 0)} 张，失败 ${Number(report.failedCount || 0)} 张。结果已收起，不影响继续操作商品列表。</div></div><div class="table-actions"><button class="secondary" data-action="expand-makerworld-main-image-result">查看详情</button><button class="secondary" data-action="rollback-makerworld-main-images" data-batch-id="${escapeHtml(report.batchId)}">撤销本批替换</button><button class="secondary" data-action="close-makerworld-main-image-result">关闭</button></div></div></div>`
+        return
+      }
+      box.innerHTML = `<div class="panel"><div class="item-head"><div><h3>导入商品主图替换预览</h3><div class="upload-help">共 ${Number(report.submittedCount || report.results?.length || 0)} 张，匹配 ${Number(report.matchedCount ?? report.replacedCount ?? 0)} 张，异常 ${Number(report.failedCount || 0)} 张。只有匹配成功的图片会被替换。</div></div><div class="table-actions">${canConfirm ? `<button class="primary" data-action="confirm-makerworld-main-images">确认批量替换</button>` : ""}${report.batchId ? `<button class="secondary" data-action="collapse-makerworld-main-image-result">收起详情</button><button class="secondary" data-action="rollback-makerworld-main-images" data-batch-id="${escapeHtml(report.batchId)}">撤销本批替换</button><button class="secondary" data-action="close-makerworld-main-image-result">关闭</button>` : ""}</div></div>
+        <div class="dense-table-wrap"><table class="dense-table"><thead><tr><th>替换图</th><th>文件名</th><th>商品 / 商品 ID</th><th>模型 ID</th><th>尺寸</th><th>状态</th><th>说明</th></tr></thead><tbody>${(report.results || []).map(item => `<tr><td>${item.imageUrl ? `<img class="table-image" data-hover-preview src="${escapeHtml(item.imageUrl)}" alt="替换后的主图">` : "-"}</td><td>${escapeHtml(item.filename || "-")}</td><td>${escapeHtml(item.title || item.productId || "-")}<div class="table-sub">${escapeHtml(item.productId || "-")}</div></td><td>${escapeHtml(item.modelId || "-")}</td><td>${item.width && item.height ? `${item.width}×${item.height}` : "-"}</td><td><span class="pill">${escapeHtml(makerworldMainImageStatusText(item.status))}</span></td><td>${escapeHtml(item.message || "-")}</td></tr>`).join("")}</tbody></table></div></div>`
     }
     async function downloadMakerworldMainImages(button) {
       const ids = selectedProductIndexes().map(index => products[index]).filter(item => item?.modelCandidateId).map(item => item.id)
@@ -2606,6 +2614,7 @@
       await withButtonLoading(button, "替换中...", async () => {
         const report = await api("/api/admin/makerworld/main-image-replacements/confirm", "POST", { token: makerworldMainImagePreview.token }, 180000)
         makerworldMainImagePreview = report
+        makerworldMainImageResultExpanded = false
         await loadAll()
         renderMakerworldMainImageResult(report)
         setStatus(`主图批量替换完成：成功 ${report.replacedCount || 0}，失败 ${report.failedCount || 0}`)
@@ -4507,6 +4516,19 @@
       if (event.target.dataset.action === "confirm-makerworld-main-images") {
         confirmMakerworldMainImages(event.target).catch(error => setStatus(error.message || "主图替换失败"))
       }
+      if (event.target.dataset.action === "expand-makerworld-main-image-result") {
+        makerworldMainImageResultExpanded = true
+        renderMakerworldMainImageResult()
+      }
+      if (event.target.dataset.action === "collapse-makerworld-main-image-result") {
+        makerworldMainImageResultExpanded = false
+        renderMakerworldMainImageResult()
+      }
+      if (event.target.dataset.action === "close-makerworld-main-image-result") {
+        makerworldMainImagePreview = null
+        makerworldMainImageResultExpanded = false
+        renderMakerworldMainImageResult()
+      }
       if (event.target.dataset.action === "rollback-makerworld-main-images") {
         rollbackMakerworldMainImages(event.target).catch(error => setStatus(error.message || "撤销主图替换失败"))
       }
@@ -4867,6 +4889,35 @@
       if (event.target.closest("#subview-activityManager, #subview-relationManager")) markPageDirty("marketing")
       if (event.target.closest("#view-settings")) markPageDirty("settings")
     })
+    const imageHoverPreview = document.createElement("div")
+    imageHoverPreview.className = "image-hover-preview"
+    const imageHoverPreviewImg = document.createElement("img")
+    imageHoverPreviewImg.alt = "商品主图放大预览"
+    imageHoverPreview.appendChild(imageHoverPreviewImg)
+    document.body.appendChild(imageHoverPreview)
+    function positionImageHoverPreview(event) {
+      const width = 378
+      const height = 390
+      const gap = 16
+      const left = event.clientX + gap + width > window.innerWidth ? event.clientX - width - gap : event.clientX + gap
+      const top = event.clientY + gap + height > window.innerHeight ? Math.max(10, window.innerHeight - height - 10) : event.clientY + gap
+      imageHoverPreview.style.left = `${Math.max(10, left)}px`
+      imageHoverPreview.style.top = `${Math.max(10, top)}px`
+    }
+    document.body.addEventListener("mouseover", event => {
+      const image = event.target.closest("img[data-hover-preview]")
+      if (!image?.src) return
+      imageHoverPreviewImg.src = image.currentSrc || image.src
+      imageHoverPreview.classList.add("show")
+      positionImageHoverPreview(event)
+    })
+    document.body.addEventListener("mousemove", event => {
+      if (imageHoverPreview.classList.contains("show")) positionImageHoverPreview(event)
+    })
+    document.body.addEventListener("mouseout", event => {
+      if (event.target.closest("img[data-hover-preview]")) imageHoverPreview.classList.remove("show")
+    })
+    window.addEventListener("scroll", () => imageHoverPreview.classList.remove("show"), true)
     window.addEventListener("beforeunload", event => {
       if (!pageDirtyViews.size) return
       event.preventDefault()
