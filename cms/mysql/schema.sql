@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS products (
   badge VARCHAR(30),
   cover VARCHAR(30),
   image_url VARCHAR(500),
+  model_print_metadata JSON,
   gallery_images JSON,
   video_url VARCHAR(500),
   detail_images JSON,

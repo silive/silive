@@ -1,6 +1,7 @@
 "use strict"
 
 const crypto = require("crypto")
+const { calculatePrice } = require("./makerworld-pricing")
 
 function text(value) {
   return String(value == null ? "" : value).trim()
@@ -94,6 +95,7 @@ function normalizeCandidate(candidate = {}) {
     attribution: text(candidate.attribution) || [title, author, sourceUrl, licenseCode].filter(Boolean).join(" · "),
     imageUrl,
     galleryImages: (Array.isArray(candidate.galleryImages) ? candidate.galleryImages : []).map(text).filter(Boolean).slice(0, 9),
+    modelPrintMetadata: candidate.modelPrintMetadata && typeof candidate.modelPrintMetadata === "object" ? { ...candidate.modelPrintMetadata } : null,
     score: candidateScore(candidate),
     rawMetrics: candidate.metrics && typeof candidate.metrics === "object" ? candidate.metrics : {}
   }
@@ -116,12 +118,19 @@ function stableProductId(modelId) {
 function buildProduct(candidate, options = {}) {
   const decision = importDecision(candidate)
   const item = decision.candidate
+  const priceCalculation = calculatePrice(item.modelPrintMetadata, options.pricing)
+  const modelPrintMetadata = item.modelPrintMetadata ? {
+    ...item.modelPrintMetadata,
+    autoPriced: !!priceCalculation,
+    calculatedPrice: priceCalculation?.price || "",
+    priceCalculation
+  } : null
   return {
     id: stableProductId(item.modelId || item.sourceUrl),
     name: (item.title || `MakerWorld 模型 ${item.modelId}`).slice(0, 100),
     intro: item.summary.slice(0, 255),
     detailText: item.summary.slice(0, 30000),
-    price: String(options.defaultPrice || "0"),
+    price: String(priceCalculation?.price || options.defaultPrice || "0"),
     costPrice: String(options.defaultCostPrice || "0"),
     badge: "new",
     cover: "keyring",
@@ -132,8 +141,8 @@ function buildProduct(candidate, options = {}) {
     productType: "normal",
     categories: options.categories || ["3D打印"],
     status: "off",
-    stock: String(options.defaultStock || "0"),
-    stockMode: "unlimited",
+    stock: String(options.defaultStock == null ? "100" : options.defaultStock),
+    stockMode: "FINITE",
     isHot: "false",
     promotionHot: "false",
     rewardEnabled: "false",
@@ -158,6 +167,7 @@ function buildProduct(candidate, options = {}) {
     modelImportedAt: text(candidate.importedAt) || new Date().toISOString(),
     modelInfoStatus: text(candidate.infoStatus) || "complete",
     modelInfoNote: text(candidate.infoNote),
+    modelPrintMetadata,
     sortOrder: String(options.sortOrder || 999)
   }
 }
@@ -187,13 +197,18 @@ function planSync(payload, existingProducts = [], options = {}) {
     const existing = existingByCandidate.get(candidate.modelId)
     if (existing) {
       const shouldEnrichMetadata = String(existing.modelInfoStatus || "").toLowerCase() !== "complete" ||
-        !text(existing.imageUrl) || /^MakerWorld 模型 \d+$/i.test(text(existing.name))
+        !text(existing.imageUrl) || !existing.modelPrintMetadata || /^MakerWorld 模型 \d+$/i.test(text(existing.name))
+      const shouldAutoPrice = generated.modelPrintMetadata?.autoPriced &&
+        (Number(existing.price || 0) <= 0 || existing.modelPrintMetadata?.autoPriced)
       products.push({
         ...existing,
         name: shouldEnrichMetadata && generated.name ? generated.name : existing.name,
         intro: shouldEnrichMetadata && generated.intro ? generated.intro : existing.intro,
         detailText: shouldEnrichMetadata && generated.detailText ? generated.detailText : existing.detailText,
-        imageUrl: shouldEnrichMetadata && generated.imageUrl ? generated.imageUrl : existing.imageUrl,
+        imageUrl: !text(existing.imageUrl) && generated.imageUrl ? generated.imageUrl : existing.imageUrl,
+        price: shouldAutoPrice ? generated.price : existing.price,
+        stock: Number(existing.stock || 0) > 0 ? existing.stock : generated.stock,
+        stockMode: Number(existing.stock || 0) > 0 ? existing.stockMode : generated.stockMode,
         galleryImages: [],
         detailImages: [],
         videoUrl: "",
@@ -212,6 +227,7 @@ function planSync(payload, existingProducts = [], options = {}) {
         modelFetchedAt: generated.modelFetchedAt,
         modelInfoStatus: generated.modelInfoStatus,
         modelInfoNote: generated.modelInfoNote,
+        modelPrintMetadata: generated.modelPrintMetadata || existing.modelPrintMetadata || null,
         modelAuthorizationStatus: existing.modelAuthorizationStatus || "pending_review",
         modelAuthorizationNote: existing.modelAuthorizationNote || "",
         status: existing.modelAuthorizationStatus === "approved" ? existing.status : "off"

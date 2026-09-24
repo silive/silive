@@ -83,6 +83,7 @@ const {
   planSync: planMakerWorldSync
 } = require("./makerworld-catalog-sync")
 const { parseMakerWorldApiDesign, parseMakerWorldHtml, prepareBatchInput } = require("./makerworld-batch-import")
+const { calculatePrice: calculateMakerworldPrice, normalizePricingSettings: normalizeMakerworldPricingSettings } = require("./makerworld-pricing")
 const {
   FALLBACK_CATEGORIES: MAKERWORLD_RANKING_FALLBACK_CATEGORIES,
   RANKING_SORTS: MAKERWORLD_RANKING_SORTS,
@@ -205,6 +206,7 @@ let refundSyncWorkerRunning = false
 let refundSyncWorkerTimer = null
 let makerworldSyncWorkerRunning = false
 let makerworldImportWorkerRunning = false
+let makerworldPricingSettingsCache = normalizeMakerworldPricingSettings({})
 let makerworldSyncWorkerTimer = null
 let makerworldAvailabilityWorkerRunning = false
 let makerworldAvailabilityWorkerTimer = null
@@ -614,7 +616,7 @@ function requestJson(url, options = {}, body = "") {
   })
 }
 
-function makerworldSyncConfig() {
+function makerworldSyncConfig(pricingValue = makerworldPricingSettingsCache) {
   const feedUrl = String(process.env.MAKERWORLD_FEED_URL || "").trim()
   const allowedHosts = String(process.env.MAKERWORLD_FEED_ALLOWED_HOSTS || "makerworld.com.cn")
     .split(",").map(item => item.trim().toLowerCase()).filter(Boolean)
@@ -627,6 +629,7 @@ function makerworldSyncConfig() {
       feedReady = parsed.protocol === "https:" && allowedHosts.some(host => feedHost === host || feedHost.endsWith(`.${host}`))
     } catch (error) {}
   }
+  const pricing = normalizeMakerworldPricingSettings(pricingValue)
   return {
     enabled: MAKERWORLD_SYNC_ENABLED,
     feedConfigured: !!feedUrl,
@@ -637,7 +640,8 @@ function makerworldSyncConfig() {
     limit: Math.max(1, Math.min(Number(process.env.MAKERWORLD_SYNC_LIMIT || 20), 100)),
     defaultPrice: String(process.env.MAKERWORLD_DEFAULT_PRICE || "0"),
     defaultCostPrice: String(process.env.MAKERWORLD_DEFAULT_COST_PRICE || "0"),
-    defaultStock: String(process.env.MAKERWORLD_DEFAULT_STOCK || "0")
+    defaultStock: String(pricing.defaultStock ?? process.env.MAKERWORLD_DEFAULT_STOCK ?? "100"),
+    pricing
   }
 }
 
@@ -799,7 +803,7 @@ async function fetchMakerworldCandidate(normalized, submittedUrl) {
     })
     const designPayload = response.data?.data && typeof response.data.data === "object" ? response.data.data : response.data
     if (response.statusCode >= 200 && response.statusCode < 300 && designPayload && typeof designPayload === "object" && String(designPayload.id || "") === String(normalized.modelId)) {
-      const parsed = parseMakerWorldApiDesign(response.data, normalized.canonicalUrl)
+      const parsed = parseMakerWorldApiDesign(response.data, normalized.canonicalUrl, submittedUrl)
       const missing = []
       if (!parsed.title) missing.push("标题待补全")
       if (!parsed.imageUrl) missing.push("图片待补全")
@@ -902,25 +906,34 @@ async function getMakerworldImportBatches(limit = 10) {
 function makerworldProductNeedsMetadata(product = {}) {
   return String(product.modelInfoStatus || "").toLowerCase() !== "complete" ||
     !String(product.imageUrl || "").trim() ||
+    !product.modelPrintMetadata ||
     /^MakerWorld 模型 \d+$/i.test(String(product.name || "").trim())
 }
 
 function refreshMakerworldProductMetadata(product, candidate, config) {
   const generated = buildMakerWorldProduct(candidate, config)
+  const wasAutoPriced = !!product.modelPrintMetadata?.autoPriced
   if (candidate.title) product.name = generated.name
   if (candidate.summary) {
     product.intro = generated.intro
     product.detailText = generated.detailText
   }
-  if (generated.imageUrl) product.imageUrl = generated.imageUrl
+  if (generated.imageUrl && !String(product.imageUrl || "").trim()) product.imageUrl = generated.imageUrl
   product.galleryImages = []
   product.detailImages = []
   product.videoUrl = ""
   for (const key of [
     "modelSourcePlatform", "modelSourceUrl", "modelSourceOriginalUrl", "modelAuthorName", "modelAuthorId",
     "modelAuthorUrl", "modelLicenseCode", "modelLicenseRaw", "modelLicenseUrl", "modelAttribution",
-    "modelSyncScore", "modelSyncedAt", "modelFetchedAt", "modelInfoStatus", "modelInfoNote"
+    "modelSyncScore", "modelSyncedAt", "modelFetchedAt", "modelInfoStatus", "modelInfoNote", "modelPrintMetadata"
   ]) product[key] = generated[key]
+  if (generated.modelPrintMetadata?.autoPriced && (Number(product.price || 0) <= 0 || wasAutoPriced)) {
+    product.price = generated.price
+  }
+  if (Number(product.stock || 0) <= 0) {
+    product.stock = String(config.defaultStock || 100)
+    product.stockMode = "FINITE"
+  }
   product.status = product.modelAuthorizationStatus === "approved" ? product.status : "off"
   return product
 }
@@ -1068,7 +1081,8 @@ async function reviewMakerworldProduct(productId, decision, note = "") {
 
 async function runMakerworldCatalogSync() {
   if (makerworldSyncWorkerRunning || makerworldImportWorkerRunning || makerworldAvailabilityWorkerRunning) throw httpError(409, "MakerWorld 导入、同步或来源检查任务正在进行")
-  const config = makerworldSyncConfig()
+  const settings = await getSettings()
+  const config = makerworldSyncConfig(settings.makerworldPricing)
   if (!config.feedConfigured) throw httpError(400, "尚未配置 MAKERWORLD_FEED_URL 数据源")
   if (!config.feedReady) throw httpError(400, "MakerWorld 数据源必须使用 HTTPS，且域名需在 MAKERWORLD_FEED_ALLOWED_HOSTS 白名单中")
   makerworldSyncWorkerRunning = true
@@ -3489,6 +3503,9 @@ function normalizeProduct(product, index) {
     modelImportedAt: product.modelImportedAt || product.model_imported_at || "",
     modelInfoStatus: product.modelInfoStatus || product.model_info_status || "",
     modelInfoNote: product.modelInfoNote || product.model_info_note || "",
+    modelPrintMetadata: product.modelPrintMetadata && typeof product.modelPrintMetadata === "object"
+      ? product.modelPrintMetadata
+      : parseJsonValue(product.model_print_metadata, null),
     sort: String(sortOrder),
     sortOrder: String(sortOrder)
   }
@@ -4833,6 +4850,7 @@ async function getProducts() {
     modelImportedAt: row.model_imported_at || "",
     modelInfoStatus: row.model_info_status || "",
     modelInfoNote: row.model_info_note || "",
+    modelPrintMetadata: parseJsonValue(row.model_print_metadata, null),
     sortOrder: String(row.sort_order || "0")
     }
     const normalized = normalizeProduct(product, index)
@@ -5972,7 +5990,14 @@ async function getSalesAgentSummary(filters = {}) {
 }
 
 async function saveProducts(products) {
-  const list = products.map(normalizeProduct).sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999))
+  const list = products.map(product => {
+    const next = { ...product }
+    if (next.modelPrintMetadata?.autoPriced && next.modelPrintMetadata.calculatedPrice &&
+      Math.abs(Number(next.price || 0) - Number(next.modelPrintMetadata.calculatedPrice || 0)) > 0.001) {
+      next.modelPrintMetadata = { ...next.modelPrintMetadata, autoPriced: false }
+    }
+    return normalizeProduct(next)
+  }).sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999))
   const rewardList = list.map(product => ({
     id: product.id,
     productId: product.id,
@@ -6018,7 +6043,7 @@ async function saveProducts(products) {
            model_source_original_url, model_author_name, model_author_id, model_author_url,
            model_license_code, model_license_raw, model_license_url, model_attribution,
            model_authorization_status, model_authorization_note, model_sync_score, model_synced_at,
-           model_fetched_at, model_imported_at, model_info_status, model_info_note,
+           model_fetched_at, model_imported_at, model_info_status, model_info_note, model_print_metadata,
            inventory_version)
          VALUES
           (:id, :name, :intro, :price, :costPrice, :badge, :cover, :imageUrl, :galleryImagesJson,
@@ -6028,7 +6053,7 @@ async function saveProducts(products) {
            :modelSourceUrl, :modelSourceOriginalUrl, :modelAuthorName, :modelAuthorId, :modelAuthorUrl,
            :modelLicenseCode, :modelLicenseRaw, :modelLicenseUrl, :modelAttribution,
            :modelAuthorizationStatus, :modelAuthorizationNote, :modelSyncScore, :modelSyncedAt,
-           :modelFetchedAt, :modelImportedAt, :modelInfoStatus, :modelInfoNote,
+           :modelFetchedAt, :modelImportedAt, :modelInfoStatus, :modelInfoNote, :modelPrintMetadataJson,
            :inventoryVersion)
          ON DUPLICATE KEY UPDATE
            name=VALUES(name), intro=VALUES(intro), price=VALUES(price), cost_price=VALUES(cost_price),
@@ -6053,11 +6078,13 @@ async function saveProducts(products) {
            model_sync_score=VALUES(model_sync_score), model_synced_at=VALUES(model_synced_at),
            model_fetched_at=VALUES(model_fetched_at), model_imported_at=VALUES(model_imported_at),
            model_info_status=VALUES(model_info_status), model_info_note=VALUES(model_info_note),
+           model_print_metadata=VALUES(model_print_metadata),
            inventory_version=VALUES(inventory_version)`,
         {
           ...product,
           galleryImagesJson: JSON.stringify(product.galleryImages || []),
           detailImagesJson: JSON.stringify(product.detailImages || []),
+          modelPrintMetadataJson: product.modelPrintMetadata ? JSON.stringify(product.modelPrintMetadata) : null,
           categoriesJson: JSON.stringify(product.categories || []),
           sortOrder: Number(product.sortOrder || index)
         }
@@ -10764,9 +10791,12 @@ async function getPromotionSummary(phone) {
 async function getSettings() {
   const normalize = settings => {
     const categoryCatalog = updateActiveCategoryTree(settings.categoryCatalog)
+    const makerworldPricing = normalizeMakerworldPricingSettings(settings.makerworldPricing)
+    makerworldPricingSettingsCache = makerworldPricing
     return {
       ...settings,
       categoryCatalog,
+      makerworldPricing,
       newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
       newcomerBenefits: normalizeNewcomerBenefits(settings),
       helpArticles: normalizeHelpArticles(settings.helpArticles),
@@ -10778,11 +10808,45 @@ async function getSettings() {
   return normalize(parseJsonValue(rows[0]?.data, {}))
 }
 
+async function repriceMakerworldProducts(pricingValue) {
+  const pricing = normalizeMakerworldPricingSettings(pricingValue)
+  const products = await getProducts()
+  let changed = false
+  for (const product of products) {
+    if (!product.modelCandidateId || !product.modelPrintMetadata) continue
+    const calculation = calculateMakerworldPrice(product.modelPrintMetadata, pricing)
+    const wasAutoPriced = !!product.modelPrintMetadata.autoPriced
+    if (calculation) {
+      if (Number(product.price || 0) <= 0 || wasAutoPriced) {
+        product.price = calculation.price
+        changed = true
+      }
+      product.modelPrintMetadata = {
+        ...product.modelPrintMetadata,
+        autoPriced: Number(product.price || 0) === Number(calculation.price),
+        calculatedPrice: calculation.price,
+        priceCalculation: calculation
+      }
+      changed = true
+    }
+    if (Number(product.stock || 0) <= 0 && pricing.defaultStock > 0) {
+      product.stock = String(pricing.defaultStock)
+      product.stockMode = "FINITE"
+      changed = true
+    }
+  }
+  if (changed) await saveProducts(products)
+  return changed
+}
+
 async function saveSettings(settings) {
   const categoryCatalog = updateActiveCategoryTree(settings.categoryCatalog)
+  const makerworldPricing = normalizeMakerworldPricingSettings(settings.makerworldPricing)
+  makerworldPricingSettingsCache = makerworldPricing
   settings = {
     ...settings,
     categoryCatalog,
+    makerworldPricing,
     newcomerBenefitsEnabled: String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled) === "false" ? "false" : "true",
     newcomerBenefits: normalizeNewcomerBenefits(settings),
     helpArticles: normalizeHelpArticles(settings.helpArticles),
@@ -10798,6 +10862,7 @@ async function saveSettings(settings) {
       workWechatUrl: settings.workWechatUrl || home.contact.workWechatUrl
     }
     writeJsonFile(homeFile, home)
+    await repriceMakerworldProducts(makerworldPricing)
     return settings
   }
   await query("UPDATE system_settings SET data = :data WHERE id = 1", { data: JSON.stringify(settings) })
@@ -10809,6 +10874,7 @@ async function saveSettings(settings) {
     workWechatUrl: settings.workWechatUrl || home.contact.workWechatUrl
   }
   await saveHome(home)
+  await repriceMakerworldProducts(makerworldPricing)
   return settings
 }
 
@@ -10907,6 +10973,7 @@ async function initDb() {
   await ensureColumn("products", "model_imported_at", "VARCHAR(40)")
   await ensureColumn("products", "model_info_status", "VARCHAR(40)")
   await ensureColumn("products", "model_info_note", "TEXT")
+  await ensureColumn("products", "model_print_metadata", "JSON")
   await ensureIndex("products", "idx_products_model_candidate", "INDEX", ["model_candidate_id"])
   await ensureIndex("products", "idx_products_model_source_url", "INDEX", ["model_source_url"])
   await query(`CREATE TABLE IF NOT EXISTS makerworld_import_batches (

@@ -4,6 +4,7 @@ const {
   canonicalizeMakerWorldUrl,
   extractMakerWorldUrls
 } = require("./makerworld-catalog-sync")
+const { extractPrintMetadata } = require("./makerworld-pricing")
 
 function decodeHtml(value) {
   return String(value == null ? "" : value)
@@ -116,7 +117,7 @@ function parseMakerWorldHtml(html, sourceUrl) {
   }
 }
 
-function parseMakerWorldApiDesign(payload, sourceUrl) {
+function parseMakerWorldApiDesign(payload, sourceUrl, submittedUrl = sourceUrl) {
   const design = payload && typeof payload === "object" && payload.data && typeof payload.data === "object"
     ? payload.data
     : payload
@@ -146,6 +147,7 @@ function parseMakerWorldApiDesign(payload, sourceUrl) {
     authorUrl,
     imageUrl: pictures[0] || "",
     galleryImages: pictures.slice(1, 10),
+    modelPrintMetadata: extractPrintMetadata(design, submittedUrl),
     licenseRaw: firstText(licenseInfo.description, licenseInfo.name, licenseInfo.title, design.license),
     licenseCode: firstText(design.license),
     metrics: {

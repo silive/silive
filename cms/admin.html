@@ -923,6 +923,30 @@
             <div class="upload-help">小程序客服消息请在微信公众平台的“客服消息 / 小程序客服”中查看。这里填写的企业微信号或微信号仅用于展示和复制。</div>
           </div>
           <div class="settings-section">
+            <h3>MakerWorld 自动定价</h3>
+            <div class="upload-help">导入时读取打印配置的盘数、时间、重量、颜色数和 AMS。叠加模式会合计已启用项目；单项模式只采用指定的一种算法。人工修改过的商品价格不会被自动覆盖。</div>
+            <div class="form-grid">
+              <label>启用自动定价<select id="makerworldPricingEnabled"><option value="false">关闭</option><option value="true">开启</option></select></label>
+              <label>计算模式<select id="makerworldPricingMode"><option value="sum">叠加计算</option><option value="single">仅用一种方法</option></select></label>
+              <label>单项计算依据<select id="makerworldPricingSingleMetric"><option value="weight">重量</option><option value="time">打印时间</option><option value="colors">颜色数</option><option value="ams">AMS</option><option value="plates">盘数</option></select></label>
+              <label>基础价格（元）<input id="makerworldPricingBasePrice" type="number" min="0" step="0.01"></label>
+              <label>每克价格（元）<input id="makerworldPricingPerGram" type="number" min="0" step="0.01"></label>
+              <label>每分钟价格（元）<input id="makerworldPricingPerMinute" type="number" min="0" step="0.01"></label>
+              <label>每种颜色费用（元）<input id="makerworldPricingPerColor" type="number" min="0" step="0.01"></label>
+              <label>需要 AMS 加价（元）<input id="makerworldPricingAmsFee" type="number" min="0" step="0.01"></label>
+              <label>每盘费用（元）<input id="makerworldPricingPerPlate" type="number" min="0" step="0.01"></label>
+              <label>最低价格（元）<input id="makerworldPricingMinimumPrice" type="number" min="0" step="0.01"></label>
+              <label>价格向上取整<select id="makerworldPricingRounding"><option value="0.01">0.01 元</option><option value="0.1">0.1 元</option><option value="0.5">0.5 元</option><option value="1">1 元</option></select></label>
+              <label>导入商品默认库存<input id="makerworldPricingDefaultStock" type="number" min="0" step="1" value="100"></label>
+              <label>重量参与计算<select id="makerworldPricingUseWeight"><option value="true">是</option><option value="false">否</option></select></label>
+              <label>时间参与计算<select id="makerworldPricingUseTime"><option value="true">是</option><option value="false">否</option></select></label>
+              <label>颜色参与计算<select id="makerworldPricingUseColors"><option value="true">是</option><option value="false">否</option></select></label>
+              <label>AMS 参与计算<select id="makerworldPricingUseAms"><option value="true">是</option><option value="false">否</option></select></label>
+              <label>盘数参与计算<select id="makerworldPricingUsePlates"><option value="true">是</option><option value="false">否</option></select></label>
+            </div>
+            <div class="upload-help">保存系统设置后，会重新计算仍为自动定价或价格为 0 的 MakerWorld 商品；已有人工价格保持不变。</div>
+          </div>
+          <div class="settings-section">
             <h3>新人福利</h3>
             <div class="form-grid">
               <label>是否开启新人福利<select id="newcomerBenefitsEnabled">
@@ -2153,10 +2177,20 @@
     function importSourceText(item) {
       return String(item?.modelSourcePlatform || "MakerWorld").trim() || "MakerWorld"
     }
+    function makerworldPrintMetadataText(item) {
+      const meta = item?.modelPrintMetadata
+      if (!meta) return "打印参数待补全"
+      const minutes = Math.max(0, Math.round(Number(meta.printTimeSeconds || 0) / 60))
+      return `${Number(meta.plateCount || 0)}盘 · ${minutes}分钟 · ${Number(meta.weightGrams || 0)}g · ${Number(meta.colorCount || 0)}色${meta.needAms ? " · AMS" : ""}`
+    }
+    function makerworldPrintMetadataHtml(item) {
+      if (!item?.modelPrintMetadata) return `<div class="table-sub">打印参数待补全</div>`
+      return `<div class="table-sub" title="${escapeHtml(makerworldPrintMetadataText(item))}">${escapeHtml(makerworldPrintMetadataText(item))}</div>`
+    }
     function makerworldReviewCell(item) {
       if (!isImportedProduct(item)) return `<span class="table-sub">-</span>`
       if (isApprovedImportedProduct(item)) {
-        return `<span class="table-sub">${escapeHtml(importSourceText(item))} 导入商品</span>`
+        return `<span class="table-sub">${escapeHtml(importSourceText(item))} 导入商品</span>${makerworldPrintMetadataHtml(item)}`
       }
       const unavailable = item.modelInfoStatus === "source_unavailable"
       const current = unavailable ? `<span class="pill danger">来源已失效</span>` : `<span class="pill">${makerworldReviewText(item.modelAuthorizationStatus)}</span>`
@@ -2166,7 +2200,7 @@
       const rejectButton = String(item.modelAuthorizationStatus || "pending_review") === "rejected"
         ? ""
         : `<button class="danger" data-action="makerworld-review" data-decision="rejected" data-id="${escapeHtml(item.id)}">拒绝</button>`
-      return `${current}<div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}" ${unavailable ? "disabled" : ""}>审核通过</button>${pendingButton}${rejectButton}</div>`
+      return `${current}${makerworldPrintMetadataHtml(item)}<div class="table-actions"><button class="secondary" data-action="makerworld-review" data-decision="approved" data-id="${escapeHtml(item.id)}" ${unavailable ? "disabled" : ""}>审核通过</button>${pendingButton}${rejectButton}</div>`
     }
     function makerworldInfoStatusText(value) {
       return ({ complete: "已获取", incomplete: "信息待补全", source_unavailable: "来源已失效" })[String(value || "")] || value || "未知"
@@ -2702,6 +2736,7 @@
     function openProductDrawer(index) {
       const item = products[index]
       if (!item) return
+      const printMeta = item.modelPrintMetadata || {}
       resetPendingProductMediaFiles()
       drawerMode = "product"
       drawerIndex = index
@@ -2740,6 +2775,12 @@
             <label>同步评分<input value="${escapeHtml(item.modelSyncScore || "0")}" disabled></label>
             <label>抓取时间<input value="${escapeHtml(item.modelFetchedAt || item.modelSyncedAt || "")}" disabled></label>
             <label>导入时间<input value="${escapeHtml(item.modelImportedAt || "")}" disabled></label>
+            <label>打印配置 ID<input value="${escapeHtml(printMeta.profileId || "待补全")}" disabled></label>
+            <label>盘数<input value="${escapeHtml(printMeta.plateCount ?? "待补全")}" disabled></label>
+            <label>打印时间<input value="${printMeta.printTimeSeconds != null ? `${Math.round(Number(printMeta.printTimeSeconds) / 60)} 分钟` : "待补全"}" disabled></label>
+            <label>耗材重量<input value="${printMeta.weightGrams != null ? `${escapeHtml(printMeta.weightGrams)} 克` : "待补全"}" disabled></label>
+            <label>颜色数<input value="${escapeHtml(printMeta.colorCount ?? "待补全")}" disabled></label>
+            <label>需要 AMS<input value="${printMeta.needAms == null ? "待补全" : printMeta.needAms ? "是" : "否"}" disabled></label>
             <label>信息状态<input value="${escapeHtml(makerworldInfoStatusText(item.modelInfoStatus))}" disabled></label>
             <label>信息备注<textarea data-key="modelInfoNote">${escapeHtml(item.modelInfoNote || "")}</textarea></label>
             <label>署名文案<textarea data-key="modelAttribution">${escapeHtml(item.modelAttribution || "")}</textarea></label>
@@ -2759,7 +2800,7 @@
             ${field("价格", item.price, "price")}
             ${field("成本价", item.costPrice, "costPrice")}
             ${field("库存", item.stock, "stock")}
-          </div></div>
+          </div>${item.modelCandidateId ? `<div class="upload-help">${printMeta.autoPriced ? `当前价格由系统自动计算：¥${escapeHtml(printMeta.calculatedPrice || item.price)}。人工修改价格并保存后，将停止自动覆盖该商品。` : "当前为人工价格或尚未取得完整打印参数。"}</div>` : ""}</div>
         </div>
         <div class="drawer-pane" data-drawer-pane="reward">
           <div class="drawer-section"><h4>推广佣金</h4><div class="form-grid">
@@ -3646,6 +3687,24 @@
       $("showWechat").value = String(settings.showWechat == null ? "true" : settings.showWechat)
       $("deliveryPromise").value = settings.deliveryPromise || ""
       $("newcomerBenefitsEnabled").value = String(settings.newcomerBenefitsEnabled == null ? "true" : settings.newcomerBenefitsEnabled)
+      const pricing = settings.makerworldPricing || {}
+      $("makerworldPricingEnabled").value = String(pricing.enabled == null ? false : pricing.enabled)
+      $("makerworldPricingMode").value = pricing.mode || "sum"
+      $("makerworldPricingSingleMetric").value = pricing.singleMetric || "weight"
+      $("makerworldPricingBasePrice").value = pricing.basePrice ?? 0
+      $("makerworldPricingPerGram").value = pricing.perGram ?? 0
+      $("makerworldPricingPerMinute").value = pricing.perMinute ?? 0
+      $("makerworldPricingPerColor").value = pricing.perColor ?? pricing.perExtraColor ?? 0
+      $("makerworldPricingAmsFee").value = pricing.amsFee ?? 0
+      $("makerworldPricingPerPlate").value = pricing.perPlate ?? 0
+      $("makerworldPricingMinimumPrice").value = pricing.minimumPrice ?? 0
+      $("makerworldPricingRounding").value = String(pricing.rounding ?? 0.1)
+      $("makerworldPricingDefaultStock").value = pricing.defaultStock ?? 100
+      $("makerworldPricingUseWeight").value = String(pricing.useWeight == null ? true : pricing.useWeight)
+      $("makerworldPricingUseTime").value = String(pricing.useTime == null ? true : pricing.useTime)
+      $("makerworldPricingUseColors").value = String(pricing.useColors == null ? true : pricing.useColors)
+      $("makerworldPricingUseAms").value = String(pricing.useAms == null ? true : pricing.useAms)
+      $("makerworldPricingUsePlates").value = String(pricing.usePlates == null ? true : pricing.usePlates)
       const benefits = normalizeSettingsBenefits(settings.newcomerBenefits)
       $("newcomerBenefits").innerHTML = benefits.map((item, index) => `
         <div class="benefit-row" data-benefit-index="${index}">
@@ -3849,6 +3908,25 @@
           showPhone: $("showPhone").value,
           showWechat: $("showWechat").value,
           deliveryPromise: $("deliveryPromise").value,
+          makerworldPricing: {
+            enabled: $("makerworldPricingEnabled").value,
+            mode: $("makerworldPricingMode").value,
+            singleMetric: $("makerworldPricingSingleMetric").value,
+            basePrice: $("makerworldPricingBasePrice").value,
+            perGram: $("makerworldPricingPerGram").value,
+            perMinute: $("makerworldPricingPerMinute").value,
+            perColor: $("makerworldPricingPerColor").value,
+            amsFee: $("makerworldPricingAmsFee").value,
+            perPlate: $("makerworldPricingPerPlate").value,
+            minimumPrice: $("makerworldPricingMinimumPrice").value,
+            rounding: $("makerworldPricingRounding").value,
+            defaultStock: $("makerworldPricingDefaultStock").value,
+            useWeight: $("makerworldPricingUseWeight").value,
+            useTime: $("makerworldPricingUseTime").value,
+            useColors: $("makerworldPricingUseColors").value,
+            useAms: $("makerworldPricingUseAms").value,
+            usePlates: $("makerworldPricingUsePlates").value
+          },
           newcomerBenefitsEnabled: $("newcomerBenefitsEnabled").value,
           newcomerBenefits: collectSettingsBenefits(),
           helpPageTitle: settings.helpPageTitle,
