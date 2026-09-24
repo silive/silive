@@ -3880,7 +3880,7 @@
       })
     })
     $("makerworldDirectMainImages").addEventListener("change", event => {
-      const files = event.currentTarget.files
+      const files = Array.from(event.currentTarget.files || [])
       event.currentTarget.value = ""
       try {
         prepareMakerworldDirectImages(files)
