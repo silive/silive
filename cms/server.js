@@ -99,6 +99,11 @@ const {
   replacementFilename: makerworldReplacementFilename,
   replacementStem: makerworldReplacementStem
 } = require("./makerworld-main-image-package")
+const {
+  exchangeCode: exchangeBaiduNetdiskCode,
+  oauthAuthorizeUrl: baiduNetdiskAuthorizeUrl,
+  refreshToken: refreshBaiduNetdiskToken
+} = require("./baidu-netdisk")
 
 let mysql
 try {
@@ -178,6 +183,7 @@ const storeLeadsFile = path.join(seedDir, "store-leads.json")
 const salesAgentCommissionsFile = path.join(seedDir, "sales-agent-commissions.json")
 const makerworldImportBatchesFile = path.join(seedDir, "makerworld-import-batches.json")
 const makerworldImageReplacementBatchesFile = path.join(seedDir, "makerworld-image-replacement-batches.json")
+const baiduNetdiskCredentialFile = path.join(seedDir, "baidu-netdisk-credential.json")
 const sessions = new Map()
 const salesSessions = new Map()
 const userSessions = new Map()
@@ -186,6 +192,7 @@ const authenticatedUploadHits = new Map()
 const orderRecommendationEventHits = new Map()
 const productImportPreviews = new Map()
 const makerworldImageReplacementPreviews = new Map()
+const baiduNetdiskOauthStates = new Map()
 const adminLoginFailures = new Map()
 const salesLoginFailures = new Map()
 const pickupVerificationHits = new Map()
@@ -377,6 +384,111 @@ function normalizeAssetUrls(value) {
 
 function writeJsonFile(file, data) {
   fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
+}
+
+function baiduNetdiskConfig() {
+  const appKey = String(process.env.BAIDU_NETDISK_APP_KEY || "").trim()
+  const secretKey = String(process.env.BAIDU_NETDISK_SECRET_KEY || "").trim()
+  return {
+    appKey,
+    secretKey,
+    configured: !!(appKey && secretKey),
+    redirectUri: `${PUBLIC_BASE_URL.replace(/\/$/, "")}/api/admin/baidu-netdisk/oauth/callback`
+  }
+}
+
+function baiduNetdiskEncryptionKey() {
+  const secret = String(process.env.SESSION_SECRET || "")
+  if (!secret) throw new Error("缺少 SESSION_SECRET，无法安全保存百度网盘授权")
+  return crypto.createHash("sha256").update(`very-simple-baidu-netdisk:${secret}`).digest()
+}
+
+function encryptBaiduNetdiskCredential(value) {
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv("aes-256-gcm", baiduNetdiskEncryptionKey(), iv)
+  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(value), "utf8"), cipher.final()])
+  return {
+    version: 1,
+    algorithm: "aes-256-gcm",
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    ciphertext: ciphertext.toString("base64")
+  }
+}
+
+function decryptBaiduNetdiskCredential(envelope) {
+  if (!envelope || envelope.version !== 1 || envelope.algorithm !== "aes-256-gcm") return null
+  const decipher = crypto.createDecipheriv("aes-256-gcm", baiduNetdiskEncryptionKey(), Buffer.from(envelope.iv, "base64"))
+  decipher.setAuthTag(Buffer.from(envelope.tag, "base64"))
+  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext, "base64")), decipher.final()]).toString("utf8"))
+}
+
+function readBaiduNetdiskCredential() {
+  try {
+    return decryptBaiduNetdiskCredential(readJsonFile(baiduNetdiskCredentialFile, null))
+  } catch (error) {
+    console.warn("[baidu-netdisk] 授权文件读取失败：", error.message)
+    return null
+  }
+}
+
+function writeBaiduNetdiskCredential(token) {
+  fs.mkdirSync(path.dirname(baiduNetdiskCredentialFile), { recursive: true })
+  writeJsonFile(baiduNetdiskCredentialFile, encryptBaiduNetdiskCredential(token))
+  fs.chmodSync(baiduNetdiskCredentialFile, 0o600)
+}
+
+function normalizeBaiduNetdiskToken(token, previous = {}) {
+  const expiresIn = Math.max(60, Number(token.expires_in || 2592000))
+  return {
+    accessToken: String(token.access_token || previous.accessToken || ""),
+    refreshToken: String(token.refresh_token || previous.refreshToken || ""),
+    scope: String(token.scope || previous.scope || ""),
+    sessionKey: String(token.session_key || previous.sessionKey || ""),
+    expiresAt: Date.now() + expiresIn * 1000,
+    connectedAt: previous.connectedAt || new Date().toISOString(),
+    refreshedAt: new Date().toISOString()
+  }
+}
+
+async function validBaiduNetdiskCredential() {
+  const config = baiduNetdiskConfig()
+  if (!config.configured) throw httpError(400, "百度网盘 AppKey/SecretKey 尚未配置")
+  const credential = readBaiduNetdiskCredential()
+  if (!credential?.refreshToken) throw httpError(409, "百度网盘尚未完成账号授权")
+  if (credential.accessToken && Number(credential.expiresAt || 0) > Date.now() + 5 * 60 * 1000) return credential
+  const refreshed = normalizeBaiduNetdiskToken(await refreshBaiduNetdiskToken({
+    appKey: config.appKey,
+    secretKey: config.secretKey,
+    refreshToken: credential.refreshToken
+  }), credential)
+  writeBaiduNetdiskCredential(refreshed)
+  return refreshed
+}
+
+function cleanupBaiduNetdiskOauthStates() {
+  const now = Date.now()
+  for (const [state, expiresAt] of baiduNetdiskOauthStates.entries()) {
+    if (expiresAt <= now) baiduNetdiskOauthStates.delete(state)
+  }
+}
+
+function publicBaiduNetdiskStatus() {
+  const config = baiduNetdiskConfig()
+  const credential = config.configured ? readBaiduNetdiskCredential() : null
+  return {
+    configured: config.configured,
+    connected: !!credential?.refreshToken,
+    redirectUri: config.redirectUri,
+    connectedAt: credential?.connectedAt || "",
+    tokenHealthy: !!(credential?.accessToken && Number(credential.expiresAt || 0) > Date.now()),
+    makerworldDownloadAuthorized: !!String(process.env.BAMBU_CLOUD_ACCESS_TOKEN || "").trim()
+  }
+}
+
+function baiduNetdiskCallbackHtml(ok, message) {
+  const safeMessage = String(message || "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character])
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>百度网盘授权</title></head><body style="font-family:system-ui;padding:40px;color:#222"><h2>${ok ? "百度网盘连接成功" : "百度网盘连接失败"}</h2><p>${safeMessage}</p><p><a href="/admin">返回管理后台</a></p><script>if(window.opener){window.opener.postMessage({type:"baidu-netdisk-oauth",ok:${ok ? "true" : "false"}},location.origin);setTimeout(()=>window.close(),800)}else{setTimeout(()=>location.href="/admin",1200)}</script></body></html>`
 }
 
 function currentThemeFromSettings() {
@@ -13337,6 +13449,52 @@ async function handle(req, res) {
   if (url.pathname === "/api/admin/products/import-confirm" && req.method === "POST") {
     const body = JSON.parse((await readBody(req)).toString() || "{}")
     sendJson(res, 200, { ok: true, data: await confirmProductImport(body.token) })
+    return
+  }
+
+  if (url.pathname === "/api/admin/baidu-netdisk/status" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, data: publicBaiduNetdiskStatus() })
+    return
+  }
+
+  if (url.pathname === "/api/admin/baidu-netdisk/authorize" && req.method === "POST") {
+    const config = baiduNetdiskConfig()
+    if (!config.configured) throw httpError(400, "百度网盘 AppKey/SecretKey 尚未配置")
+    cleanupBaiduNetdiskOauthStates()
+    const state = crypto.randomBytes(24).toString("hex")
+    baiduNetdiskOauthStates.set(state, Date.now() + 10 * 60 * 1000)
+    sendJson(res, 200, {
+      ok: true,
+      data: { authorizeUrl: baiduNetdiskAuthorizeUrl({ appKey: config.appKey, redirectUri: config.redirectUri, state }) }
+    })
+    return
+  }
+
+  if (url.pathname === "/api/admin/baidu-netdisk/oauth/callback" && req.method === "GET") {
+    try {
+      const config = baiduNetdiskConfig()
+      const state = String(url.searchParams.get("state") || "")
+      const code = String(url.searchParams.get("code") || "")
+      const errorText = String(url.searchParams.get("error_description") || url.searchParams.get("error") || "")
+      cleanupBaiduNetdiskOauthStates()
+      const expiresAt = baiduNetdiskOauthStates.get(state)
+      baiduNetdiskOauthStates.delete(state)
+      if (!state || !expiresAt || expiresAt <= Date.now()) throw new Error("授权请求已过期，请回到后台重新连接")
+      if (errorText) throw new Error(`百度拒绝授权：${errorText}`)
+      if (!code) throw new Error("百度授权回调缺少 code")
+      const previous = readBaiduNetdiskCredential() || {}
+      const token = normalizeBaiduNetdiskToken(await exchangeBaiduNetdiskCode({
+        appKey: config.appKey,
+        secretKey: config.secretKey,
+        redirectUri: config.redirectUri,
+        code
+      }), previous)
+      if (!token.accessToken || !token.refreshToken) throw new Error("百度授权未返回完整令牌")
+      writeBaiduNetdiskCredential(token)
+      sendText(res, 200, baiduNetdiskCallbackHtml(true, "授权令牌已加密保存，可以关闭此页面。"), "text/html; charset=utf-8")
+    } catch (error) {
+      sendText(res, 400, baiduNetdiskCallbackHtml(false, error.message || "授权失败，请重试。"), "text/html; charset=utf-8")
+    }
     return
   }
 

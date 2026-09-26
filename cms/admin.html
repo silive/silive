@@ -947,6 +947,18 @@
             <div class="upload-help">保存系统设置后，会重新计算仍为自动定价或价格为 0 的 MakerWorld 商品；已有人工价格保持不变。</div>
           </div>
           <div class="settings-section">
+            <h3>模型文件归档</h3>
+            <div class="upload-help">AppKey 和 SecretKey 仅保存在服务器环境变量中；百度账号授权令牌会加密保存，不会发送到后台页面。</div>
+            <div class="form-grid">
+              <label>百度网盘应用配置<input id="baiduNetdiskConfigStatus" value="正在读取..." disabled></label>
+              <label>百度网盘账号连接<input id="baiduNetdiskConnectionStatus" value="正在读取..." disabled></label>
+              <label>MakerWorld 文件下载授权<input id="makerworldDownloadAuthStatus" value="正在读取..." disabled></label>
+              <label>OAuth 回调地址<input id="baiduNetdiskRedirectUri" value="" disabled></label>
+            </div>
+            <div class="toolbar" style="margin-top:12px"><button class="secondary" id="connectBaiduNetdiskBtn" type="button">连接百度网盘</button></div>
+            <div class="upload-help" id="baiduNetdiskHelp">百度网盘连接完成后，仍需单独配置 MakerWorld 下载授权，才能下载并归档模型文件。</div>
+          </div>
+          <div class="settings-section">
             <h3>新人福利</h3>
             <div class="form-grid">
               <label>是否开启新人福利<select id="newcomerBenefitsEnabled">
@@ -1064,6 +1076,7 @@
     let makerworldBatchResult = null
     let makerworldImportBatches = []
     let makerworldRankingOptions = { categories: [], sorts: [] }
+    let baiduNetdiskStatus = {}
     let makerworldMainImagePreview = null
     let makerworldMainImageResultExpanded = false
     let makerworldDirectImageDraft = null
@@ -3705,6 +3718,19 @@
       $("makerworldPricingUseColors").value = String(pricing.useColors == null ? true : pricing.useColors)
       $("makerworldPricingUseAms").value = String(pricing.useAms == null ? true : pricing.useAms)
       $("makerworldPricingUsePlates").value = String(pricing.usePlates == null ? true : pricing.usePlates)
+      $("baiduNetdiskConfigStatus").value = baiduNetdiskStatus.configured ? "已配置" : "未配置"
+      $("baiduNetdiskConnectionStatus").value = baiduNetdiskStatus.connected ? "已连接" : "未连接"
+      $("makerworldDownloadAuthStatus").value = baiduNetdiskStatus.makerworldDownloadAuthorized ? "已配置" : "未配置"
+      $("baiduNetdiskRedirectUri").value = baiduNetdiskStatus.redirectUri || ""
+      $("connectBaiduNetdiskBtn").textContent = baiduNetdiskStatus.connected ? "重新连接百度网盘" : "连接百度网盘"
+      $("connectBaiduNetdiskBtn").disabled = !baiduNetdiskStatus.configured
+      $("baiduNetdiskHelp").textContent = !baiduNetdiskStatus.configured
+        ? "服务器尚未配置百度网盘应用凭证。"
+        : !baiduNetdiskStatus.connected
+          ? "请先在百度应用中登记上方回调地址，然后点击连接并完成授权。"
+          : baiduNetdiskStatus.makerworldDownloadAuthorized
+            ? "百度网盘和 MakerWorld 下载授权均已配置，可以继续启用模型文件归档。"
+            : "百度网盘已连接；MakerWorld 文件下载授权尚未配置，暂时不能下载模型文件。"
       const benefits = normalizeSettingsBenefits(settings.newcomerBenefits)
       $("newcomerBenefits").innerHTML = benefits.map((item, index) => `
         <div class="benefit-row" data-benefit-index="${index}">
@@ -3801,7 +3827,7 @@
       const settlementQuery = new URLSearchParams(Object.fromEntries(Object.entries(settlementFilters).filter(([, value]) => value))).toString()
       const storeLeadQuery = new URLSearchParams(Object.fromEntries(Object.entries(storeLeadFilters).filter(([, value]) => value))).toString()
       const salesCommissionQuery = new URLSearchParams(Object.fromEntries(Object.entries(salesCommissionFilters).filter(([, value]) => value))).toString()
-      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldBatchData, makerworldRankingData] = await Promise.all([
+      const [overview, homeData, productData, orderData, customerData, settingData, storeData, settlementData, salesAgentData, storeLeadData, salesCommissionData, makerworldBatchData, makerworldRankingData, baiduStatusData] = await Promise.all([
         api("/api/admin/overview"),
         api("/api/home"),
         api("/api/admin/products"),
@@ -3814,7 +3840,8 @@
         api(`/api/admin/store-leads${storeLeadQuery ? `?${storeLeadQuery}` : ""}`),
         api(`/api/admin/sales-agent-commissions${salesCommissionQuery ? `?${salesCommissionQuery}` : ""}`),
         api("/api/admin/makerworld/import-batches?limit=10"),
-        api("/api/admin/makerworld/ranking-options")
+        api("/api/admin/makerworld/ranking-options"),
+        api("/api/admin/baidu-netdisk/status")
       ])
       const rewardQuery = new URLSearchParams(Object.fromEntries(Object.entries(rewardFilters).filter(([, value]) => value))).toString()
       const [relationData, rewardData] = await Promise.all([
@@ -3837,6 +3864,7 @@
       settings = settingData
       makerworldImportBatches = makerworldBatchData
       makerworldRankingOptions = makerworldRankingData
+      baiduNetdiskStatus = baiduStatusData
       rebuildCategoryOptions()
       renderOverview(overview)
       renderHome()
@@ -3941,6 +3969,37 @@
       await loadAll()
       setStatus(finalStatus)
     }
+
+    async function refreshBaiduNetdiskStatus() {
+      baiduNetdiskStatus = await api("/api/admin/baidu-netdisk/status")
+      renderSettings()
+    }
+
+    $("connectBaiduNetdiskBtn").addEventListener("click", async event => {
+      const popup = window.open("about:blank", "baidu-netdisk-oauth", "width=720,height=760")
+      if (!popup) {
+        setStatus("浏览器阻止了授权窗口，请允许弹窗后重试")
+        return
+      }
+      popup.document.write("<p style='font-family:system-ui;padding:24px'>正在打开百度网盘授权...</p>")
+      await withButtonLoading(event.currentTarget, "正在连接...", async () => {
+        try {
+          const result = await api("/api/admin/baidu-netdisk/authorize", "POST", {})
+          popup.location.href = result.authorizeUrl
+          setStatus("请在新窗口完成百度网盘授权")
+        } catch (error) {
+          popup.close()
+          throw error
+        }
+      })
+    })
+
+    window.addEventListener("message", event => {
+      if (event.origin !== location.origin || event.data?.type !== "baidu-netdisk-oauth") return
+      refreshBaiduNetdiskStatus()
+        .then(() => setStatus(event.data.ok ? "百度网盘连接成功" : "百度网盘连接失败"))
+        .catch(error => setStatus(error.message))
+    })
 
     $("nav").addEventListener("click", event => {
       if (event.target.dataset.view) switchView(event.target.dataset.view)
