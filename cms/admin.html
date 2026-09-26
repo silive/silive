@@ -2230,7 +2230,7 @@
       if (!checkbox?.checked) throw new Error("请先勾选权限确认")
       await withButtonLoading(button, "下载并上传中...", async () => {
         setStatus("正在从 MakerWorld 下载模型文件并私有上传到百度网盘，请勿重复操作...")
-        const result = await api(`/api/admin/makerworld/products/${encodeURIComponent(productId)}/archive-file`, "POST", { rightsConfirmed: true })
+        const result = await api(`/api/admin/makerworld/products/${encodeURIComponent(productId)}/archive-file`, "POST", { rightsConfirmed: true }, 300000)
         await loadAll()
         const index = products.findIndex(item => String(item.id) === productId)
         if (index >= 0) openProductDrawer(index)
