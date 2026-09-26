@@ -2218,6 +2218,25 @@
     function makerworldInfoStatusText(value) {
       return ({ complete: "已获取", incomplete: "信息待补全", source_unavailable: "来源已失效" })[String(value || "")] || value || "未知"
     }
+    function makerworldArchiveStatusText(value) {
+      const archive = value && typeof value === "object" ? value : {}
+      if (archive.status === "archived") return `已归档：${archive.filename || "模型文件"}${archive.size ? `（${(Number(archive.size) / 1024 / 1024).toFixed(1)}MB）` : ""}`
+      if (archive.status === "failed") return `上次归档失败：${archive.lastError || "未知原因"}`
+      return "尚未归档"
+    }
+    async function archiveMakerworldFile(button) {
+      const productId = String(button.dataset.id || "")
+      const checkbox = $("makerworldArchiveRightsConfirmed")
+      if (!checkbox?.checked) throw new Error("请先勾选权限确认")
+      await withButtonLoading(button, "下载并上传中...", async () => {
+        setStatus("正在从 MakerWorld 下载模型文件并私有上传到百度网盘，请勿重复操作...")
+        const result = await api(`/api/admin/makerworld/products/${encodeURIComponent(productId)}/archive-file`, "POST", { rightsConfirmed: true })
+        await loadAll()
+        const index = products.findIndex(item => String(item.id) === productId)
+        if (index >= 0) openProductDrawer(index)
+        setStatus(`模型文件已归档到百度网盘：${result.filename || "上传完成"}`)
+      })
+    }
     function switchMakerworldImportTab(name) {
       const target = String(name || "ranking")
       document.querySelectorAll("[data-makerworld-import-tab]").forEach(button => {
@@ -2798,7 +2817,13 @@
             <label>信息备注<textarea data-key="modelInfoNote">${escapeHtml(item.modelInfoNote || "")}</textarea></label>
             <label>署名文案<textarea data-key="modelAttribution">${escapeHtml(item.modelAttribution || "")}</textarea></label>
             <label>人工审核备注<textarea data-key="modelAuthorizationNote">${escapeHtml(item.modelAuthorizationNote || "")}</textarea></label>
-          </div><div class="upload-help">许可证、版权和商用相关文字只作人工审核参考，不参与导入或同步判定。请使用商品列表中的审核按钮决定是否上架。</div></div>` : ""}
+          </div><div class="upload-help">许可证、版权和商用相关文字只作人工审核参考，不参与导入或同步判定。请使用商品列表中的审核按钮决定是否上架。</div>
+          <div class="drawer-section"><h4>模型文件私有归档</h4>
+            <div class="upload-help">${escapeHtml(makerworldArchiveStatusText(printMeta.fileArchive))}${printMeta.fileArchive?.path ? ` · ${escapeHtml(printMeta.fileArchive.path)}` : ""}</div>
+            <label class="checkline"><input type="checkbox" id="makerworldArchiveRightsConfirmed"> 已确认当前账号有权下载该模型，并仅归档到本店百度网盘用于生产或私有备份</label>
+            <div class="toolbar" style="margin-top:10px"><button class="secondary" data-action="archive-makerworld-file" data-id="${escapeHtml(item.id)}" ${baiduNetdiskStatus.connected && baiduNetdiskStatus.makerworldDownloadAuthorized ? "" : "disabled"}>下载、按标题重命名并上传百度网盘</button></div>
+            <div class="upload-help">文件名与商品标题一致，扩展名为 .3mf。此操作不创建公开分享链接；未配置百度网盘或 MakerWorld 下载授权时按钮不可用。</div>
+          </div></div>` : ""}
         </div>
         <div class="drawer-pane" data-drawer-pane="media">
           <div class="drawer-section"><h4>商品主图</h4><div class="form-grid">${field("商品主图", item.imageUrl, "imageUrl")}</div></div>
@@ -4520,6 +4545,7 @@
         }
       }
       if (event.target.dataset.action === "save-product-drawer") saveProductDrawer(event.target)
+      if (event.target.dataset.action === "archive-makerworld-file") archiveMakerworldFile(event.target).catch(error => setStatus(error.message || "模型文件归档失败"))
       if (event.target.dataset.action === "save-order-drawer") saveOrderDrawer()
       if (event.target.dataset.action === "confirm-order-quote") confirmOrderQuote(event.target)
       if (event.target.dataset.action === "complete-delivery-order") {

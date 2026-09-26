@@ -7,14 +7,17 @@ const { buildProduct } = require("../cms/makerworld-catalog-sync")
 assert.strictEqual(profileIdFromUrl("https://makerworld.com.cn/zh/models/1-demo#profileId-3463478"), "3463478")
 
 const design = {
+  id: 1,
+  modelId: 9001,
   defaultInstanceId: 10,
   instances: [
     { id: 10, prediction: 600, weight: 5, materialColorCnt: 1, needAms: false, extention: { modelInfo: { plates: [{}] } } },
-    { id: 20, prediction: 3024, weight: 12, materialColorCnt: 4, needAms: true, title: "测试配置", extention: { modelInfo: { plates: [{}], compatibility: { devProductName: "A1" } } } }
+    { id: 20, profileId: 8001, prediction: 3024, weight: 12, materialColorCnt: 4, needAms: true, title: "测试配置", extention: { modelInfo: { plates: [{}], compatibility: { devProductName: "A1" } } } }
   ]
 }
 const metadata = extractPrintMetadata(design, "https://makerworld.com.cn/zh/models/1-demo#profileId-20")
 assert.deepStrictEqual({ profileId: metadata.profileId, plateCount: metadata.plateCount, printTimeSeconds: metadata.printTimeSeconds, weightGrams: metadata.weightGrams, colorCount: metadata.colorCount, needAms: metadata.needAms }, { profileId: "20", plateCount: 1, printTimeSeconds: 3024, weightGrams: 12, colorCount: 4, needAms: true })
+assert.deepStrictEqual({ modelInternalId: metadata.modelInternalId, modelPublicId: metadata.modelPublicId, profileDataId: metadata.profileDataId }, { modelInternalId: "9001", modelPublicId: "1", profileDataId: "8001" })
 
 const sum = calculatePrice(metadata, { enabled: true, mode: "sum", basePrice: 2, perGram: 0.5, perMinute: 0.1, perColor: 1, amsFee: 2, perPlate: 1, minimumPrice: 0, rounding: 0.1 })
 assert.strictEqual(sum.price, "20.10")

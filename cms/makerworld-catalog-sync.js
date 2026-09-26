@@ -227,7 +227,13 @@ function planSync(payload, existingProducts = [], options = {}) {
         modelFetchedAt: generated.modelFetchedAt,
         modelInfoStatus: generated.modelInfoStatus,
         modelInfoNote: generated.modelInfoNote,
-        modelPrintMetadata: generated.modelPrintMetadata || existing.modelPrintMetadata || null,
+        modelPrintMetadata: generated.modelPrintMetadata
+          ? {
+              ...(existing.modelPrintMetadata || {}),
+              ...generated.modelPrintMetadata,
+              ...(existing.modelPrintMetadata?.fileArchive ? { fileArchive: existing.modelPrintMetadata.fileArchive } : {})
+            }
+          : existing.modelPrintMetadata || null,
         modelAuthorizationStatus: existing.modelAuthorizationStatus || "pending_review",
         modelAuthorizationNote: existing.modelAuthorizationNote || "",
         status: existing.modelAuthorizationStatus === "approved" ? existing.status : "off"

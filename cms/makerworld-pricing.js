@@ -56,6 +56,8 @@ function extractPrintMetadata(design = {}, submittedUrl = "") {
   const colors = [...new Set(filaments.map(item => String(item?.color || "").trim().toUpperCase()).filter(Boolean))]
   const materialWeight = filaments.reduce((sum, item) => sum + Math.max(0, finiteNumber(item?.usedG)), 0)
   return {
+    modelInternalId: String(design.modelId || design.model_id || ""),
+    modelPublicId: String(design.id || ""),
     profileId: String(selected.id || ""),
     profileDataId: String(selected.profileId || ""),
     profileTitle: String(selected.titleTranslated || selected.title || "").trim(),

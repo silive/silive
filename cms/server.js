@@ -102,8 +102,10 @@ const {
 const {
   exchangeCode: exchangeBaiduNetdiskCode,
   oauthAuthorizeUrl: baiduNetdiskAuthorizeUrl,
-  refreshToken: refreshBaiduNetdiskToken
+  refreshToken: refreshBaiduNetdiskToken,
+  uploadBuffer: uploadBaiduNetdiskBuffer
 } = require("./baidu-netdisk")
+const { downloadMakerworldFile, safeArchiveFilename } = require("./makerworld-file-archive")
 
 let mysql
 try {
@@ -221,6 +223,7 @@ let makerworldAvailabilityCursor = 0
 let makerworldAvailabilityState = { lastCheckedAt: "", lastReport: null, lastError: "" }
 let makerworldRankingOptionsCache = null
 let makerworldRankingOptionsCachedAt = 0
+const makerworldArchiveJobs = new Set()
 let makerworldSyncState = {
   running: false,
   lastStartedAt: "",
@@ -483,6 +486,95 @@ function publicBaiduNetdiskStatus() {
     connectedAt: credential?.connectedAt || "",
     tokenHealthy: !!(credential?.accessToken && Number(credential.expiresAt || 0) > Date.now()),
     makerworldDownloadAuthorized: !!String(process.env.BAMBU_CLOUD_ACCESS_TOKEN || "").trim()
+  }
+}
+
+function publicModelFileArchive(value) {
+  const source = value && typeof value === "object" ? value : {}
+  return {
+    provider: source.provider || "baidu_netdisk",
+    status: source.status || "not_archived",
+    filename: source.filename || "",
+    path: source.path || "",
+    fsId: source.fsId || "",
+    size: Number(source.size || 0),
+    md5: source.md5 || "",
+    archivedAt: source.archivedAt || "",
+    rightsConfirmedAt: source.rightsConfirmedAt || "",
+    lastError: source.lastError || ""
+  }
+}
+
+async function archiveMakerworldProductFile(productId, confirmation) {
+  if (confirmation !== true) throw httpError(400, "请先确认已获得该模型文件的下载和私有备份权限")
+  if (makerworldArchiveJobs.has(productId)) throw httpError(409, "该商品的模型文件正在归档，请勿重复提交")
+  makerworldArchiveJobs.add(productId)
+  const rightsConfirmedAt = new Date().toISOString()
+  let products = []
+  let product = null
+  let metadata = {}
+  try {
+    const accessToken = String(process.env.BAMBU_CLOUD_ACCESS_TOKEN || "").trim()
+    if (!accessToken) throw httpError(409, "MakerWorld 文件下载授权尚未配置")
+    const credential = await validBaiduNetdiskCredential()
+    products = await getProducts()
+    product = products.find(item => String(item.id) === String(productId))
+    if (!product?.modelCandidateId || String(product.modelSourcePlatform || "").toLowerCase() !== "makerworld") {
+      throw httpError(404, "MakerWorld 导入商品不存在")
+    }
+    metadata = product.modelPrintMetadata && typeof product.modelPrintMetadata === "object" ? product.modelPrintMetadata : {}
+    if (!metadata.modelInternalId || !metadata.profileDataId) {
+      const normalized = canonicalizeMakerWorldUrl(product.modelSourceUrl)
+      if (!normalized) throw new Error("MakerWorld 来源链接无效，无法补全下载参数")
+      const candidate = await fetchMakerworldCandidate(normalized, product.modelSourceOriginalUrl || product.modelSourceUrl)
+      metadata = { ...metadata, ...(candidate.modelPrintMetadata || {}) }
+    }
+    const buffer = await downloadMakerworldFile({
+      sourceUrl: product.modelSourceUrl,
+      modelInternalId: metadata.modelInternalId,
+      profileDataId: metadata.profileDataId,
+      accessToken,
+      maxBytes: Math.max(10, Math.min(Number(process.env.MAKERWORLD_MODEL_FILE_MAX_MB || 250), 500)) * 1024 * 1024
+    })
+    const filename = safeArchiveFilename(product.name, `MakerWorld模型${product.modelCandidateId}`)
+    const uploaded = await uploadBaiduNetdiskBuffer({
+      accessToken: credential.accessToken,
+      appFolder: String(process.env.BAIDU_NETDISK_APP_FOLDER || "非常智造模型存储"),
+      filename,
+      buffer
+    })
+    const archive = publicModelFileArchive({
+      ...uploaded,
+      provider: "baidu_netdisk",
+      status: "archived",
+      filename,
+      archivedAt: new Date().toISOString(),
+      rightsConfirmedAt,
+      lastError: ""
+    })
+    product.modelPrintMetadata = { ...metadata, fileArchive: archive }
+    await saveProducts(products)
+    return archive
+  } catch (error) {
+    const safeMessage = String(error.message || "模型文件归档失败")
+      .replace(/https:\/\/\S+/gi, "[下载地址已隐藏]")
+      .replace(/Bearer\s+\S+/gi, "Bearer [已隐藏]")
+      .slice(0, 300)
+    if (product) {
+      product.modelPrintMetadata = {
+        ...metadata,
+        fileArchive: publicModelFileArchive({
+          ...(product.modelPrintMetadata?.fileArchive || {}),
+          status: "failed",
+          rightsConfirmedAt,
+          lastError: safeMessage
+        })
+      }
+      await saveProducts(products).catch(() => {})
+    }
+    throw httpError(Number(error.statusCode || 502), safeMessage)
+  } finally {
+    makerworldArchiveJobs.delete(productId)
   }
 }
 
@@ -1025,6 +1117,7 @@ function makerworldProductNeedsMetadata(product = {}) {
 function refreshMakerworldProductMetadata(product, candidate, config) {
   const generated = buildMakerWorldProduct(candidate, config)
   const wasAutoPriced = !!product.modelPrintMetadata?.autoPriced
+  const existingFileArchive = product.modelPrintMetadata?.fileArchive
   if (candidate.title) product.name = generated.name
   if (generated.imageUrl && !String(product.imageUrl || "").trim()) product.imageUrl = generated.imageUrl
   product.galleryImages = []
@@ -1035,6 +1128,9 @@ function refreshMakerworldProductMetadata(product, candidate, config) {
     "modelAuthorUrl", "modelLicenseCode", "modelLicenseRaw", "modelLicenseUrl",
     "modelSyncScore", "modelSyncedAt", "modelFetchedAt", "modelInfoStatus", "modelInfoNote", "modelPrintMetadata"
   ]) product[key] = generated[key]
+  if (existingFileArchive && product.modelPrintMetadata) {
+    product.modelPrintMetadata = { ...product.modelPrintMetadata, fileArchive: existingFileArchive }
+  }
   if (generated.modelPrintMetadata?.autoPriced && (Number(product.price || 0) <= 0 || wasAutoPriced)) {
     product.price = generated.price
   }
@@ -13454,6 +13550,14 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/admin/baidu-netdisk/status" && req.method === "GET") {
     sendJson(res, 200, { ok: true, data: publicBaiduNetdiskStatus() })
+    return
+  }
+
+  const makerworldArchiveMatch = url.pathname.match(/^\/api\/admin\/makerworld\/products\/([^/]+)\/archive-file$/)
+  if (makerworldArchiveMatch && req.method === "POST") {
+    const body = JSON.parse((await readBody(req)).toString() || "{}")
+    const productId = decodeURIComponent(makerworldArchiveMatch[1])
+    sendJson(res, 200, { ok: true, data: await archiveMakerworldProductFile(productId, body.rightsConfirmed) })
     return
   }
 
