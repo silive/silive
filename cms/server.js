@@ -13457,6 +13457,16 @@ async function handle(req, res) {
     return
   }
 
+  if (url.pathname === "/api/admin/baidu-netdisk/authorize" && req.method === "GET") {
+    const config = baiduNetdiskConfig()
+    if (!config.configured) throw httpError(400, "百度网盘 AppKey/SecretKey 尚未配置")
+    cleanupBaiduNetdiskOauthStates()
+    const state = crypto.randomBytes(24).toString("hex")
+    baiduNetdiskOauthStates.set(state, Date.now() + 10 * 60 * 1000)
+    redirect(res, baiduNetdiskAuthorizeUrl({ appKey: config.appKey, redirectUri: config.redirectUri, state }))
+    return
+  }
+
   if (url.pathname === "/api/admin/baidu-netdisk/authorize" && req.method === "POST") {
     const config = baiduNetdiskConfig()
     if (!config.configured) throw httpError(400, "百度网盘 AppKey/SecretKey 尚未配置")
