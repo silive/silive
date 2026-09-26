@@ -488,7 +488,7 @@ function publicBaiduNetdiskStatus() {
 
 function baiduNetdiskCallbackHtml(ok, message) {
   const safeMessage = String(message || "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character])
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>百度网盘授权</title></head><body style="font-family:system-ui;padding:40px;color:#222"><h2>${ok ? "百度网盘连接成功" : "百度网盘连接失败"}</h2><p>${safeMessage}</p><p><a href="/admin">返回管理后台</a></p><script>if(window.opener){window.opener.postMessage({type:"baidu-netdisk-oauth",ok:${ok ? "true" : "false"}},location.origin);setTimeout(()=>window.close(),800)}else{setTimeout(()=>location.href="/admin",1200)}</script></body></html>`
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>百度网盘授权</title></head><body style="font-family:system-ui;padding:40px;color:#222"><h2>${ok ? "百度网盘连接成功" : "百度网盘连接失败"}</h2><p>${safeMessage}</p><p><a href="/admin">返回管理后台</a></p><script>if(window.opener){window.opener.postMessage({type:"baidu-netdisk-oauth",ok:${ok ? "true" : "false"}},location.origin);${ok ? "setTimeout(()=>window.close(),800)" : ""}}${ok ? 'else{setTimeout(()=>location.href="/admin",1200)}' : ""}</script></body></html>`
 }
 
 function currentThemeFromSettings() {
@@ -13503,6 +13503,7 @@ async function handle(req, res) {
       writeBaiduNetdiskCredential(token)
       sendText(res, 200, baiduNetdiskCallbackHtml(true, "授权令牌已加密保存，可以关闭此页面。"), "text/html; charset=utf-8")
     } catch (error) {
+      console.warn("[baidu-netdisk] OAuth callback failed:", error.message || "unknown error")
       sendText(res, 400, baiduNetdiskCallbackHtml(false, error.message || "授权失败，请重试。"), "text/html; charset=utf-8")
     }
     return
